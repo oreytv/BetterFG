@@ -1,0 +1,14 @@
+{
+  "name": "Morgana",
+  "type": "replacewholebean",
+  "author": "oreytv",
+  "file": "skin_morgana",
+  "boneOffsets": [
+    { "bone": "Shoulder_L_jnt", "localPosition": { "x": -0.00203995639, "y": 0.00161630264, "z": 0.000786067976 } },
+    { "bone": "Elbow_L_jnt", "localPosition": { "x": 3.958121e-11, "y": 0.00345721585, "z": 1.21758359e-09 } },
+    { "bone": "Wrist_L_jnt", "localPosition": { "x": 1.49011609e-10, "y": 0.00144833571, "z": 4.37721609e-10 } },
+    { "bone": "Shoulder_R_jnt1", "localPosition": { "x": 0.00227, "y": 0.00149, "z": 0.00078 } },
+    { "bone": "Elbow_R_jnt1", "localPosition": { "x": -0.00026, "y": -0.00209, "z": -3.9999999e-05 } },
+    { "bone": "Wrist_R_jnt1", "localPosition": { "x": -0.000130086206, "y": -0.00284192129, "z": -0.000212935163 } }
+  ]
+}
