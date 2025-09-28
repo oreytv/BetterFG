@@ -1,6 +1,6 @@
 {
-  "name": "cube accessory",
+  "name": "cubeaccessory",
   "type": "accessory",
   "author": "oreytv",
-  "file": "skin_cube"
+  "file": "skin_cubeaccessory"
 }
