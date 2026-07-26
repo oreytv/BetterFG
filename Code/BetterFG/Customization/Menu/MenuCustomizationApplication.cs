@@ -206,33 +206,10 @@ namespace BetterFG.Customization.Menu
         public void ReapplyForegroundFromSettings(Transform scopeRoot = null, string excludeSubtreeName = null, bool anyImage = false, bool refreshOriginals = false)
         {
             bool fullCanvas = scopeRoot == null;
-            var ci = System.Globalization.CultureInfo.InvariantCulture;
-            float P(string key, float def) =>
-                float.TryParse(SettingsService.Get(key, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : def;
 
-            bool cyanOn = SettingsService.Get(KEY_FG_CYAN_ON, "false") == "true";
-            bool blackOn = SettingsService.Get(KEY_FG_BLACK_ON, "false") == "true";
-            bool yellowOn = SettingsService.Get(KEY_FG_YELLOW_ON, "false") == "true";
-            bool blueOn = SettingsService.Get(KEY_FG_BLUE_ON, "false") == "true";
-            bool pinkOn = SettingsService.Get(KEY_FG_PINK_ON, "false") == "true";
-            bool orangeOn = SettingsService.Get(KEY_FG_ORANGE_ON, "false") == "true";
-
-            if (!cyanOn && !blackOn && !yellowOn && !blueOn && !pinkOn && !orangeOn)
-            {
-                if (fullCanvas)
-                    ApplyKnownSpecialForegroundScreens();
-                return;
-            }
-
-            ApplyForeground(
-                cyanOn, new Color(P(KEY_FG_CYAN_R, 0f), P(KEY_FG_CYAN_G, 0.3f), P(KEY_FG_CYAN_B, 1f)),
-                blackOn, new Color(P(KEY_FG_BLACK_R, 0.75f), P(KEY_FG_BLACK_G, 0.75f), P(KEY_FG_BLACK_B, 0.75f)),
-                yellowOn, new Color(P(KEY_FG_YELLOW_R, 1f), P(KEY_FG_YELLOW_G, 0.5f), P(KEY_FG_YELLOW_B, 0f)),
-                blueOn, new Color(P(KEY_FG_BLUE_R, 0.1f), P(KEY_FG_BLUE_G, 0.25f), P(KEY_FG_BLUE_B, 0.85f)),
-                pinkOn, new Color(P(KEY_FG_PINK_R, 1f), P(KEY_FG_PINK_G, 0.2f), P(KEY_FG_PINK_B, 0.5f)),
-                orangeOn, new Color(P(KEY_FG_ORANGE_R, 1f), P(KEY_FG_ORANGE_G, 0.55f), P(KEY_FG_ORANGE_B, 0.1f)),
-                scopeRoot, excludeSubtreeName, anyImage, refreshOriginals
-            );
+            var pal = FgPalette.FromSettings();
+            if (pal.AnyOn)
+                ApplyForeground(pal, scopeRoot, excludeSubtreeName, anyImage, refreshOriginals);
 
             if (fullCanvas)
                 ApplyKnownSpecialForegroundScreens();
@@ -240,43 +217,20 @@ namespace BetterFG.Customization.Menu
 
         public void ReapplyShowTileFill(Transform tileRoot)
         {
-            if (tileRoot == null) return;
             var fillParent = tileRoot.Find("ShowTileHolder/NestedPanel/MainPanel/Panel_Fill");
             if (fillParent == null) return;
 
-            bool cyanOn = SettingsService.Get(KEY_FG_CYAN_ON, "false") == "true";
-            bool blackOn = SettingsService.Get(KEY_FG_BLACK_ON, "false") == "true";
-            bool yellowOn = SettingsService.Get(KEY_FG_YELLOW_ON, "false") == "true";
-            bool blueOn = SettingsService.Get(KEY_FG_BLUE_ON, "false") == "true";
-            bool pinkOn = SettingsService.Get(KEY_FG_PINK_ON, "false") == "true";
-            if (!cyanOn && !blackOn && !yellowOn && !blueOn && !pinkOn) return;
-
-            var ci = System.Globalization.CultureInfo.InvariantCulture;
-            float P(string key, float def) => float.TryParse(SettingsService.Get(key, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : def;
-
-            Color cyanTarget = new Color(P(KEY_FG_CYAN_R, 0f), P(KEY_FG_CYAN_G, 0.3f), P(KEY_FG_CYAN_B, 1f));
-            Color blackTarget = new Color(P(KEY_FG_BLACK_R, 0.75f), P(KEY_FG_BLACK_G, 0.75f), P(KEY_FG_BLACK_B, 0.75f));
-            Color yellowTarget = new Color(P(KEY_FG_YELLOW_R, 1f), P(KEY_FG_YELLOW_G, 0.5f), P(KEY_FG_YELLOW_B, 0f));
-            Color blueTarget = new Color(P(KEY_FG_BLUE_R, 0.1f), P(KEY_FG_BLUE_G, 0.25f), P(KEY_FG_BLUE_B, 0.85f));
-            Color pinkTarget = new Color(P(KEY_FG_PINK_R, 1f), P(KEY_FG_PINK_G, 0.2f), P(KEY_FG_PINK_B, 0.5f));
+            var pal = FgPalette.FromSettings();
+            if (!pal.AnyOn) return;
 
             for (int i = 0; i < fillParent.childCount; i++)
             {
-                var child = fillParent.GetChild(i);
-                if (child == null) continue;
-                var img = child.GetComponent<UnityEngine.UI.Image>();
+                var img = fillParent.GetChild(i).GetComponent<UnityEngine.UI.Image>();
                 if (img == null) continue;
 
                 int id = img.GetInstanceID();
                 Color c = _fgOriginals.TryGetValue(id, out var orig) ? orig : img.color;
-                Color.RGBToHSV(c, out float h, out float s, out float bv);
-
-                bool matchCyan = cyanOn && s > 0.3f && h >= 0.47f && h <= 0.58f;
-                bool matchBlue = blueOn && s > 0.3f && h > 0.58f && h <= 0.70f;
-                bool matchBlack = blackOn && bv < 0.15f && s < 0.15f;
-                bool matchYellow = yellowOn && s > 0.3f && h >= 0.1f && h <= 0.2f;
-                bool matchPink = pinkOn && s > 0.3f && (h >= 0.88f || h <= 0.05f) && bv > 0.3f;
-                if (!matchCyan && !matchBlue && !matchBlack && !matchYellow && !matchPink) continue;
+                if (!pal.TryRetint(c, out Color target)) continue;
 
                 if (!_fgOriginals.ContainsKey(id))
                 {
@@ -284,7 +238,6 @@ namespace BetterFG.Customization.Menu
                     _fgTouchedImages[id] = img;
                 }
 
-                Color target = matchBlue ? blueTarget : matchCyan ? cyanTarget : matchPink ? pinkTarget : matchYellow ? yellowTarget : blackTarget;
                 img.color = new Color(target.r, target.g, target.b, img.color.a);
             }
         }
@@ -382,7 +335,39 @@ namespace BetterFG.Customization.Menu
 
         // ── Foreground ────────────────────────────────────────────────────────
 
-        public void ApplyForeground(bool cyanOn, Color cyanTarget, bool blackOn, Color blackTarget, bool yellowOn, Color yellowTarget, bool blueOn = false, Color blueTarget = default, bool pinkOn = false, Color pinkTarget = default, bool orangeOn = false, Color orangeTarget = default, Transform scopeRoot = null, string excludeSubtreeName = null, bool anyImage = false, bool refreshOriginals = false)
+        private struct FgPalette
+        {
+            public bool CyanOn, BlueOn, BlackOn, YellowOn, PinkOn, OrangeOn;
+            public Color Cyan, Blue, Black, Yellow, Pink, Orange;
+
+            public bool AnyOn => CyanOn || BlueOn || BlackOn || YellowOn || PinkOn || OrangeOn;
+
+            public static FgPalette FromSettings() => new FgPalette
+            {
+                CyanOn = SettingsService.Get(KEY_FG_CYAN_ON, "false") == "true", Cyan = CyanReplacement(),
+                BlueOn = SettingsService.Get(KEY_FG_BLUE_ON, "false") == "true", Blue = BlueReplacement(),
+                BlackOn = SettingsService.Get(KEY_FG_BLACK_ON, "false") == "true", Black = BlackReplacement(),
+                YellowOn = SettingsService.Get(KEY_FG_YELLOW_ON, "false") == "true", Yellow = YellowReplacement(),
+                PinkOn = SettingsService.Get(KEY_FG_PINK_ON, "false") == "true", Pink = PinkReplacement(),
+                OrangeOn = SettingsService.Get(KEY_FG_ORANGE_ON, "false") == "true", Orange = OrangeReplacement(),
+            };
+
+            // orange sits between pink and yellow, so band order decides who eats it
+            public bool TryRetint(Color c, out Color target)
+            {
+                Color.RGBToHSV(c, out float h, out float s, out float v);
+                if (BlueOn && s > 0.3f && h > 0.58f && h <= 0.70f) target = Blue;
+                else if (CyanOn && s > 0.3f && h >= 0.47f && h <= 0.58f) target = Cyan;
+                else if (PinkOn && s > 0.3f && (h >= 0.88f || h <= 0.05f) && v > 0.3f) target = Pink;
+                else if (OrangeOn && s > 0.3f && h > 0.05f && h < 0.1f && v > 0.3f) target = Orange;
+                else if (YellowOn && s > 0.3f && h >= 0.1f && h <= 0.2f) target = Yellow;
+                else if (BlackOn && v < 0.15f && s < 0.15f) target = Black;
+                else { target = c; return false; }
+                return true;
+            }
+        }
+
+        private void ApplyForeground(FgPalette pal, Transform scopeRoot = null, string excludeSubtreeName = null, bool anyImage = false, bool refreshOriginals = false)
         {
             if (scopeRoot == null)
             {
@@ -429,25 +414,11 @@ namespace BetterFG.Customization.Menu
                 // refreshOriginals: the game just repainted this image to a new state colour (radial
                 // select/deselect/disable), so the live colour is the real source hue, not the stale cache.
                 Color c = (!refreshOriginals && _fgOriginals.TryGetValue(id, out var cachedOrig)) ? cachedOrig : img.color;
-                Color.RGBToHSV(c, out float h, out float s, out float v);
 
-                bool matchCyan = cyanOn && s > 0.3f && h >= 0.47f && h <= 0.58f;
-
-                // crowns follow cyan → treated as blue
-                bool matchBlue = blueOn && (
-                    (s > 0.3f && h > 0.58f && h <= 0.70f) ||
-                    (isCrowns && matchCyan)
-                );
-
-                bool matchBlack = blackOn && v < 0.15f && s < 0.15f;
-                bool matchYellow = yellowOn && s > 0.3f && h >= 0.1f && h <= 0.2f;
-                bool matchPink = pinkOn && s > 0.3f && (h >= 0.88f || h <= 0.05f) && v > 0.3f;
-                // orange sits between red/pink and yellow on the wheel
-                bool matchOrange = orangeOn && s > 0.3f && h > 0.05f && h < 0.1f && v > 0.3f;
-
-                if (isBacking && !isFill) matchBlack = matchYellow = false;
-
-                if (!matchCyan && !matchBlue && !matchBlack && !matchYellow && !matchPink && !matchOrange) continue;
+                var hues = pal;
+                if (isBacking && !isFill) hues.BlackOn = hues.YellowOn = false;
+                if (isCrowns && pal.BlueOn) hues.Cyan = pal.Blue; // crowns follow cyan, but want the blue colour
+                if (!hues.TryRetint(c, out Color target)) continue;
 
                 if (refreshOriginals || !_fgOriginals.ContainsKey(id))
                 {
@@ -455,18 +426,10 @@ namespace BetterFG.Customization.Menu
                     _fgTouchedImages[id] = img;
                 }
 
-                Color target =
-                    matchBlue ? blueTarget :
-                    matchCyan ? cyanTarget :
-                    matchPink ? pinkTarget :
-                    matchOrange ? orangeTarget :
-                    matchYellow ? yellowTarget :
-                    blackTarget;
-
                 img.color = new Color(target.r, target.g, target.b, img.color.a);
             }
 
-            ApplyMainPlayButtonUnselectedFill(scopeRoot, yellowOn, yellowTarget);
+            ApplyMainPlayButtonUnselectedFill(scopeRoot, pal.YellowOn, pal.Yellow);
         }
 
         // level-editor variation folder: recolour by name only. Background_Fill -> blue, Background_Selected
@@ -479,7 +442,7 @@ namespace BetterFG.Customization.Menu
             if (!blueOn && !cyanOn) return;
 
             Color blue = BlueReplacement();
-            Color cyan = new Color(ParseF(KEY_FG_CYAN_R, 0f), ParseF(KEY_FG_CYAN_G, 0.3f), ParseF(KEY_FG_CYAN_B, 1f));
+            Color cyan = CyanReplacement();
 
             foreach (var img in folderRoot.GetComponentsInChildren<UnityEngine.UI.Image>(true))
             {
@@ -496,8 +459,60 @@ namespace BetterFG.Customization.Menu
             }
         }
 
+        private struct RadialItemColours
+        {
+            public LevelEditor_RadialMenuItemViewModel Item;
+            public Color Selected, Deselected;
+        }
+
+        // a radial item repaints its own fill from _default*Color on hover/press/submit, so the tint
+        // has to live in those and be matched off the cached true originals, never off our own output
+        private readonly Dictionary<int, RadialItemColours> _radialOriginals = new Dictionary<int, RadialItemColours>();
+
+        public void RetintRadialItems(Transform scopeRoot)
+        {
+            var pal = FgPalette.FromSettings();
+            if (!pal.AnyOn) return;
+
+            foreach (var item in scopeRoot.GetComponentsInChildren<LevelEditor_RadialMenuItemViewModel>(true))
+            {
+                if (item._toggle == null) continue;
+
+                int id = item.GetInstanceID();
+                if (!_radialOriginals.TryGetValue(id, out var orig))
+                {
+                    orig = new RadialItemColours { Item = item, Selected = item._defaultSelectedColor, Deselected = item._defaultDeselectedColor };
+                    _radialOriginals[id] = orig;
+                }
+
+                Color selected = pal.TryRetint(orig.Selected, out var s) ? new Color(s.r, s.g, s.b, orig.Selected.a) : orig.Selected;
+                Color deselected = pal.TryRetint(orig.Deselected, out var d) ? new Color(d.r, d.g, d.b, orig.Deselected.a) : orig.Deselected;
+                PaintRadialItem(item, selected, deselected);
+            }
+        }
+
+        private static void PaintRadialItem(LevelEditor_RadialMenuItemViewModel item, Color selected, Color deselected)
+        {
+            item._defaultSelectedColor = selected;
+            item._defaultDeselectedColor = deselected;
+            item.SelectedColor = selected;
+            item.DeselectedColor = deselected;
+
+            var cb = item._toggle.colors;
+            cb.normalColor = deselected;
+            cb.highlightedColor = selected;
+            cb.pressedColor = selected;
+            cb.selectedColor = selected;
+            item._toggle.colors = cb;
+        }
+
         public void RevertForeground()
         {
+            foreach (var kv in _radialOriginals)
+                if (kv.Value.Item != null && kv.Value.Item._toggle != null)
+                    PaintRadialItem(kv.Value.Item, kv.Value.Selected, kv.Value.Deselected);
+            _radialOriginals.Clear();
+
             if (_fgOriginals.Count == 0) return;
 
             // restore via the tracked Image refs — avoids a full UICanvas GetComponentsInChildren
@@ -580,6 +595,15 @@ namespace BetterFG.Customization.Menu
             // navigation overlay sits outside UICanvas_Client_V2, so the main sweep misses it.
             var nav = GameObject.Find("Prefab_UI_NavigationOverlay(Clone)");
             if (nav != null) ReapplyForegroundFromSettings(nav.transform);
+
+            // RevertForeground put the radial's toggles back, so redo them if it's open right now
+            var radial = GameObject.Find("UICanvas_Client_V2(Clone)/Default/Prime_UI_LE_RadialMenu_Canvas(Clone)");
+            if (radial != null && radial.activeInHierarchy)
+            {
+                ReapplyForegroundFromSettings(radial.transform, "SettingsBackingSprite", true);
+                ApplyEditorShader(radial.transform);
+                RetintRadialItems(radial.transform);
+            }
         }
 
         private void ApplyMainPlayButtonUnselectedFill(Transform scopeRoot, bool yellowOn, Color yellowTarget)
@@ -667,19 +691,11 @@ namespace BetterFG.Customization.Menu
             if (img != null) img.color = new Color(color.r, color.g, color.b, img.color.a);
         }
 
-        private static Color BlueReplacement()
-        {
-            var ci = System.Globalization.CultureInfo.InvariantCulture;
-            float P(string key, float def) =>
-                float.TryParse(SettingsService.Get(key, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : def;
+        private static Color BlueReplacement() =>
+            new Color(ParseF(KEY_FG_BLUE_R, 0.1f), ParseF(KEY_FG_BLUE_G, 0.25f), ParseF(KEY_FG_BLUE_B, 0.85f), 1f);
 
-            return new Color(
-                P(KEY_FG_BLUE_R, 0.1f),
-                P(KEY_FG_BLUE_G, 0.25f),
-                P(KEY_FG_BLUE_B, 0.85f),
-                1f
-            );
-        }
+        private static Color CyanReplacement() =>
+            new Color(ParseF(KEY_FG_CYAN_R, 0f), ParseF(KEY_FG_CYAN_G, 0.3f), ParseF(KEY_FG_CYAN_B, 1f), 1f);
 
         private static Color PinkReplacement() =>
             new Color(ParseF(KEY_FG_PINK_R, 1f), ParseF(KEY_FG_PINK_G, 0.2f), ParseF(KEY_FG_PINK_B, 0.5f), 1f);
@@ -808,7 +824,7 @@ namespace BetterFG.Customization.Menu
                     _editorShaderMat = new UnityEngine.Material(sh) { hideFlags = HideFlags.HideAndDontSave };
                     UnityEngine.Object.DontDestroyOnLoad(_editorShaderMat);
                 }
-                _editorShaderMat.SetColor("_CyanColor", new Color(ParseF(KEY_FG_CYAN_R, 0f), ParseF(KEY_FG_CYAN_G, 0.3f), ParseF(KEY_FG_CYAN_B, 1f), 1f));
+                _editorShaderMat.SetColor("_CyanColor", CyanReplacement());
                 _editorShaderMat.SetColor("_PinkColor", PinkReplacement());
                 _editorShaderMat.SetColor("_BlackColor", BlackReplacement());
                 _editorShaderMat.SetFloat("_CyanOn", cyanOn ? 1f : 0f);
@@ -841,11 +857,7 @@ namespace BetterFG.Customization.Menu
             bool cyanOn = SettingsService.Get(KEY_FG_CYAN_ON, "false") == "true";
             if (!cyanOn) return sprite;
 
-            var ci = System.Globalization.CultureInfo.InvariantCulture;
-            float P(string key, float def) =>
-                float.TryParse(SettingsService.Get(key, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : def;
-
-            var cyan = new Color(P(KEY_FG_CYAN_R, 0f), P(KEY_FG_CYAN_G, 0.3f), P(KEY_FG_CYAN_B, 1f), 1f);
+            var cyan = CyanReplacement();
             var src = sprite.texture;
             var rect = sprite.textureRect;
             int w = Mathf.RoundToInt(rect.width);

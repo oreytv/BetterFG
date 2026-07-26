@@ -114,11 +114,11 @@ namespace BetterFG.Patches
             if (inst == null) return;
 
             // the radial's 7 menu-item canvases instantiate as it opens, after DoFadeIn, so a
-            // synchronous sweep misses them — delay it like the rulebook.
+            // synchronous sweep misses them. its wedges settle a frame sooner than the rulebook's
             var radial = __instance.TryCast<LevelEditor_RadialMenuViewModel>();
             if (radial != null)
             {
-                inst.StartCoroutine(ApplyCreativeNextFrame(radial.transform, true).WrapToIl2Cpp());
+                inst.StartCoroutine(ApplyCreativeNextFrame(radial.transform, true, settleFrames: 1).WrapToIl2Cpp());
                 return;
             }
 
@@ -190,46 +190,49 @@ namespace BetterFG.Patches
         // sweepForeground is set for the options/rulebook screens: also recolour everything outside
         // the bg canvas once the screen's content has settled. extraExclude names another subtree to
         // leave alone (options' Description).
-        internal static IEnumerator ApplyCreativeNextFrame(UnityEngine.Transform vmRoot, bool sweepForeground = false, string extraExclude = null, bool shader = true)
+        internal static IEnumerator ApplyCreativeNextFrame(UnityEngine.Transform vmRoot, bool sweepForeground = false, string extraExclude = null, bool shader = true, int settleFrames = 2)
         {
             yield return null;
             if (vmRoot == null) yield break;
-            UnityEngine.Transform canvas = null;
-            foreach (var t in vmRoot.GetComponentsInChildren<UnityEngine.Transform>(true))
-                if (t != null && t.name == "Generic_UI_CreativeBackground_Prefab_Canvas") { canvas = t; break; }
             var inst = MenuCustomizationApplication.Instance;
             if (inst == null) yield break;
-            if (SettingsService.Get(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, "false") == "true")
-                inst.ApplyCreativeBg(canvas);
+            PaintCreativeBg(inst, vmRoot);
             if (!sweepForeground) yield break;
 
             // rulebook/parameter rows can take a couple more frames to populate, so give them time
-            // before sweeping or the fg recolour lands on an empty list.
-            yield return null;
-            yield return null;
+            // before sweeping or the fg recolour lands on an empty list
+            for (int i = 0; i < settleFrames; i++) yield return null;
             if (vmRoot == null) yield break;
-            // SettingsBackingSprite is a baked cyan texture behind a white tint — flat colour can't
-            // touch it, so leave it out of the sweep and hand it the GPU shader instead.
-            string exclude = "Generic_UI_CreativeBackground_Prefab_Canvas|SettingsBackingSprite" + (extraExclude != null ? "|" + extraExclude : "");
-            inst.ReapplyForegroundFromSettings(vmRoot, exclude, true);
-            if (shader) inst.ApplyEditorShader(vmRoot);
+            SweepCreativeForeground(inst, vmRoot, extraExclude, shader);
         }
 
         // same as above but synchronous — for screens whose content is already built at DoFadeIn (options,
         // rulebook) so they recolour on the same frame instead of flashing the game's colours first.
         internal static void ApplyCreativeNow(UnityEngine.Transform vmRoot, string extraExclude = null, bool shader = true)
         {
-            if (vmRoot == null) return;
             var inst = MenuCustomizationApplication.Instance;
-            if (inst == null) return;
+            if (vmRoot == null || inst == null) return;
+            PaintCreativeBg(inst, vmRoot);
+            SweepCreativeForeground(inst, vmRoot, extraExclude, shader);
+        }
+
+        static void PaintCreativeBg(MenuCustomizationApplication inst, UnityEngine.Transform vmRoot)
+        {
+            if (SettingsService.Get(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, "false") != "true") return;
             UnityEngine.Transform canvas = null;
             foreach (var t in vmRoot.GetComponentsInChildren<UnityEngine.Transform>(true))
                 if (t != null && t.name == "Generic_UI_CreativeBackground_Prefab_Canvas") { canvas = t; break; }
-            if (SettingsService.Get(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, "false") == "true")
-                inst.ApplyCreativeBg(canvas);
+            inst.ApplyCreativeBg(canvas);
+        }
+
+        static void SweepCreativeForeground(MenuCustomizationApplication inst, UnityEngine.Transform vmRoot, string extraExclude, bool shader)
+        {
+            // SettingsBackingSprite is a baked cyan texture behind a white tint — flat colour can't
+            // touch it, so leave it out of the sweep and hand it the GPU shader instead.
             string exclude = "Generic_UI_CreativeBackground_Prefab_Canvas|SettingsBackingSprite" + (extraExclude != null ? "|" + extraExclude : "");
             inst.ReapplyForegroundFromSettings(vmRoot, exclude, true);
             if (shader) inst.ApplyEditorShader(vmRoot);
+            inst.RetintRadialItems(vmRoot);
         }
 
         // main editor screen: its content isn't built at DoFadeIn, so wait a frame. kill any creative-bg
@@ -273,6 +276,7 @@ namespace BetterFG.Patches
             if (SettingsService.Get(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, "false") != "true") return;
             var content = __instance.transform.parent;
             inst.ReapplyForegroundFromSettings(content != null ? content : __instance.transform, null, true, true);
+            inst.RetintRadialItems(__instance.transform);
         }
     }
 
