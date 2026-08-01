@@ -2,6 +2,7 @@
 using BetterFG.Core;
 using BetterFG.Network;
 using BetterFG.Services;
+using BetterFG.Tweaks;
 using BetterFG.Utilities;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using FG.Common;
@@ -79,6 +80,51 @@ namespace BetterFG.Nametag
                 if (root == null) return;
                 BeanMonitorService.Instance?.StartCoroutine(
                     MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(root).WrapToIl2Cpp());
+            }
+        }
+
+        [HarmonyPatch(typeof(PlayerInfoDisplayGameObject), nameof(PlayerInfoDisplayGameObject.SetText))]
+        internal static class patch_SetText
+        {
+            [HarmonyPrefix]
+            public static void Prefix(PlayerInfoDisplayGameObject __instance, ref string text)
+                => SanitiseNametag(__instance._text, ref text);
+        }
+
+        [HarmonyPatch(typeof(PlayerInfoDisplayCanvas), nameof(PlayerInfoDisplayCanvas.SetText))]
+        internal static class patch_SetText_Canvas
+        {
+            [HarmonyPrefix]
+            public static void Prefix(PlayerInfoDisplayCanvas __instance, ref string text)
+                => SanitiseNametag(__instance._text, ref text);
+        }
+
+        private static void SanitiseNametag(TMPro.TMP_Text tmp, ref string text)
+        {
+            if (!StripSizeTagsTweak.Active) return;
+            if (tmp != null) tmp.parseCtrlCharacters = false;
+            text = StripSizeTagsTweak.Strip(text);
+        }
+
+        [HarmonyPatch(typeof(PrivateLobbyPlayerListEntryViewModel), "PlayerName", MethodType.Setter)]
+        internal static class patch_PlayerListEntryName
+        {
+            [HarmonyPrefix]
+            public static void Prefix(ref string value)
+            {
+                if (StripSizeTagsTweak.Active) value = StripSizeTagsTweak.Strip(value);
+            }
+        }
+
+        [HarmonyPatch(typeof(PlayerNameManager), nameof(PlayerNameManager.GetNameToDisplayForPlayer))]
+        internal static class patch_GetNameToDisplayForPlayer
+        {
+            [HarmonyPrefix]
+            public static void Prefix(ref string platformAccountName, ref string playerGeneratedName)
+            {
+                if (!StripSizeTagsTweak.Active) return;
+                platformAccountName = StripSizeTagsTweak.Strip(platformAccountName);
+                playerGeneratedName = StripSizeTagsTweak.Strip(playerGeneratedName);
             }
         }
 
@@ -243,9 +289,6 @@ namespace BetterFG.Nametag
                     for (int i = 0; i < vms.Length; i++)
                         HandleViewModel(vms[i], null);
 
-                // the local tag resolves the in-round HUD mode-agnostically (CAMERAS root + LevelCameras_
-                // prefix, or the canvas PB_InfoHUD), so walk up from it to the HUD that holds every bean row
-                // instead of re-hardcoding paths that only matched the UGC editor rig.
                 var hudBase = NametagFinder.FindLocalNameTagSprite()?.GetComponentInParent<PlayerInfoHUDBase>();
                 var spawned = hudBase?._spawnedInfoObjects;
                 if (spawned == null) return;

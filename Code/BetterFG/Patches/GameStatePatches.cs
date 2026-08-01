@@ -161,7 +161,7 @@ namespace BetterFG.Patches.GameStates
 
         private static IEnumerator HideMenuClutter()
         {
-            yield return new WaitForSeconds(1f);
+            yield return null;
             // full-path Find walks inactive children (GameObject.Find skips them once hidden).
             // the two live under different roots.
             var canvas = GameObject.Find("UICanvas_Client_V2(Clone)")?.transform;
@@ -644,8 +644,10 @@ namespace BetterFG.Patches.GameStates
     }
 
     // first open of the screen. SetUpPlayerList is a coroutine (its postfix fires before rows exist)
-    // and UpdatePlayerList only runs on changes, so the screen-opened event is the reliable trigger.
-    [HarmonyPatch(typeof(PrivateLobbyPlayerListViewModel), "OnOpened")]
+    // and UpdatePlayerList only runs on changes, so the screen-focus event is the reliable trigger.
+    // OnOpened is declared on the ScreenViewModel BASE, and Harmony's DeclaredMethod won't find it
+    // through the subclass, so that patch silently never bound. OnGainFocus is declared right here.
+    [HarmonyPatch(typeof(PrivateLobbyPlayerListViewModel), "OnGainFocus")]
     internal static class PrivateLobbyPlayerListViewModelOnOpenedPatch
     {
         [HarmonyPostfix]
@@ -1346,15 +1348,6 @@ namespace BetterFG.Patches.GameStates
     [HarmonyPatch(typeof(GlobalGameStateClient), "HandleServerStartRound")]
     public class HandleServerStartRoundPa
     {
-        [HarmonyPrefix]
-        public static void Prefix()
-        {
-            foreach (var obj in Resources.FindObjectsOfTypeAll<PlayerInfoDisplayGameObject>())
-                obj.SetText(BetterFG.Tweaks.StripSizeTagsTweak.StripRegex.Replace(obj._text.text, ""));
-            foreach (var obj in Resources.FindObjectsOfTypeAll<PlayerInfoDisplayCanvas>())
-                obj.SetText(BetterFG.Tweaks.StripSizeTagsTweak.StripRegex.Replace(obj._text.text, ""));
-        }
-
         [HarmonyPostfix]
         public static void Postfix()
         {
@@ -1400,23 +1393,6 @@ namespace BetterFG.Patches.GameStates
             // refresh once a second for 2s to catch late spawners.
             if (platformHost != null)
                 platformHost.StartCoroutine(PollNametagsAfterRoundStart().WrapToIl2Cpp());
-
-            // anti-grief <size> strip: only player-controlled nametag text can carry a malicious
-            // <size> tag, so only sweep those two HUDs instead of every TMP_Text in the scene.
-            foreach (var hudPath in new[]
-            {
-                "----------------CAMERAS/LevelCameras_LevelEditor/Main Camera Brain/PlayerInfoHUD",
-                "UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/PersistentUnderlayUI/PB_InfoHUD/Parent",
-            })
-            {
-                var hud = GameObject.Find(hudPath);
-                if (hud == null) continue;
-                foreach (var tmp in hud.GetComponentsInChildren<TMPro.TMP_Text>(true))
-                {
-                    if (tmp != null && !string.IsNullOrEmpty(tmp.text))
-                        tmp.text = BetterFG.Tweaks.StripSizeTagsTweak.Strip(tmp.text);
-                }
-            }
 
             try
             {

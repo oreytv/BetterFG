@@ -230,12 +230,20 @@ namespace BetterFG.Customization.Player
                     }
                 }
                 if (local != null)
-                    done(new ActiveSkinSlot
+                {
+                    SkinInfo skinInfo = null;
+                    string infoPath = Path.Combine(Path.GetDirectoryName(entry.localPath) ?? "", "info.json");
+                    if (File.Exists(infoPath))
                     {
-                        skinInfo = new SkinInfo { name = entry.file, file = entry.file, type = entry.type, isLocalImport = true, localPath = entry.localPath },
-                        bundle = local,
-                        type = type,
-                    });
+                        try { skinInfo = ParseSkinInfoWithOffsets(File.ReadAllText(infoPath)); }
+                        catch (Exception ex) { Plugin.Log.LogWarning($"local profile skin {entry.file}: bad info.json ({ex.Message})"); }
+                    }
+                    if (skinInfo == null) skinInfo = new SkinInfo { name = entry.file, file = entry.file, type = entry.type };
+                    skinInfo.isLocalImport = true;
+                    skinInfo.localPath = entry.localPath;
+
+                    done(new ActiveSkinSlot { skinInfo = skinInfo, bundle = local, type = type });
+                }
                 yield break;
             }
 

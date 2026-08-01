@@ -17,14 +17,11 @@ namespace BetterFG.Patches
         [HarmonyPrefix]
         public static void Prefix(FallFeedNotificationViewModel __instance)
         {
-            var sst = StripSizeTagsTweak.Instance;
-            if (sst != null && sst.IsEnabled)
-            {
-                var names2 = __instance._playerNames;
-                if (names2 != null)
-                    for (int i = 0; i < names2.Length; i++)
-                        names2[i] = StripSizeTagsTweak.Strip(names2[i]);
-            }
+            if (!StripSizeTagsTweak.Active) return;
+            var names2 = __instance._playerNames;
+            if (names2 != null)
+                for (int i = 0; i < names2.Length; i++)
+                    names2[i] = StripSizeTagsTweak.Strip(names2[i]);
         }
 
         [HarmonyPostfix]

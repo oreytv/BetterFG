@@ -390,11 +390,13 @@ namespace BetterFG.Customization.Menu
                 bool inExcluded = false;
                 bool inTeamContainer = false;
                 bool inPhraseOverlay = false;
+                bool inTileFolder = false;
                 while (p != null)
                 {
                     if (p.name.StartsWith("StarPopup_")) inStarPopup = true;
                     if (p.name == "TeamContainer") inTeamContainer = true;
                     if (p.name == "TabContentSocialPhraseOverlay") inPhraseOverlay = true;
+                    if (p.name == "Folder Items" || p.name == "Carousel_Items") inTileFolder = true;
                     if (excludes != null) foreach (var ex in excludes) if (p.name == ex) { inExcluded = true; break; }
                     p = p.parent;
                 }
@@ -402,7 +404,9 @@ namespace BetterFG.Customization.Menu
                 string n = img.gameObject.name;
                 // carousel/folder tiles are recoloured by name in ApplyFolderTileColours (Fill->blue,
                 // Selected->cyan); the hue sweep mis-buckets Background_Fill as cyan, so leave both to it.
-                if (!anyImage && (n == "Background_Fill" || n == "Background_Selected")) continue;
+                // scoped to the tile subtrees ApplyFolderTileColours actually runs on — skipping the name
+                // globally also killed the private lobby player list's Background_Fill, which nothing else paints.
+                if (!anyImage && inTileFolder && (n == "Background_Fill" || n == "Background_Selected")) continue;
                 bool isFill = n.Contains("Fill") || n.Contains("Background") || n.Contains("Outline") || n.Contains("Inline") || n.Contains("BG");
                 bool isCrowns = n.Equals("crowns");
                 bool isBacking = n.Contains("Backing");

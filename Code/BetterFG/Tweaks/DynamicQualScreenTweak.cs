@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using FG.Common;
+using FallGuysLib.Camera;
 using FGClient;
 using UnityEngine;
 using BetterFG.Services;
@@ -28,13 +29,13 @@ namespace BetterFG.Tweaks
 
         private static IEnumerator RunQualCameraSequence(CellBehaviour cell)
         {
-            var camerasRoot = GameObject.Find("----------------CAMERAS");
+            var camerasRoot = CameraLocator.GetCamerasRoot();
             if (camerasRoot == null) yield break;
 
             Camera mainCam = null;
-            for (int i = 0; i < camerasRoot.transform.childCount; i++)
+            for (int i = 0; i < camerasRoot.childCount; i++)
             {
-                var child = camerasRoot.transform.GetChild(i);
+                var child = camerasRoot.GetChild(i);
                 if (child.name == "Main Camera")
                 {
                     child.gameObject.SetActive(true);
@@ -73,8 +74,8 @@ namespace BetterFG.Tweaks
             mainCam.transform.position = originalPos;
             mainCam.transform.rotation = originalRot;
 
-            for (int i = 0; i < camerasRoot.transform.childCount; i++)
-                camerasRoot.transform.GetChild(i).gameObject.SetActive(true);
+            for (int i = 0; i < camerasRoot.childCount; i++)
+                camerasRoot.GetChild(i).gameObject.SetActive(true);
         }
     }
 }
