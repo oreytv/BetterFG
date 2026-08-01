@@ -221,6 +221,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<CreativeTypeValueTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterStickerSelectionTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<NotifyRoundStartTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<UpcomingShowsTweak>();
             //ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.WinStreakDebug.WinStreakDebugService>();
         }
 

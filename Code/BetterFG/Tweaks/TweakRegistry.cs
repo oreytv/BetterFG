@@ -84,6 +84,7 @@ namespace BetterFG.Tweaks
             Add<MaxFallFeedTweak>(TweakCategory.Utility);
             Add<ShowServerInfoTweak>(TweakCategory.Utility);
             Add<ShowTilePlaysTweak>(TweakCategory.Utility);
+            Add<UpcomingShowsTweak>(TweakCategory.Utility);
             Add<AlwaysShowTimerTweak>(TweakCategory.Utility);
             Add<KeepNametagsTweak>(TweakCategory.Utility);
             Add<LevelDescriptionOnPauseTweak>(TweakCategory.Utility);

@@ -565,6 +565,16 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(ShowsManager), nameof(ShowsManager.RefreshShowSelectorPageData))]
+    internal static class ShowSelectorPageDataPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ShowSelectorPage __result)
+        {
+            BetterFG.Tweaks.UpcomingShowsTweak.OnPageBuilt(__result);
+        }
+    }
+
     [HarmonyPatch(typeof(ChallengesScreenViewModel), "SetData")]
     internal static class ChallengesScreenViewModelSetDataPatch
     {
