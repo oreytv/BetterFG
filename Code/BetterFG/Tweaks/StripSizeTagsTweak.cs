@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using FG.Common;
 
 namespace BetterFG.Tweaks
@@ -17,6 +18,8 @@ namespace BetterFG.Tweaks
 
         internal static bool Active => Instance != null && Instance.IsEnabled;
 
+        private static readonly Regex TagRegex = new Regex(@"<\s*/?\s*[a-zA-Z][^>]*>", RegexOptions.Compiled);
+
         internal static string Strip(string text)
         {
             if (string.IsNullOrEmpty(text)) return text;
@@ -24,7 +27,7 @@ namespace BetterFG.Tweaks
             string s = text;
             for (int pass = 0; pass < 4; pass++)
             {
-                string next = TextMeshProTagsSanitiser.RemoveTextMeshProTags(DecodeEscapes(s));
+                string next = TagRegex.Replace(TextMeshProTagsSanitiser.RemoveTextMeshProTags(DecodeEscapes(s)), "");
                 if (next == s) break;
                 s = next;
             }
