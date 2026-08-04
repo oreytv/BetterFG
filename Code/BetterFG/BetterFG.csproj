@@ -91,21 +91,15 @@
 	  <Message Importance="high" Text="BettrFG build choices: $(BettrFGPromptOut)" />
 	</Target>
 
-	<Target Name="CopyNAudio" AfterTargets="Build">
+	<!-- the plugin's resolver loads these out of Libs/ at runtime, and repack_payload ships that folder
+	     as-is. they're vendored binaries under Libs\ rather than NuGet packages so a clone builds the
+	     exact DLLs that ship - drop a dll in the folder and it's referenced and shipped, no csproj edit. -->
+	<Target Name="CopyLibs" AfterTargets="Build">
 	  <ItemGroup>
-	    <NAudioLib Include="$(NuGetPackageRoot)naudio.core\2.3.0\lib\netstandard2.0\NAudio.Core.dll" />
-	    <NAudioLib Include="$(NuGetPackageRoot)naudio.winmm\2.3.0\lib\netstandard2.0\NAudio.WinMM.dll" />
-	    <NAudioLib Include="$(NuGetPackageRoot)naudio.wasapi\2.3.0\lib\netstandard2.0\NAudio.Wasapi.dll" />
-	    <NAudioLib Include="$(NuGetPackageRoot)naudio\2.3.0\lib\net6.0\NAudio.dll" />
+	    <BettrFGLib Include="$(MSBuildProjectDirectory)\Libs\*.dll" />
 	  </ItemGroup>
-	  <Copy SourceFiles="@(NAudioLib)" DestinationFolder="$(OutDir)" />
-	  <!-- the plugin's resolver loads NAudio out of Libs/, and repack_payload ships that folder as-is -->
-	  <Copy SourceFiles="@(NAudioLib)" DestinationFolder="$(OutDir)Libs" />
-	  <ItemGroup>
-	    <MediaLib Include="@(ReferencePath)" Condition="$([System.String]::Copy('%(Filename)').StartsWith('Vortice')) Or $([System.String]::Copy('%(Filename)').StartsWith('SharpGen'))" />
-	  </ItemGroup>
-	  <Copy SourceFiles="@(MediaLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-	  <Copy SourceFiles="@(MediaLib)" DestinationFolder="$(OutDir)Libs" SkipUnchangedFiles="true" />
+	  <Copy SourceFiles="@(BettrFGLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+	  <Copy SourceFiles="@(BettrFGLib)" DestinationFolder="$(OutDir)Libs" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="PackBetterFGPayload" AfterTargets="CopyDll">
@@ -179,7 +173,7 @@
     <DefineConstants>$(DefineConstants);XB1</DefineConstants>
   </PropertyGroup>
 
-<Target Name="CopyDll" AfterTargets="CopyNAudio" Condition="'$(SkipCopyDll)' != 'true' And ('$(CopyBuildsToSteam)' == 'true' Or '$(CopyBuildsToEpic)' == 'true')">
+<Target Name="CopyDll" AfterTargets="CopyLibs" Condition="'$(SkipCopyDll)' != 'true' And ('$(CopyBuildsToSteam)' == 'true' Or '$(CopyBuildsToEpic)' == 'true')">
   <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\BetterFG.Installer\copy_plugin_to_game.ps1&quot; -Store Steam -BuildOutput &quot;$(TargetDir)&quot;" Condition="'$(CopyBuildsToSteam)' == 'true'" />
   <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\BetterFG.Installer\copy_plugin_to_game.ps1&quot; -Store Epic -BuildOutput &quot;$(TargetDir)&quot;" Condition="'$(CopyBuildsToEpic)' == 'true'" />
   <!-- launch here, right after the plugin lands, so it fires before the payload/installer/skinpackager
@@ -198,12 +192,13 @@
   <ItemGroup>
     <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.*" IncludeAssets="compile" />
     <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
-    <PackageReference Include="NAudio.Core" Version="2.3.0" />
-	<PackageReference Include="NAudio.WinMM" Version="2.3.0" />
-	<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
-	<PackageReference Include="NAudio" Version="2.3.0" />
 	<PackageReference Include="System.Management" Version="10.0.5" />
-	<PackageReference Include="Vortice.MediaFoundation" Version="3.2.0" />
+  </ItemGroup>
+
+  <!-- NAudio + Vortice/SharpGen are vendored under Libs\ instead of restored from NuGet, so what we
+       compile against is byte-for-byte what CopyLibs ships. glob, so a new dll needs no csproj edit. -->
+  <ItemGroup>
+    <Reference Include="Libs\*.dll" />
   </ItemGroup>
 
   <ItemGroup>

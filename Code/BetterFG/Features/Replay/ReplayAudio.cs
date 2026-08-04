@@ -73,8 +73,8 @@ namespace BetterFG.Features.Replay
             }
         }
 
-        [HarmonyPrefix]
-        public static void Prefix(object[] __args)
+        [HarmonyPostfix]
+        public static void Postfix(object[] __args, EventInstanceReference __result)
         {
             if (FeatureReplay.Live == null || __args == null || __args.Length < 2) return;
 
@@ -83,7 +83,18 @@ namespace BetterFG.Features.Replay
             else if (__args[1] is Transform tf && tf != null) pos = tf.position;
             else return;
 
-            FeatureReplay.CaptureAudio(__args[0] as string, null, pos);
+            FeatureReplay.CaptureHeldAudio(__result, __args[0] as string, pos);
+        }
+    }
+
+    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.StopAndReleaseAudioEvent))]
+    internal static class ReplayStopAudioPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(ref EventInstanceReference instanceReference)
+        {
+            if (FeatureReplay.Live == null) return;
+            FeatureReplay.CloseHeldAudio(instanceReference);
         }
     }
 
@@ -106,6 +117,9 @@ namespace BetterFG.Features.Replay
     internal static class ReplayBankFreeze
     {
         public static bool Held;
+        public const bool SkipAudio = false;
+        public const bool SkipListener = false;
+        public const bool SkipBanks = false;
     }
 
     [HarmonyPatch(typeof(SoundBankLoader), nameof(SoundBankLoader.LoadBanks))]
@@ -129,7 +143,14 @@ namespace BetterFG.Features.Replay
         const float NEAR_FRACTION = 0.15f;
         const float FAR_FRACTION = 0.45f;
 
+        struct HeldSound
+        {
+            public EventInstance instance;
+            public float end;
+        }
+
         readonly ReplayRecording _rec;
+        readonly List<HeldSound> _held = new List<HeldSound>();
         readonly HashSet<int> _reported = new HashSet<int>();
         readonly List<Transform> _ears = new List<Transform>();
         readonly List<Pose> _earPoses = new List<Pose>();
@@ -156,6 +177,12 @@ namespace BetterFG.Features.Replay
 
         public IEnumerator Prepare(Transform cam)
         {
+            if (ReplayBankFreeze.SkipAudio)
+            {
+                Plugin.Log.LogWarning("replay audio switched off for the bisect. the viewer is silent on purpose, we're testing whether it's what breaks the round afterwards");
+                yield break;
+            }
+
             _cam = cam;
             _earPos = cam.position;
 
@@ -165,11 +192,31 @@ namespace BetterFG.Features.Replay
                 Claim();
                 banks = CollectBanks();
 
-                foreach (var name in banks)
+                var listener = UnityEngine.Object.FindObjectOfType<SoundBankLoadingListener>();
+                if (listener != null && banks.Count > 0)
                 {
-                    if (!Begin(name, out var handle)) continue;
-                    while (!handle.IsDone) yield return null;
-                    Install(name, handle);
+                    var wanted = new Il2CppStringArray(banks.Count);
+                    for (int i = 0; i < banks.Count; i++) wanted[i] = banks[i];
+
+                    listener.HandleSoundBankModificationEvent(new ModifySoundBanksEvent(SoundBankMod.Load, wanted, false).Cast<ISoundSystemEvent>());
+                    listener.StartProcessingSoundBankModifications();
+
+                    float until = Time.realtimeSinceStartup + 12f;
+                    while (Time.realtimeSinceStartup < until)
+                    {
+                        bool everything = true;
+                        foreach (var name in banks)
+                            if (!RuntimeManager.HasBankLoaded(name)) { everything = false; break; }
+                        if (everything) break;
+                        yield return null;
+                    }
+
+                    var late = new List<string>();
+                    foreach (var name in banks)
+                        if (!RuntimeManager.HasBankLoaded(name)) late.Add(name);
+                    if (late.Count > 0) Plugin.Log.LogWarning($"the game's loader never got to {string.Join(", ", late)} — those sounds will be silent in the viewer");
+
+                    _banks.AddRange(banks);
                 }
 
                 RuntimeManager.WaitForAllLoads();
@@ -185,6 +232,12 @@ namespace BetterFG.Features.Replay
 
         void Claim()
         {
+            if (ReplayBankFreeze.SkipListener)
+            {
+                Plugin.Log.LogWarning("leaving the game's listeners alone for the bisect, replay audio will sound off-position");
+                return;
+            }
+
             _ears.Clear();
             _earPoses.Clear();
 
@@ -219,21 +272,6 @@ namespace BetterFG.Features.Replay
                         banks.Add(name);
             }
 
-            var companions = new List<string>();
-            foreach (var entry in fmod.SoundBanksArray)
-            {
-                if (entry == null) continue;
-                string name = entry.Name;
-                if (string.IsNullOrEmpty(name)) continue;
-
-                foreach (var wanted in banks)
-                {
-                    if (!name.StartsWith(wanted + ".")) continue;
-                    if (!companions.Contains(name)) companions.Add(name);
-                }
-            }
-
-            banks.AddRange(companions);
             return banks;
         }
 
@@ -281,8 +319,11 @@ namespace BetterFG.Features.Replay
 
         public void Release()
         {
+            if (ReplayBankFreeze.SkipAudio) return;
+
             SetSpeed(1f);
             _ready = false;
+            StopHeld(0f, true);
 
             foreach (var description in _desc)
             {
@@ -293,27 +334,37 @@ namespace BetterFG.Features.Replay
                     if (instance.isValid()) instance.stop(FMOD.Studio.STOP_MODE.IMMEDIATE);
             }
 
-            for (int i = 0; i < _ears.Count; i++)
-                if (_ears[i] != null) _ears[i].SetPositionAndRotation(_earPoses[i].position, _earPoses[i].rotation);
-            RuntimeManager.StudioSystem.setNumListeners(_listeners);
+            if (!ReplayBankFreeze.SkipListener)
+            {
+                for (int i = 0; i < _ears.Count; i++)
+                    if (_ears[i] != null) _ears[i].SetPositionAndRotation(_earPoses[i].position, _earPoses[i].rotation);
+                RuntimeManager.StudioSystem.setNumListeners(_listeners);
+            }
             _ears.Clear();
             _earPoses.Clear();
 
             int given = _banks.Count;
-            foreach (var name in _banks) RuntimeManager.UnloadBank(name);
-            foreach (var handle in _assets) if (handle.IsValid()) Addressables.Release(handle);
+            var listener = UnityEngine.Object.FindObjectOfType<SoundBankLoadingListener>();
+            if (listener != null && _banks.Count > 0)
+            {
+                var going = new Il2CppStringArray(_banks.Count);
+                for (int i = 0; i < _banks.Count; i++) going[i] = _banks[i];
+
+                listener.HandleSoundBankModificationEvent(new ModifySoundBanksEvent(SoundBankMod.Unload, going, false).Cast<ISoundSystemEvent>());
+                listener.StartProcessingSoundBankModifications();
+            }
             _banks.Clear();
             _assets.Clear();
 
             var manager = UnityEngine.Object.FindObjectOfType<AudioManager>();
             if (manager != null) manager.RemovePlayersAudioActive = _culledRemotes;
 
-            Plugin.Log.LogInfo($"replay audio done, {_fired} played and {_failed} dropped, {given} banks handed back, {_listeners} listener(s) back to the game");
+            Plugin.Log.LogInfo($"replay audio done, {_fired} played and {_failed} dropped, {given} bank(s) given back through the game's own loader, {_listeners} listener(s) back to the game");
         }
 
         public void Tick()
         {
-            if (!_ready) return;
+            if (!_ready || ReplayBankFreeze.SkipListener) return;
 
             _earPos = _cam.position;
             foreach (var ear in _ears)
@@ -392,6 +443,8 @@ namespace BetterFG.Features.Replay
 
         public void Seek(float time)
         {
+            StopHeld(time, true);
+
             var events = _rec.audioEvents;
             int i = 0;
             while (i < events.Count && events[i].t <= time) i++;
@@ -408,6 +461,8 @@ namespace BetterFG.Features.Replay
                 Seek(to);
                 return;
             }
+
+            StopHeld(to, false);
 
             while (_cursor < events.Count && events[_cursor].t <= to)
             {
@@ -440,10 +495,28 @@ namespace BetterFG.Features.Replay
                 }
 
                 instance.start();
-                instance.release();
+
+                if (sound.end >= 0f) _held.Add(new HeldSound { instance = instance, end = sound.end });
+                else instance.release();
                 _fired++;
             }
             catch (Exception ex) { Blame(sound.key, key, ex.Message); }
+        }
+
+        void StopHeld(float time, bool all)
+        {
+            for (int i = _held.Count - 1; i >= 0; i--)
+            {
+                var held = _held[i];
+                if (!all && time < held.end) continue;
+
+                if (held.instance.isValid())
+                {
+                    held.instance.stop(all ? FMOD.Studio.STOP_MODE.IMMEDIATE : FMOD.Studio.STOP_MODE.ALLOWFADEOUT);
+                    held.instance.release();
+                }
+                _held.RemoveAt(i);
+            }
         }
 
         void Blame(int index, string key, string why)

@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 12;
+        public const int FormatVersion = 14;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 
@@ -174,6 +174,7 @@ namespace BetterFG.Features.Replay
             foreach (var e in rec.audioEvents)
             {
                 bw.Write(e.t);
+                bw.Write(e.end);
                 bw.Write(e.playerId);
                 bw.Write(e.pos.x); bw.Write(e.pos.y); bw.Write(e.pos.z);
                 bw.Write(e.key);

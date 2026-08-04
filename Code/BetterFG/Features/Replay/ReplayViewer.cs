@@ -463,8 +463,6 @@ namespace BetterFG.Features.Replay
 
         void HideGame()
         {
-            ReplayBankFreeze.Held = true;
-            try
             {
                 for (int i = 0; i < SceneManager.sceneCount; i++)
                 {
@@ -475,6 +473,7 @@ namespace BetterFG.Features.Replay
                         if (root == null || !root.activeSelf) continue;
                         if (root.name.StartsWith("BetterFG_") || root.name.StartsWith("BettrFG_")) continue;
                         if (!_rec.isUgc && root.name.StartsWith("Background_")) continue;
+                        if (root.GetComponentInChildren<SoundBankLoadingListener>(true) != null) continue;
                         root.SetActive(false);
                         _hidden.Add(root);
                     }
@@ -487,7 +486,6 @@ namespace BetterFG.Features.Replay
                 var navOverlay = GameObject.Find("Prefab_UI_NavigationOverlay(Clone)/SafeArea/SubMenuNavigation_Center");
                 if (navOverlay != null) { navOverlay.SetActive(false); _hidden.Add(navOverlay); }
             }
-            finally { ReplayBankFreeze.Held = false; }
 
             _menuMusicWasPlaying = MenuMusicService.IsPlaying;
             MenuMusicService.Pause();
@@ -496,14 +494,9 @@ namespace BetterFG.Features.Replay
 
         void ShowGame()
         {
-            ReplayBankFreeze.Held = true;
-            try
-            {
-                foreach (var go in _hidden)
-                    if (go != null) go.SetActive(true);
-                _hidden.Clear();
-            }
-            finally { ReplayBankFreeze.Held = false; }
+            foreach (var go in _hidden)
+                if (go != null) go.SetActive(true);
+            _hidden.Clear();
 
             if (_menuMusicWasPlaying) MenuMusicService.Resume();
             MenuMusicService.SetGameMenuMusicPaused(MenuMusicService.Enabled);
@@ -2614,6 +2607,8 @@ namespace BetterFG.Features.Replay
 
             int orphans = FmodUtil.StopSnapshots(null);
             Plugin.Log.LogInfo($"out of the replay viewer, {restored} game roots back on, {orphans} snapshots killed before they could outlive the client");
+
+            ReplayBankFreeze.Held = false;
 
             var client = GlobalGameStateClient.Instance;
             if (client != null)

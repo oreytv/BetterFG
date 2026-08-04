@@ -214,15 +214,20 @@ namespace BetterFG.Features.Replay
 
             int events = br.ReadInt32();
             for (int i = 0; i < events; i++)
+            {
+                float t = br.ReadSingle();
+                float end = rec.version >= 14 ? br.ReadSingle() : -1f;
                 rec.audioEvents.Add(new ReplayAudioEvent
                 {
-                    t = br.ReadSingle(),
+                    t = t,
+                    end = end,
                     playerId = br.ReadUInt32(),
                     pos = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()),
                     key = br.ReadInt32(),
                     paramStart = br.ReadInt32(),
                     paramCount = br.ReadInt32(),
                 });
+            }
         }
 
         static void ReadLevel(BinaryReader br, ReplayRecording rec)

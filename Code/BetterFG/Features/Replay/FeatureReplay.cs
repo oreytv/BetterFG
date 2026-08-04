@@ -71,6 +71,7 @@ namespace BetterFG.Features.Replay
     public struct ReplayAudioEvent
     {
         public float t;
+        public float end;
         public uint playerId;
         public Vector3 pos;
         public int key;
@@ -292,8 +293,11 @@ namespace BetterFG.Features.Replay
         static readonly Dictionary<int, int> _speechIds = new Dictionary<int, int>();
         static readonly Dictionary<IntPtr, int> _pairKeys = new Dictionary<IntPtr, int>();
         static readonly Dictionary<IntPtr, int[]> _paramSets = new Dictionary<IntPtr, int[]>();
+        static readonly Dictionary<IntPtr, int> _openSounds = new Dictionary<IntPtr, int>();
 
         public static ReplayRecording Live => _live;
+
+        public static float GameplayTime => _gsv?.GameplayTimeElapsed ?? 0f;
 
         public static void OnCleanupLoadingScreens()
         {
@@ -341,6 +345,7 @@ namespace BetterFG.Features.Replay
             _speechIds.Clear();
             _pairKeys.Clear();
             _paramSets.Clear();
+            _openSounds.Clear();
             _gameCam = null;
             _gsv = gsv;
             _live = rec;
@@ -407,6 +412,7 @@ namespace BetterFG.Features.Replay
                     _thumbRt = ReplayThumbnail.Grab(FallGuysLib.Camera.CameraUtils.GetMainCamera());
 
                 bool scaleTick = (++ticks & 7) == 0;
+                var ident = Quaternion.identity;
 
                 foreach (var kvp in index)
                 {
@@ -444,6 +450,15 @@ namespace BetterFG.Features.Replay
                         if (scaleTick) tracked.player.bfgScale = tracked.animTf.lossyScale.x;
                     }
 
+                    bool ragged = tracked.upperBody != null;
+                    Quaternion upper = ident, armL = ident, armR = ident;
+                    if (ragged)
+                    {
+                        tracked.upperBody.GetLocalPositionAndRotation(out _, out upper);
+                        if (tracked.armLeft != null) tracked.armLeft.GetLocalPositionAndRotation(out _, out armL);
+                        if (tracked.armRight != null) tracked.armRight.GetLocalPositionAndRotation(out _, out armR);
+                    }
+
                     tracked.tf.GetPositionAndRotation(out var pos, out var rot);
                     tracked.player.frames.Add(new ReplayFrame
                     {
@@ -452,10 +467,10 @@ namespace BetterFG.Features.Replay
                         rot = rot,
                         stateHash = sh,
                         animTime = at,
-                        ragdoll = tracked.upperBody != null,
-                        upperBody = tracked.upperBody != null ? tracked.upperBody.localRotation : Quaternion.identity,
-                        armLeft = tracked.armLeft != null ? tracked.armLeft.localRotation : Quaternion.identity,
-                        armRight = tracked.armRight != null ? tracked.armRight.localRotation : Quaternion.identity,
+                        ragdoll = ragged,
+                        upperBody = upper,
+                        armLeft = armL,
+                        armRight = armR,
                     });
                 }
             }
@@ -523,6 +538,7 @@ namespace BetterFG.Features.Replay
             _speechIds.Clear();
             _pairKeys.Clear();
             _paramSets.Clear();
+            _openSounds.Clear();
             _gameCam = null;
             if (rec == null) { _gsv = null; return; }
 
@@ -600,7 +616,27 @@ namespace BetterFG.Features.Replay
             RecordAudio(Intern(_live.audioKeys, _keyIds, key), controller, pos, null);
         }
 
-        static void RecordAudio(int key, FallGuysCharacterController controller, Vector3 pos, AudioParamContainer parameters)
+        public static void CaptureHeldAudio(EventInstanceReference reference, string key, Vector3 pos)
+        {
+            if (_live == null || reference == null || string.IsNullOrEmpty(key)) return;
+            if (key.StartsWith("UI_Gen_", StringComparison.Ordinal)) return;
+
+            int index = RecordAudio(Intern(_live.audioKeys, _keyIds, key), null, pos, null);
+            if (index >= 0) _openSounds[reference.Pointer] = index;
+        }
+
+        public static void CloseHeldAudio(EventInstanceReference reference)
+        {
+            if (_live == null || reference == null) return;
+            if (!_openSounds.TryGetValue(reference.Pointer, out int index)) return;
+            _openSounds.Remove(reference.Pointer);
+
+            var sound = _live.audioEvents[index];
+            sound.end = GameplayTime;
+            _live.audioEvents[index] = sound;
+        }
+
+        static int RecordAudio(int key, FallGuysCharacterController controller, Vector3 pos, AudioParamContainer parameters)
         {
             var rec = _live;
             int paramStart = rec.audioParams.Count;
@@ -638,13 +674,15 @@ namespace BetterFG.Features.Replay
 
             rec.audioEvents.Add(new ReplayAudioEvent
             {
-                t = _gsv?.GameplayTimeElapsed ?? 0f,
+                t = GameplayTime,
+                end = -1f,
                 playerId = owner,
                 pos = pos,
                 key = key,
                 paramStart = paramStart,
                 paramCount = paramCount,
             });
+            return rec.audioEvents.Count - 1;
         }
 
         public static void CaptureSpeech(GameObject bean, int optionId)
