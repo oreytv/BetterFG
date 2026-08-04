@@ -2608,8 +2608,6 @@ namespace BetterFG.Features.Replay
             int orphans = FmodUtil.StopSnapshots(null);
             Plugin.Log.LogInfo($"out of the replay viewer, {restored} game roots back on, {orphans} snapshots killed before they could outlive the client");
 
-            ReplayBankFreeze.Held = false;
-
             var client = GlobalGameStateClient.Instance;
             if (client != null)
             {
