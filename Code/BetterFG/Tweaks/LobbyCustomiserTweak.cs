@@ -4,7 +4,11 @@ using BepInEx.Unity.IL2CPP.Utils.Collections;
 using FG.Common;
 using FGClient;
 using FGClient.Customiser;
+using FGClient.UI;
+using FGClient.UI.PrivateLobby;
+using Rewired;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace BetterFG.Tweaks
 {
@@ -40,6 +44,14 @@ namespace BetterFG.Tweaks
         private Vector2 _origAnchorMin, _origAnchorMax, _origPivot, _origAnchoredPos, _origSizeDelta;
         private Vector3 _origScale;
         private CustomiserScreenViewModel _vm;
+        private CustomiserSelectButtonsScreenViewModel _tabsVm;
+        private TabsMenuInputHandler _tabsInput;
+        private PrivateLobbyScreenViewModel _lobbyVm;
+        private Player _navPlayer;
+        private int _vertAction;
+        private GameObject _prevSel;
+        private bool _onTabs;
+        private bool _heldVert;
         private bool _selectorUp;
         private int _previousView = -1;
         private bool _open;
@@ -75,9 +87,46 @@ namespace BetterFG.Tweaks
             if (_vm == null) return;
 
             bool selectorUp = _vm.CurrentScreen != CustomiserScreens.SelectButtons;
-            if (selectorUp == _selectorUp) return;
-            _selectorUp = selectorUp;
-            SetSelectorMode(selectorUp);
+            if (selectorUp != _selectorUp)
+            {
+                _selectorUp = selectorUp;
+                SetSelectorMode(selectorUp);
+            }
+            if (selectorUp) return;
+
+            int dy = _navPlayer.GetButton(_vertAction) ? 1 : _navPlayer.GetNegativeButton(_vertAction) ? -1 : 0;
+            if (dy != 0 && !_heldVert)
+            {
+                if (_onTabs)
+                {
+                    if (dy < 0) SetRow(false);
+                }
+                else if (dy > 0)
+                {
+                    var from = _prevSel == null ? null : _prevSel.GetComponent<UnityEngine.UI.Selectable>();
+                    if (from == null || from.FindSelectableOnUp() == null) SetRow(true);
+                }
+            }
+            _heldVert = dy != 0;
+            _prevSel = EventSystem.current.currentSelectedGameObject;
+        }
+
+        private void SetRow(bool tabs)
+        {
+            _onTabs = tabs;
+            EventSystem.current.sendNavigationEvents = !tabs;
+            if (tabs)
+            {
+                _lobbyVm.OnLoseFocus();
+                _tabsVm.OnGainFocus();
+                _tabsInput._tabs[_tabsInput._currentTabIndex].Select(true);
+            }
+            else
+            {
+                foreach (var tab in _tabsInput._tabs) tab.Deselect(true);
+                _tabsVm.OnLoseFocus();
+                _lobbyVm.OnGainFocus();
+            }
         }
 
         private void SetSelectorMode(bool on)
@@ -92,6 +141,8 @@ namespace BetterFG.Tweaks
                 var fg = lobbyScreen.transform.Find("ForegroundCanvas");
                 if (fg != null) fg.gameObject.SetActive(!on);
             }
+
+            EventSystem.current.sendNavigationEvents = on || !_onTabs;
 
             StartCoroutine(SlideParty(on ? PartyShifted : PartyHome).WrapToIl2Cpp());
         }
@@ -170,8 +221,19 @@ namespace BetterFG.Tweaks
                 img.pixelsPerUnitMultiplier = PixelsPerUnit;
 
             _vm = builder.CustomiserScreenViewModel;
+            _tabsVm = safeArea.parent.GetComponent<CustomiserSelectButtonsScreenViewModel>();
+            _tabsInput = rowT.GetComponent<TabsMenuInputHandler>();
+            _lobbyVm = lobby.GetComponent<PrivateLobbyScreenViewModel>();
+
+            var lobbyInput = lobby.GetComponent<NavigableMenuInputHandler>();
+            _navPlayer = lobbyInput._rewiredPlayer;
+            _vertAction = lobbyInput.VerticalAction;
+            _heldVert = false;
+            _prevSel = null;
+            SetRow(false);
 
             Plugin.Log.LogInfo($"customiser up via SetView({index}), buttons moved top right ({size.x} x {size.y} at {RowScale})");
+            Plugin.Log.LogInfo($"row swap on vertical action {_vertAction}, up = customiser");
         }
 
         private IEnumerator SlideParty(Vector3 target)
@@ -210,9 +272,23 @@ namespace BetterFG.Tweaks
                 _row = null;
             }
 
+            if (_onTabs)
+            {
+                foreach (var tab in _tabsInput._tabs) tab.Deselect(true);
+                _tabsVm.OnLoseFocus();
+            }
+            _onTabs = false;
+            _heldVert = false;
+            _prevSel = null;
+            EventSystem.current.sendNavigationEvents = true;
+
             if (_selectorUp) SetSelectorMode(false);
             _selectorUp = false;
             _vm = null;
+            _tabsVm = null;
+            _tabsInput = null;
+            _lobbyVm = null;
+            _navPlayer = null;
 
             var rootGo = GameObject.Find(UiRootPath);
             var builderGo = rootGo == null ? null : rootGo.transform.Find("MainMenuBuilder(Clone)");
