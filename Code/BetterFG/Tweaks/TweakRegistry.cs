@@ -90,6 +90,7 @@ namespace BetterFG.Tweaks
             Add<LevelDescriptionOnPauseTweak>(TweakCategory.Utility);
             Add<CreativeTypeValueTweak>(TweakCategory.Utility);
             Add<BetterStickerSelectionTweak>(TweakCategory.Utility);
+            Add<LobbyCustomiserTweak>(TweakCategory.Utility);
             Add<NotifyRoundStartTweak>(TweakCategory.Utility);
             //Add<MultiShowSelectTweak>(TweakCategory.Utility); // WIP — launch confirms the highlighted show, not the pinned set; shelved
 
