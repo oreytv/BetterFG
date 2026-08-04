@@ -1,8 +1,8 @@
 using System;
+using BetterFG.Utilities;
 using FG.Common;
 using FG.Common.Audio;
 using FGClient;
-using FMODUnity;
 using HarmonyLib;
 using UnityEngine;
 
@@ -216,27 +216,9 @@ namespace BetterFG.Tweaks
             }
             catch { }
 
-            UnmuteBus("bus:/MASTER/BUS_VO");
-            UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_3D");
-            UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_2D");
-        }
-
-        private static void UnmuteBus(string path)
-        {
-            try
-            {
-                var bus = RuntimeManager.GetBus(path);
-                if (!bus.isValid()) return;
-
-                bus.getMute(out bool muted);
-                bus.getPaused(out bool paused);
-                bus.getVolume(out float vol, out float _);
-
-                if (muted) bus.setMute(false);
-                if (paused) bus.setPaused(false);
-                if (vol <= 0.001f) bus.setVolume(1f);
-            }
-            catch { }
+            FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO");
+            FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_3D");
+            FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_2D");
         }
     }
 

@@ -333,13 +333,13 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateColorControls(root.transform, PAD, ref cy, w,
                 () => RenderSettings.ambientLight.r, () => RenderSettings.ambientLight.g, () => RenderSettings.ambientLight.b,
                 r => SetAmbient(0, r), g => SetAmbient(1, g), b => SetAmbient(2, b), () => { },
-                out _, out _, out _);
+                out _, out _, out _, RenderSettings.ambientLight);
             cy += SH;
 
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "Reflection intensity", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
             UGUIShip.CreateSlider(root.transform, PAD, cy, w, "", RenderSettings.reflectionIntensity, rh, PAD, FS_SM,
-                v => RenderSettings.reflectionIntensity = v, null, null, false);
+                v => RenderSettings.reflectionIntensity = v, null, null, false, RenderSettings.reflectionIntensity);
             cy += rh + SH * 2f;
 
             // custom textures live in their own drill-in tab; here it's a button + applied count

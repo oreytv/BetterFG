@@ -185,7 +185,7 @@ namespace BetterFG.UI.Windows
             MakeLabel(parent, new Rect(PAD, cy, lw, rh), label, FS_SM, WHITE);
             var valLbl = MakeLabel(parent, new Rect(PAD + lw + sw + 2f, cy, vw, rh), cur.ToString("F2"), FS_SM, WHITE);
             var sl = UGUIShip.CreateSlider(parent, PAD + lw, cy, sw, "", (cur + 0.3f) / 0.6f, rh, 0f, FS_SM,
-                new Action<float>(_ => { }), HINT_COL, new Color(0.7f, 0.7f, 0.7f, 1f));
+                new Action<float>(_ => { }), HINT_COL, new Color(0.7f, 0.7f, 0.7f, 1f), true, 0.5f);
             sl.onValueChanged.AddListener(new Action<float>(v =>
             {
                 float m = v * 0.6f - 0.3f;
@@ -202,7 +202,7 @@ namespace BetterFG.UI.Windows
             MakeLabel(parent, new Rect(PAD, cy, lw, rh), label, FS_SM, WHITE);
             var valLbl = MakeLabel(parent, new Rect(PAD + lw + sw + 2f, cy, vw, rh), cur.ToString("F0"), FS_SM, WHITE);
             var sl = UGUIShip.CreateSlider(parent, PAD + lw, cy, sw, "", cur / 360f, rh, 0f, FS_SM,
-                new Action<float>(_ => { }), HINT_COL, new Color(0.7f, 0.7f, 0.7f, 1f));
+                new Action<float>(_ => { }), HINT_COL, new Color(0.7f, 0.7f, 0.7f, 1f), true, 0f);
             sl.onValueChanged.AddListener(new Action<float>(v =>
             {
                 float m = v * 360f;

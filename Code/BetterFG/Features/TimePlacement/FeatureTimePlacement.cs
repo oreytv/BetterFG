@@ -30,6 +30,8 @@ namespace BetterFG.Features.TimePlacement
             new FeatureSetting { id = "gameplay", label = "Show in gameplay", defaultOn = true },
             // split squads of 3+ across two lines (two names top, rest below).
             new FeatureSetting { id = "twolines", label = "Two lines for big squads", defaultOn = true },
+            // players the server flagged as disconnected read "DC" rather than being lumped in as OUT.
+            new FeatureSetting { id = "showdc", label = "Mark disconnects", defaultOn = true },
         },
         onOpen: () => OnToggled(),
         onClosed: () => OnToggled(),
@@ -113,6 +115,7 @@ namespace BetterFG.Features.TimePlacement
         static bool ShowNames => true;
         static bool TwoLines => On("twolines");
         static bool ShowInGameplay => On("gameplay");
+        static bool ShowDisconnects => On("showdc");
 
         // the GameStates container holding PlayingState/SpectatorState/BannersState/etc.
         const string GameStatesPath =
@@ -173,6 +176,12 @@ namespace BetterFG.Features.TimePlacement
         // playerKey -> finish/qualify time (seconds), filled as players succeed. drives the time
         // column on the qualify-highlight roster.
         static readonly Dictionary<string, float> _qualTimes = new Dictionary<string, float>();
+        // playerKey -> the moment they died, from the server's own timeSurvived on the progress
+        // message. the client-side "their fgcc is gone" test only tells us they're out by the next
+        // poll tick, in arbitrary order — this is the authored time, so deaths rank properly.
+        static readonly Dictionary<string, float> _deathTimes = new Dictionary<string, float>();
+        // keys the server flagged isDisconnected — they left rather than being knocked out.
+        static readonly HashSet<string> _disconnectedKeys = new HashSet<string>();
         static int _soloSig;                             // running hash of the current solo leaderboard
         static int _lastSoloSig;                         // last logged signature, to dedupe the spam
         // score-change patches only flip this; the poll drains it once per frame. a hunt round fires
@@ -205,6 +214,8 @@ namespace BetterFG.Features.TimePlacement
             _seenPlayers.Clear();
             _eliminatedKeys.Clear();
             _qualTimes.Clear();
+            _deathTimes.Clear();
+            _disconnectedKeys.Clear();
             _nextPlace = 0;
             _soloSig = 0;
             _lastSoloSig = 0;
@@ -551,6 +562,10 @@ namespace BetterFG.Features.TimePlacement
         const float PtsX = 50f;       // points column, right after placement
         const float NamesX = 120f;    // names start after points
         const float BeanH = 30f;
+        const float BeanGap = 2f;     // spacing between the mugshots on a squad row
+        const float RowBgScale = 4.5491f;   // tuned to span the row
+        const float GroupBgScale = 1.3f;    // group rows carry mugshots + two name lines, so widen
+        const int MaxBeans = 4;       // biggest squad the game runs
         static float BeanW => BeanH * LeaderboardMugshotScene.Width / LeaderboardMugshotScene.Height;
 
         // build three fixed-position labels per row: placement, points, names (one object, can be 2
@@ -587,7 +602,7 @@ namespace BetterFG.Features.TimePlacement
                 bgRt.anchorMax = Vector2.one;
                 bgRt.offsetMin = Vector2.zero;
                 bgRt.offsetMax = Vector2.zero;
-                bgRt.localScale = new Vector3(4.5491f, 1f, 1f);   // tuned to span the row
+                bgRt.localScale = new Vector3(RowBgScale, 1f, 1f);
                 var bgImg = bgGo.AddComponent<Image>();
                 bgImg.sprite = bgSprite;
                 bgImg.type = Image.Type.Simple;
@@ -596,16 +611,19 @@ namespace BetterFG.Features.TimePlacement
                 bgGo.SetActive(true);
             }
 
-            var beanGo = new GameObject("BFG_Bean");
-            beanGo.transform.SetParent(entryGo.transform, false);
-            var beanRt = beanGo.AddComponent<RectTransform>();
-            beanRt.anchorMin = new Vector2(0f, 0.5f);
-            beanRt.anchorMax = new Vector2(0f, 0.5f);
-            beanRt.pivot = new Vector2(0f, 0.5f);
-            beanRt.sizeDelta = new Vector2(BeanW, BeanH);
-            var beanImg = beanGo.AddComponent<RawImage>();
-            beanImg.raycastTarget = false;
-            beanGo.SetActive(false);
+            for (int i = 0; i < MaxBeans; i++)
+            {
+                var beanGo = new GameObject("BFG_Bean" + i);
+                beanGo.transform.SetParent(entryGo.transform, false);
+                var beanRt = beanGo.AddComponent<RectTransform>();
+                beanRt.anchorMin = new Vector2(0f, 0.5f);
+                beanRt.anchorMax = new Vector2(0f, 0.5f);
+                beanRt.pivot = new Vector2(0f, 0.5f);
+                beanRt.sizeDelta = new Vector2(BeanW, BeanH);
+                var beanImg = beanGo.AddComponent<RawImage>();
+                beanImg.raycastTarget = false;
+                beanGo.SetActive(false);
+            }
 
             MakeLabel(entryGo.transform, src, "BFG_Pos", PosX, TextAlignmentOptions.Left);
             MakeLabel(entryGo.transform, src, "BFG_Pts", PtsX, TextAlignmentOptions.Left);
@@ -655,15 +673,17 @@ namespace BetterFG.Features.TimePlacement
             return t != null ? t.GetComponent<TextMeshProUGUI>() : null;
         }
 
-        // server says this player is out (succeeded == false in a survival final). record their key
-        // so the survival point count drops, then repaint right away.
+        // server says this player is out. this is THE death signal, so repaint on it rather than
+        // letting the poll notice the missing fgcc a tick later.
         public static void OnPlayerEliminated(uint remotePlayerId)
         {
+            if (!_updating || !Enabled || _panels.Count == 0) return;
+            if (QualStatusActive()) { RefreshQualStatus(); return; }
             if (!IsSurvivalFinalSquadRound()) return;
             string key = PlayerKeyById(remotePlayerId);
             if (string.IsNullOrEmpty(key)) return;
             if (!_eliminatedKeys.Add(key)) return;       // already known
-            if (_updating && Enabled) RefreshSquadScores();
+            RefreshSquadScores();
         }
 
         // playerKey for a playerId via the client player manager's id index, or "".
@@ -682,21 +702,32 @@ namespace BetterFG.Features.TimePlacement
         public static void OnServerPlayerProgress(GameMessageServerPlayerProgress progressMessage)
         {
             if (progressMessage == null || progressMessage.isSkipping) return;
+            string pkey = PlayerKeyById(progressMessage.playerId);
+            float clock = GlobalGameStateClient.Instance?.GameStateView != null
+                ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed : 0f;
             if (progressMessage.succeeded)
             {
                 // remember when they qualified so the roster can show a time column. capture the live
                 // gameplay clock ONCE here at the moment the player qualifies — keeps ms precision
                 // (the server's qualifyTime is whole-second only), and everything else reads this one
                 // stored value so the leaderboard and fall-feed stamp can never disagree.
-                string key = PlayerKeyById(progressMessage.playerId);
-                if (!string.IsNullOrEmpty(key) && !_qualTimes.ContainsKey(key))
-                    _qualTimes[key] = GlobalGameStateClient.Instance?.GameStateView != null
-                        ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed : 0f;
+                if (!string.IsNullOrEmpty(pkey) && !_qualTimes.ContainsKey(pkey))
+                    _qualTimes[pkey] = clock;
                 OnPlayerFinished(progressMessage.playerId);
             }
             else
-                // survival-final elimination signal (no completedLevel flip in those rounds).
+            {
+                // death time, server-authored. timeSurvived is the server's whole-second count, so
+                // it decides the second; our clock only supplies the sub-second detail, and only
+                // when the two already agree on which second it was (batched/late messages don't).
+                if (!string.IsNullOrEmpty(pkey) && !_deathTimes.ContainsKey(pkey))
+                {
+                    int survived = progressMessage.timeSurvived;
+                    _deathTimes[pkey] = survived > 0 && Mathf.FloorToInt(clock) != survived ? survived : clock;
+                    if (progressMessage.isDisconnected) _disconnectedKeys.Add(pkey);
+                }
                 OnPlayerEliminated(progressMessage.playerId);
+            }
         }
 
         // the qualify time we captured for a player in OnServerPlayerProgress (seconds). the fall-feed
@@ -753,39 +784,71 @@ namespace BetterFG.Features.TimePlacement
                 $"<b><color=#FFFF00>{place}{suffix}</color></b>",
                 name,
                 $"<size=120%>{time}</size>",
-                80f, fkey);
+                80f, new List<string> { fkey });
             Plugin.Log.LogInfo($"TimePlacement: {place}{suffix} -> {name} {time} (id {remotePlayerId})");
         }
 
         static string Suffix(int place) =>
             place == 1 ? "st" : place == 2 ? "nd" : place == 3 ? "rd" : "th";
 
+        static readonly List<Texture> _rowPortraits = new List<Texture>();
+
         // set the three columns of a row across every panel, activating that row. namesXOffset
-        // nudges the name column right (race rounds use it to clear the wide time string). playerKey
-        // is only passed by the one-player-per-row modes, squad rows leave it null
-        static void SetRow(int index, string pos, string names, string pts, float namesXOffset = 0f, string playerKey = null)
+        // nudges the name column right (race rounds use it to clear the wide time string),
+        // ptsXOffset does the same for the points/time column. playerKeys is one key on the
+        // one-player-per-row modes and the whole squad's members on squad rows — their mugshots sit
+        // side by side and the names start after the last one
+        static void SetRow(int index, string pos, string names, string pts, float namesXOffset = 0f, List<string> playerKeys = null, float ptsXOffset = 0f)
         {
             if (index < 0 || index >= _entryPool.Count) return;
-            var portrait = BeanPortraits.Get(playerKey);
+
+            _rowPortraits.Clear();
+            if (playerKeys != null)
+                for (int i = 0; i < playerKeys.Count && _rowPortraits.Count < MaxBeans; i++)
+                {
+                    var tex = BeanPortraits.Get(playerKeys[i]);
+                    if (tex != null) _rowPortraits.Add(tex);
+                }
+
             float beanX = NamesX + namesXOffset;
-            float nameX = beanX + (portrait != null ? BeanW + 4f : 0f);
+            float nameX = beanX + (_rowPortraits.Count > 0 ? _rowPortraits.Count * (BeanW + BeanGap) + 4f : 0f);
+            float bgScale = RowBgScale * (playerKeys != null && playerKeys.Count >= 2 ? GroupBgScale : 1f);
             foreach (var entryGo in _entryPool[index])
             {
                 if (entryGo == null) continue;
                 entryGo.SetActive(true);
+
+                // the bg scales about its own centre, so nudge the rect right by half the growth to
+                // keep the left edge where the single-player rows put it
+                var bgT = entryGo.transform.Find("BFG_RowBG");
+                if (bgT != null)
+                {
+                    var bgRt = bgT.GetComponent<RectTransform>();
+                    bgRt.localScale = new Vector3(bgScale, 1f, 1f);
+                    bgRt.anchoredPosition = new Vector2((bgScale - RowBgScale) * bgRt.rect.width * 0.5f, 0f);
+                }
+
                 Apply(FindLabel(entryGo, "BFG_Pos"), pos);
                 var namesLabel = FindLabel(entryGo, "BFG_Names");
                 Apply(namesLabel, names);
                 if (namesLabel != null)
                     namesLabel.rectTransform.anchoredPosition = new Vector2(nameX, 0f);
-                Apply(FindLabel(entryGo, "BFG_Pts"), pts);
+                var ptsLabel = FindLabel(entryGo, "BFG_Pts");
+                Apply(ptsLabel, pts);
+                // rows get reused, so always re-pin rather than only when there's an offset
+                if (ptsLabel != null)
+                    ptsLabel.rectTransform.anchoredPosition = new Vector2(PtsX + ptsXOffset, 0f);
 
-                var bean = entryGo.transform.Find("BFG_Bean");
-                if (bean == null) continue;
-                bean.gameObject.SetActive(portrait != null);
-                if (portrait == null) continue;
-                bean.GetComponent<RawImage>().texture = portrait;
-                bean.GetComponent<RectTransform>().anchoredPosition = new Vector2(beanX, 0f);
+                for (int b = 0; b < MaxBeans; b++)
+                {
+                    var bean = entryGo.transform.Find("BFG_Bean" + b);
+                    if (bean == null) continue;
+                    bool used = b < _rowPortraits.Count;
+                    bean.gameObject.SetActive(used);
+                    if (!used) continue;
+                    bean.GetComponent<RawImage>().texture = _rowPortraits[b];
+                    bean.GetComponent<RectTransform>().anchoredPosition = new Vector2(beanX + b * (BeanW + BeanGap), 0f);
+                }
             }
         }
 
@@ -864,7 +927,8 @@ namespace BetterFG.Features.TimePlacement
                 string Small(string s) => $"<size=70%>{s}</size>";
 
                 string namesText;
-                var names = ShowNames ? ResolveSquadNames(mgr, e.squadId, highlight) : null;
+                var memberKeys = new List<string>();
+                var names = ShowNames ? ResolveSquadNames(mgr, e.squadId, highlight, memberKeys) : null;
                 if (names == null || names.Count == 0)
                 {
                     namesText = Small(SquadLabel(e.squadId));
@@ -886,7 +950,7 @@ namespace BetterFG.Features.TimePlacement
                     namesText = Small(string.Join(", ", names));
                 }
 
-                SetRow(row, posText, namesText, ptsText);
+                SetRow(row, posText, namesText, ptsText, 0f, memberKeys);
                 row++;
             }
 
@@ -973,7 +1037,7 @@ namespace BetterFG.Features.TimePlacement
             // qualTime: the moment the LAST member of a fully-qualified squad crossed the line, or
             // null if any member hasn't qualified yet. squads that all qualified sort to the top by
             // that time; everyone else falls back to points desc.
-            var totals = new List<(uint squadId, int total, List<string> names, float? qualTime)>();
+            var totals = new List<(uint squadId, int total, List<string> names, List<string> keys, float? qualTime)>();
             foreach (var sid in squads.Keys)
             {
                 var members = squads[sid];
@@ -981,6 +1045,7 @@ namespace BetterFG.Features.TimePlacement
                 int total = 0;
                 int teamTotal = 0;
                 var names = new List<string>();
+                var memberKeys = new List<string>();
                 bool allQualified = true;
                 float latestQualTime = 0f;
                 for (int i = 0; i < members.Count; i++)
@@ -992,7 +1057,7 @@ namespace BetterFG.Features.TimePlacement
                     // 3-player team would show 3x the real score).
                     if (teamScoreByKey.TryGetValue(m.playerKey, out int ts) && ts > teamTotal) teamTotal = ts;
                     string n = ResolveDisplayName(m.playerKey, highlight);
-                    if (!string.IsNullOrEmpty(n)) names.Add(n);
+                    if (!string.IsNullOrEmpty(n)) { names.Add(n); memberKeys.Add(m.playerKey); }
                     if (_qualTimes.TryGetValue(m.playerKey, out float qt))
                     {
                         if (qt > latestQualTime) latestQualTime = qt;
@@ -1004,7 +1069,7 @@ namespace BetterFG.Features.TimePlacement
                 // that raw team score onto the 0..100 display so it lines up with the game's own
                 // normalized leaderboard (target -> 100, 0 -> 0). solo-summed totals are left raw.
                 if (total == 0 && teamTotal != 0) total = NormalizeToTarget(teamTotal);
-                totals.Add((sid, total, names, allQualified ? (float?)latestQualTime : null));
+                totals.Add((sid, total, names, memberKeys, allQualified ? (float?)latestQualTime : null));
             }
 
             // fully-qualified squads pin to the top ordered by their last-member finish time (fastest
@@ -1055,7 +1120,7 @@ namespace BetterFG.Features.TimePlacement
                 else
                     namesText = Small(string.Join(", ", names));
 
-                SetRow(row, posText, namesText, ptsText, nameOffset);
+                SetRow(row, posText, namesText, ptsText, nameOffset, e.keys);
                 row++;
             }
 
@@ -1145,6 +1210,7 @@ namespace BetterFG.Features.TimePlacement
                 if (members == null || members.Count == 0) continue;
 
                 var names = new List<string>();
+                var memberKeys = new List<string>();
                 if (ShowNames)
                 {
                     for (int i = 0; i < members.Count; i++)
@@ -1152,7 +1218,9 @@ namespace BetterFG.Features.TimePlacement
                         var m = members[i];
                         if (m == null || string.IsNullOrEmpty(m.playerKey)) continue;
                         string n = NameFor(m.playerKey);
-                        if (!string.IsNullOrEmpty(n)) names.Add(n);
+                        if (string.IsNullOrEmpty(n)) continue;
+                        names.Add(n);
+                        memberKeys.Add(m.playerKey);
                     }
                 }
 
@@ -1170,7 +1238,7 @@ namespace BetterFG.Features.TimePlacement
 
                 int place = row + 1;
                 string ptsText = $"<size=120%>{totals[s].pts} pts</size>";
-                SetRow(row, $"<b><color=#FFFF00>{place}{Suffix(place)}</color></b>", namesText, ptsText);
+                SetRow(row, $"<b><color=#FFFF00>{place}{Suffix(place)}</color></b>", namesText, ptsText, 0f, memberKeys);
                 row++;
             }
 
@@ -1208,7 +1276,9 @@ namespace BetterFG.Features.TimePlacement
 
         // squad members' display names from _roundSquads (squadId -> players). our own name uses our
         // custom name; our whole squad's names get hot pink via highlightKeys. empty if none.
-        static List<string> ResolveSquadNames(ClientSquadManager mgr, uint squadId, HashSet<string> highlightKeys)
+        // keysOut collects the matching playerKeys in the same order so the row can draw a mugshot
+        // per name.
+        static List<string> ResolveSquadNames(ClientSquadManager mgr, uint squadId, HashSet<string> highlightKeys, List<string> keysOut = null)
         {
             var names = new List<string>();
             var squads = mgr?._roundSquads;
@@ -1220,7 +1290,9 @@ namespace BetterFG.Features.TimePlacement
                 var m = members[i];
                 if (m == null || string.IsNullOrEmpty(m.playerKey)) continue;
                 string n = ResolveDisplayName(m.playerKey, highlightKeys);
-                if (!string.IsNullOrEmpty(n)) names.Add(n);
+                if (string.IsNullOrEmpty(n)) continue;
+                names.Add(n);
+                keysOut?.Add(m.playerKey);
             }
             return names;
         }
@@ -1521,7 +1593,7 @@ namespace BetterFG.Features.TimePlacement
                 // solo scoring (points, 1 player per row) — bigger name, this path has one name per
                 // row so it has room to breathe (squad rows stay 70% since they pack 2-4 names).
                 // nudge the name column ~20px right in points rounds.
-                SetRow(row, posText, $"<size=100%>{name}</size>", ptsText, 20f, p != null ? p.playerKey : null);
+                SetRow(row, posText, $"<size=100%>{name}</size>", ptsText, 20f, p != null ? new List<string> { p.playerKey } : null);
                 row++;
             }
             _lastSoloSig = _soloSig;
@@ -1635,8 +1707,8 @@ namespace BetterFG.Features.TimePlacement
                 ? squadKeys
                 : (string.IsNullOrEmpty(myKey) ? null : new HashSet<string> { myKey });
 
-            var quals = new List<(string name, float time, bool timed, uint id, bool mine, string key)>();
-            var outs = new List<(string name, uint id, bool mine, string key)>();
+            // one list for both halves so a single sort orders the whole board.
+            var entries = new List<(string name, float time, bool timed, bool qualified, uint id, bool mine, string key)>();
             for (int i = 0; i < players.Count; i++)
             {
                 var p = players[i];
@@ -1646,50 +1718,66 @@ namespace BetterFG.Features.TimePlacement
                 if (p.completedLevel)
                 {
                     bool timed = _qualTimes.TryGetValue(p.playerKey, out float t);
-                    quals.Add((ResolveDisplayName(p.playerKey, highlight), t, timed, p.remotePlayerID, mine, p.playerKey));
+                    entries.Add((ResolveDisplayName(p.playerKey, highlight), t, timed, true, p.remotePlayerID, mine, p.playerKey));
                 }
-                else if (p.fgcc == null && ShowEliminatedNow())
-                    outs.Add((ResolveDisplayName(p.playerKey, highlight), p.remotePlayerID, mine, p.playerKey));
-                // else still playing — skip
+                else
+                {
+                    // the server's death message is what marks someone out — the missing fgcc is
+                    // just the client catching up, kept as a backstop for anyone who vanished
+                    // without a progress message (leavers).
+                    bool timed = _deathTimes.TryGetValue(p.playerKey, out float d);
+                    if ((timed || p.fgcc == null) && ShowEliminatedNow())
+                        entries.Add((ResolveDisplayName(p.playerKey, highlight), d, timed, false, p.remotePlayerID, mine, p.playerKey));
+                    // else still playing — skip
+                }
             }
 
-            // qualified ranked by finish time (timed first, fastest first); id as a stable tiebreak.
-            quals.Sort((a, b) =>
+            // qualified above eliminated; qualified fastest-first, eliminated last-death-first
+            // (surviving longer is the better placing). untimed rows sink to the bottom of their
+            // half, id as a stable tiebreak so equal rows don't swap every tick.
+            entries.Sort((a, b) =>
             {
+                if (a.qualified != b.qualified) return a.qualified ? -1 : 1;
                 if (a.timed != b.timed) return a.timed ? -1 : 1;
-                if (a.timed && a.time != b.time) return a.time.CompareTo(b.time);
+                if (a.timed && a.time != b.time)
+                    return a.qualified ? a.time.CompareTo(b.time) : b.time.CompareTo(a.time);
                 return a.id.CompareTo(b.id);
             });
-            outs.Sort((a, b) => a.id.CompareTo(b.id));
 
             int row = 0;
-            for (int i = 0; i < quals.Count && row < MaxRows; i++)
+            for (int i = 0; i < entries.Count && row < MaxRows; i++)
             {
-                var e = quals[i];
-                int place = row + 1;
+                var e = entries[i];
                 string time = "";
                 if (e.timed)
                 {
                     TimeSpan ts = TimeSpan.FromSeconds(e.time);
-                    time = $"<size=110%>{string.Format("{0:D2}:{1:D2}:{2:D3}", ts.Minutes, ts.Seconds, ts.Milliseconds)}</size>";
+                    time = string.Format("{0:D2}:{1:D2}:{2:D3}", ts.Minutes, ts.Seconds, ts.Milliseconds);
                 }
-                // ours: name keeps its pink wrap from ResolveDisplayName. others: yellow.
-                string nameText = e.mine
-                    ? $"<size=85%>{e.name}</size>"
-                    : $"<size=85%><color=#FFFF00>{e.name}</color></size>";
-                SetRow(row,
-                    $"<b><color=#FFFF00>{place}{Suffix(place)}</color></b>",
-                    nameText,
-                    time, 80f, e.key);
-                row++;
-            }
-            for (int i = 0; i < outs.Count && row < MaxRows; i++)
-            {
-                // eliminated: red wins even for our own — losing is loud.
-                SetRow(row,
-                    "<b><color=#FF5555>OUT</color></b>",
-                    $"<size=85%><color=#FF5555>{outs[i].name}</color></size>",
-                    "", 80f, outs[i].key);
+                if (e.qualified)
+                {
+                    int place = row + 1;
+                    // ours: name keeps its pink wrap from ResolveDisplayName. others: yellow.
+                    SetRow(row,
+                        $"<b><color=#FFFF00>{place}{Suffix(place)}</color></b>",
+                        e.mine ? $"<size=85%>{e.name}</size>" : $"<size=85%><color=#FFFF00>{e.name}</color></size>",
+                        time.Length > 0 ? $"<size=110%>{time}</size>" : "", 80f, new List<string> { e.key });
+                }
+                else
+                {
+                    // eliminated: red wins even for our own — losing is loud. someone who dropped
+                    // out gets the greyed DC label instead, they didn't lose to the level.
+                    bool dc = ShowDisconnects && _disconnectedKeys.Contains(e.key);
+                    string col = dc ? "#8C97A8" : "#FF5555";
+                    // "DISCONNECTED" is far too wide for the placement column at full size, so it
+                    // shrinks and takes over the time slot as well — a leaver's exact exit time
+                    // isn't worth the collision.
+                    SetRow(row,
+                        dc ? $"<b><color={col}><size=55%>DISCONNECTED</size></color></b>"
+                           : $"<b><color={col}>OUT</color></b>",
+                        $"<size=85%><color={col}>{e.name}</color></size>",
+                        dc || time.Length == 0 ? "" : $"<size=110%><color={col}>{time}</color></size>", 80f, new List<string> { e.key }, 40f);
+                }
                 row++;
             }
 

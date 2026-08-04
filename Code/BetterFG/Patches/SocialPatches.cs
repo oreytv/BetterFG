@@ -9,6 +9,7 @@ using HarmonyLib;
 using MPG.Utility;
 using UnityEngine;
 using BetterFG.Customization.Social;
+using BetterFG.Features.Replay;
 using BetterFG.Tweaks;
 using PlayerUtils = FallGuysLib.Players.PlayerUtils;
 
@@ -49,6 +50,7 @@ namespace BetterFG.Patches.Social
             if (!localSpeech && (localId == 0 || speechBean != PlayerUtils.GetPlayerObject(localId)))
             {
                 RemoteSocialDisplay.TryRemap(speechBean, ref optionId);
+                FeatureReplay.CaptureSpeech(speechBean, optionId);
                 return true;
             }
 
@@ -63,6 +65,7 @@ namespace BetterFG.Patches.Social
                 EmoticonInjectionService.PlayCustomSound(remappedEmote);
             }
 
+            FeatureReplay.CaptureSpeech(speechBean, optionId);
             return true;
         }
     }

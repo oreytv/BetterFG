@@ -18,19 +18,21 @@ namespace BetterFG.Features.TimePlacement
         public static readonly Color MaskA = Color.black;
         public static readonly Color MaskB = Color.white;
 
-        public static readonly Color Ambient = new Color(0.24f, 0.24f, 0.28f);
+        public static readonly Color Ambient = new Color(0.17f, 0.17f, 0.2f);
 
-        public static readonly Vector3 KeyAngles = new Vector3(16f, -30f, 0f);
+        public static readonly Vector3 KeyAngles = new Vector3(40f, -30f, 0f);
         public static readonly Color KeyColour = new Color(1f, 0.97f, 0.9f);
-        public const float KeyIntensity = 1.2f;
+        public const float KeyIntensity = 0.8f;
 
-        public static readonly Vector3 FillAngles = new Vector3(-6f, 58f, 0f);
+        public static readonly Vector3 FillAngles = new Vector3(18f, 58f, 0f);
         public static readonly Color FillColour = new Color(0.74f, 0.82f, 1f);
-        public const float FillIntensity = 0.5f;
+        public const float FillIntensity = 0.3f;
 
-        public static readonly Vector3 RimAngles = new Vector3(-22f, 165f, 0f);
+        public static readonly Vector3 RimAngles = new Vector3(12f, 165f, 0f);
         public static readonly Color RimColour = new Color(1f, 0.94f, 0.82f);
-        public const float RimIntensity = 1.1f;
+        public const float RimIntensity = 0.55f;
+
+        static Light[] _lights;
 
         public static Camera BuildCamera(GameObject host)
         {
@@ -46,13 +48,18 @@ namespace BetterFG.Features.TimePlacement
             cam.allowMSAA = false;
             cam.useOcclusionCulling = false;
 
-            AddLight(host.transform, "Key", KeyAngles, KeyColour, KeyIntensity);
-            AddLight(host.transform, "Fill", FillAngles, FillColour, FillIntensity);
-            AddLight(host.transform, "Rim", RimAngles, RimColour, RimIntensity);
+            _lights = new Light[]
+            {
+                AddLight(host.transform, "Key", KeyAngles, KeyColour, KeyIntensity),
+                AddLight(host.transform, "Fill", FillAngles, FillColour, FillIntensity),
+                AddLight(host.transform, "Rim", RimAngles, RimColour, RimIntensity),
+            };
             return cam;
         }
 
-        static void AddLight(Transform camT, string name, Vector3 angles, Color colour, float intensity)
+        // off until PushLighting arms them for a single bean's two renders — they'd otherwise sit lit
+        // across the frames the capture coroutine yields on
+        static Light AddLight(Transform camT, string name, Vector3 angles, Color colour, float intensity)
         {
             var go = new GameObject(name);
             go.transform.SetParent(camT, false);
@@ -63,6 +70,8 @@ namespace BetterFG.Features.TimePlacement
             light.color = colour;
             light.intensity = intensity;
             light.shadows = LightShadows.None;
+            light.enabled = false;
+            return light;
         }
 
         // yawForward is the bean's facing flattened to yaw so a mid-drop tilt doesn't tip the portrait over
@@ -87,10 +96,12 @@ namespace BetterFG.Features.TimePlacement
             RenderSettings.fog = false;
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = Ambient;
+            foreach (var l in _lights) l.enabled = true;
         }
 
         public static void PopLighting()
         {
+            foreach (var l in _lights) l.enabled = false;
             RenderSettings.fog = _fog;
             RenderSettings.ambientMode = _ambientMode;
             RenderSettings.ambientLight = _ambientColour;

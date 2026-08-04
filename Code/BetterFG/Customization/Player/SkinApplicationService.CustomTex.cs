@@ -7,6 +7,20 @@ using BetterFG.Services;
 
 namespace BetterFG.Customization.Player
 {
+    // one user-created texture override entry
+    public class SkinTexEntry
+    {
+        public string entryName;
+        public string texPath;
+        public byte[] texData;
+        public int matIdx;
+        public bool enabled;
+        public string costumeName;
+
+        public List<Material> mats = new List<Material>();
+        public List<string> matNames = new List<string>();
+    }
+
     public partial class SkinApplicationService
     {
         // keyed by bean instance id — original materials per renderer before we touched them
@@ -37,21 +51,71 @@ namespace BetterFG.Customization.Player
         private static readonly Dictionary<string, (long stamp, Texture2D tex)> _customTexCache =
             new Dictionary<string, (long, Texture2D)>(StringComparer.OrdinalIgnoreCase);
 
-        // decode every enabled entry's texture up front (plugin load) so the first per-bean
-        // auto-reapply is a cache hit — this cache, not the tab's _texCache, is what it reads
-        public static void PrewarmCustomTexCache()
+        const string KEY_ENTRY_COUNT = "skintex.entryCount";
+        private static string EK(int i, string f) => $"skintex.entry.{i}.{f}";
+
+        public static int EntryCount
+            => int.TryParse(SettingsService.Get(KEY_ENTRY_COUNT, "0"), out int c) ? c : 0;
+
+        public static List<SkinTexEntry> LoadEntries()
         {
-            if (!int.TryParse(SettingsService.Get("skintex.entryCount", "0"), out int count) || count <= 0) return;
+            var entries = new List<SkinTexEntry>();
+            int count = EntryCount;
             for (int i = 0; i < count; i++)
             {
-                if (SettingsService.Get($"skintex.entry.{i}.enabled", "1") != "1") continue;
-                string texPath = SettingsService.Get($"skintex.entry.{i}.texPath", "");
-                if (!string.IsNullOrEmpty(texPath)) GetCachedCustomTex(texPath);
+                var e = new SkinTexEntry
+                {
+                    entryName = SettingsService.Get(EK(i, "name"), "entry " + i),
+                    texPath = SettingsService.Get(EK(i, "texPath"), ""),
+                    matIdx = 0,
+                    enabled = SettingsService.Get(EK(i, "enabled"), "1") == "1",
+                    costumeName = SettingsService.Get(EK(i, "costume"), "")
+                };
+                if (int.TryParse(SettingsService.Get(EK(i, "matIdx"), "0"), out int mi))
+                    e.matIdx = mi;
+
+                // matNames come back pipe-joined so match building works without recaching the costume
+                foreach (var n in SettingsService.Get(EK(i, "matNames"), "").Split('|'))
+                    if (!string.IsNullOrEmpty(n)) e.matNames.Add(n);
+
+                entries.Add(e);
             }
+            return entries;
+        }
+
+        public static void SaveEntries(List<SkinTexEntry> entries)
+        {
+            SettingsService.Set(KEY_ENTRY_COUNT, entries.Count.ToString());
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var e = entries[i];
+                SettingsService.Set(EK(i, "name"), e.entryName);
+                SettingsService.Set(EK(i, "texPath"), e.texPath);
+                SettingsService.Set(EK(i, "matIdx"), e.matIdx.ToString());
+                SettingsService.Set(EK(i, "enabled"), e.enabled ? "1" : "0");
+                SettingsService.Set(EK(i, "costume"), e.costumeName);
+                SettingsService.Set(EK(i, "matNames"), string.Join("|", e.matNames));
+            }
+        }
+
+        // decode every enabled entry's texture up front (plugin load) so the first per-bean
+        // auto-reapply is a cache hit instead of a file read + png decode on that frame
+        public static void PrewarmCustomTexCache()
+        {
+            foreach (var entry in LoadEntries())
+                if (entry.enabled) GetCachedCustomTex(entry);
+        }
+
+        public static Texture2D GetCachedCustomTex(SkinTexEntry entry)
+        {
+            if (entry.texData != null && entry.texData.Length > 0)
+                return DecodeCustomTex("replay:" + entry.entryName, entry.texData.Length, entry.texData);
+            return GetCachedCustomTex(entry.texPath);
         }
 
         private static Texture2D GetCachedCustomTex(string path)
         {
+            if (string.IsNullOrEmpty(path)) return null;
             long stamp;
             try { stamp = System.IO.File.GetLastWriteTimeUtc(path).Ticks; } catch { return null; }
             if (_customTexCache.TryGetValue(path, out var hit) && hit.stamp == stamp && hit.tex != null)
@@ -59,12 +123,177 @@ namespace BetterFG.Customization.Player
             byte[] data;
             try { data = System.IO.File.ReadAllBytes(path); }
             catch (Exception ex) { Plugin.Log.LogWarning($"read {path}: {ex.Message}"); return null; }
+            return DecodeCustomTex(path, stamp, data);
+        }
+
+        private static Texture2D DecodeCustomTex(string key, long stamp, byte[] data)
+        {
+            if (_customTexCache.TryGetValue(key, out var hit) && hit.stamp == stamp && hit.tex != null)
+                return hit.tex;
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             tex.LoadImage(data);
             tex.Apply();
             tex.hideFlags = HideFlags.HideAndDontSave;
-            _customTexCache[path] = (stamp, tex);
+            _customTexCache[key] = (stamp, tex);
             return tex;
+        }
+
+        public static Texture GetMaterialTexture(Material mat)
+        {
+            if (mat == null) return null;
+            foreach (var prop in customTexProps)
+            {
+                if (!mat.HasProperty(prop)) continue;
+                var t = mat.GetTexture(prop);
+                if (t != null) return t;
+            }
+            return null;
+        }
+
+        public static Texture ResolveSourceTexture(List<Material> mats, int idx, string matName)
+        {
+            if (mats != null && idx >= 0 && idx < mats.Count)
+            {
+                var t = GetMaterialTexture(mats[idx]);
+                if (t != null) return t;
+            }
+
+            if (Instance == null || string.IsNullOrEmpty(matName)) return null;
+            var bean = BeanMonitorService.LocalPlayerBean;
+            if (bean == null) return null;
+
+            if (Instance.customTexOriginals.TryGetValue(bean.GetInstanceID(), out var originals))
+                foreach (var o in originals)
+                    if (o.textureName == matName) return o.texture;
+
+            var geo = FindBeanGEO(bean);
+            if (geo == null) return null;
+            foreach (var r in geo.GetComponentsInChildren<Renderer>(true))
+            {
+                var shared = r.sharedMaterials;
+                if (shared == null) continue;
+                foreach (var m in shared)
+                {
+                    var t = GetMaterialTexture(m);
+                    if (t == null) continue;
+                    if (t.name == matName || CleanMatName(m.name) == matName) return t;
+                }
+            }
+            return null;
+        }
+
+        public static bool SaveTexturePng(Texture src, string path, out string error)
+        {
+            error = null;
+            if (src == null) { error = "no source texture"; return false; }
+
+            int w = Mathf.Max(1, src.width);
+            int h = Mathf.Max(1, src.height);
+            var prev = RenderTexture.active;
+            var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            Texture2D readable = null;
+            try
+            {
+                Graphics.Blit(src, rt);
+                RenderTexture.active = rt;
+                readable = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                readable.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
+                readable.Apply();
+                System.IO.File.WriteAllBytes(path, readable.EncodeToPNG());
+                Plugin.Log.LogInfo($"dumped {src.name} ({w}x{h}) to {path}");
+                return true;
+            }
+            catch (Exception ex) { error = ex.Message; return false; }
+            finally
+            {
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+                if (readable != null) UnityEngine.Object.Destroy(readable);
+            }
+        }
+
+        public static HashSet<string> BuildMatchNames(SkinTexEntry entry)
+        {
+            var matchNames = new HashSet<string>();
+            if (entry.matNames.Count > 0 && entry.matIdx >= 0 && entry.matIdx < entry.matNames.Count)
+            {
+                var name = entry.matNames[entry.matIdx];
+                if (!string.IsNullOrEmpty(name)) matchNames.Add(name);
+            }
+
+            if (matchNames.Count > 0) return matchNames;
+
+            if (entry.mats.Count > 0 && entry.matIdx >= 0 && entry.matIdx < entry.mats.Count)
+            {
+                var mat = entry.mats[entry.matIdx];
+                if (mat != null)
+                {
+                    if (!string.IsNullOrEmpty(mat.name)) matchNames.Add(CleanMatName(mat.name));
+                    foreach (var prop in customTexProps)
+                    {
+                        if (!mat.HasProperty(prop)) continue;
+                        var t = mat.GetTexture(prop);
+                        if (t != null && !string.IsNullOrEmpty(t.name)) { matchNames.Add(t.name); break; }
+                    }
+                }
+            }
+            return matchNames;
+        }
+
+        public static List<GameObject> GatherBeans()
+        {
+            var beans = new List<GameObject>();
+            if (BeanMonitorService.LocalPlayerBean != null)
+                beans.Add(BeanMonitorService.LocalPlayerBean);
+            foreach (var b in BeanMonitorService.GetTrackedBeans())
+                if (b != null && !beans.Contains(b)) beans.Add(b);
+            return beans;
+        }
+
+        public static int ApplyEntryToBean(SkinTexEntry entry, GameObject bean)
+        {
+            if (Instance == null || bean == null) return 0;
+            var tex = GetCachedCustomTex(entry);
+            if (tex == null) return 0;
+            return Instance.ApplyCustomTexture(bean, entry.matIdx, tex, BuildMatchNames(entry));
+        }
+
+        public static void ApplyEntriesToBean(List<SkinTexEntry> entries, GameObject bean)
+        {
+            foreach (var entry in entries)
+                if (entry.enabled) ApplyEntryToBean(entry, bean);
+        }
+
+        public static int ApplyEntry(SkinTexEntry entry)
+        {
+            int total = 0;
+            foreach (var bean in GatherBeans())
+                total += ApplyEntryToBean(entry, bean);
+            return total;
+        }
+
+        public static void RevertAllBeans()
+        {
+            if (Instance == null) return;
+            foreach (var bean in GatherBeans())
+                Instance.RevertCustomTexture(bean);
+        }
+
+        public static void ReapplyAllEnabledFromSettings()
+            => ReapplyAllEnabled(LoadEntries(), null);
+
+        // wipe everything first, then put back whatever is still switched on
+        public static void ReapplyAllEnabled(List<SkinTexEntry> entries, Action<string> status)
+        {
+            if (Instance == null) return;
+            RevertAllBeans();
+
+            foreach (var entry in entries)
+            {
+                if (!entry.enabled) continue;
+                int n = ApplyEntry(entry);
+                status?.Invoke(n > 0 ? $"applied {entry.entryName}" : "nothing matched");
+            }
         }
 
         public int TryAutoReapplyCustomTextureForBean(GameObject bean)
@@ -73,37 +302,17 @@ namespace BetterFG.Customization.Player
             int beanId = bean.GetInstanceID();
             if (customTexOriginals.ContainsKey(beanId)) return 0;
 
-            if (!int.TryParse(SettingsService.Get("skintex.entryCount", "0"), out int count) || count <= 0) return 0;
-
             int total = 0;
-            for (int i = 0; i < count; i++)
+            foreach (var entry in LoadEntries())
             {
-                if (SettingsService.Get($"skintex.entry.{i}.enabled", "1") != "1") continue;
-
-                string texPath = SettingsService.Get($"skintex.entry.{i}.texPath", "");
-                if (string.IsNullOrEmpty(texPath) || !System.IO.File.Exists(texPath)) continue;
-
-                if (!int.TryParse(SettingsService.Get($"skintex.entry.{i}.matIdx", "0"), out int matIdx)) matIdx = 0;
-
-                // rebuild match names from saved matNames so we only touch the right costume material
-                string matNamesRaw = SettingsService.Get($"skintex.entry.{i}.matNames", "");
-                var matchNames = new HashSet<string>();
-                if (!string.IsNullOrEmpty(matNamesRaw))
-                {
-                    var parts = matNamesRaw.Split('|');
-                    if (matIdx < parts.Length && !string.IsNullOrEmpty(parts[matIdx]))
-                        matchNames.Add(parts[matIdx]);
-                }
+                if (!entry.enabled) continue;
 
                 // no match name = skip, don't blast everything
+                var matchNames = BuildMatchNames(entry);
                 if (matchNames.Count == 0) continue;
 
-                try
-                {
-                    var tex = GetCachedCustomTex(texPath);
-                    if (tex != null) total += ApplyCustomTexture(bean, matIdx, tex, matchNames);
-                }
-                catch (Exception ex) { Plugin.Log.LogWarning($"auto-reapply entry {i}: {ex.Message}"); }
+                var tex = GetCachedCustomTex(entry);
+                if (tex != null) total += ApplyCustomTexture(bean, entry.matIdx, tex, matchNames);
             }
             return total;
         }
@@ -115,7 +324,7 @@ namespace BetterFG.Customization.Player
             // every 0.5s for nothing. the game rebinds costume meshes constantly (animation/LOD) and
             // every rebind re-arms this via the BindMeshToFallguy postfix, so without this gate a
             // game-cosmetics-only loadout still pays a steady background poll.
-            if (!int.TryParse(SettingsService.Get("skintex.entryCount", "0"), out int texCount) || texCount <= 0) return;
+            if (EntryCount <= 0) return;
             int beanId = bean.GetInstanceID();
             if (customTexOriginals.ContainsKey(beanId) || customTexPollingBeans.Contains(beanId) || customTexAttemptedBeans.Contains(beanId)) return;
             customTexPollingBeans.Add(beanId);

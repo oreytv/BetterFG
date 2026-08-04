@@ -292,10 +292,7 @@ namespace BetterFG.Customization.Social
             int gen = _graphGen.TryGetValue(key, out int g) ? g + 1 : 1;
             _graphGen[key] = gen;
 
-            // disable upper body ragdoll during emote
-            var fgcc = LocalFgcc(agent);
-            if (fgcc != null)
-                FallGuysLib.Players.PlayerUtils.DisablePlayerUpperBodyRagdoll(fgcc);
+            SetUpperBodyRagdoll(agent, false);
 
             PlayCustomSound(slotIndex);
 
@@ -428,7 +425,7 @@ namespace BetterFG.Customization.Social
                     mix.SetInputWeight(1, Mathf.Clamp01(w));
                 }
 
-                var fgcc = LocalFgcc(agent);
+                var fgcc = BeanFgcc(agent);
                 if (fgcc != null && fgcc.RigidBody.velocity.sqrMagnitude > 0.5f) { endedByMove = true; break; }
                 if (boneSnap != null && BoneValuesExtreme(boneSnap)) { endedByExtreme = true; break; }
                 yield return null;
@@ -481,7 +478,7 @@ namespace BetterFG.Customization.Social
 
             StopCustomSound();
             _graphAgents.TryGetValue(key, out var agent);
-            EnablePlayerUpperBodyRagdoll(agent);
+            SetUpperBodyRagdoll(agent, true);
 
             if (_graphAnimators.TryGetValue(key, out var anim) && anim != null) anim.Rebind();
             _graphAnimators.Remove(key);
@@ -536,43 +533,24 @@ namespace BetterFG.Customization.Social
                 if (kvp.Value.IsValid()) kvp.Value.Destroy();
             _graphs.Clear();
             _graphMixers.Clear();
-            EnablePlayerUpperBodyRagdoll();
+            foreach (var kvp in _graphAgents)
+                SetUpperBodyRagdoll(kvp.Value, true);
+            _graphAgents.Clear();
         }
 
-        // the local player's fgcc. in the level editor the local player isn't registered in the player
-        // manager so PlayerUtils.PlayerController is null — fall back to the emoting bean, which carries
-        // the fgcc itself (LevelEditor_FallGuy(Clone)).
-        private static FallGuysCharacterController LocalFgcc(MotorAgent agent)
+        private static FallGuysCharacterController BeanFgcc(MotorAgent agent)
         {
-            var fgcc = FallGuysLib.Players.PlayerUtils.PlayerController;
-            if (fgcc != null) return fgcc;
             return agent != null && agent.gameObject != null
                 ? agent.gameObject.GetComponent<FallGuysCharacterController>() : null;
         }
 
-        // re-enable upper body ragdoll after emote finishes
-        private static void EnablePlayerUpperBodyRagdoll(MotorAgent agent = null)
+        private static void SetUpperBodyRagdoll(MotorAgent agent, bool on)
         {
-            try
-            {
-                var fgcc = LocalFgcc(agent);
-                if (fgcc != null)
-                {
-                    Transform ragdollObject = fgcc.transform.Find("Ragdoll");
-                    if (ragdollObject != null)
-                    {
-                        RagdollController rc = ragdollObject.GetComponent<RagdollController>();
-                        if (rc != null)
-                        {
-                            rc._upperBodyEnabled = true;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogWarning("EmoteInjection: EnablePlayerUpperBodyRagdoll failed: " + ex.Message);
-            }
+            var fgcc = BeanFgcc(agent);
+            if (fgcc == null) return;
+            var ragdoll = fgcc.transform.Find("Ragdoll");
+            var rc = ragdoll != null ? ragdoll.GetComponent<RagdollController>() : null;
+            if (rc != null) rc.EnableUpperBody(on);
         }
 
         // the currently-playing emote sound, so we can cut it when the emote ends

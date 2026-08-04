@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -54,6 +55,10 @@ namespace BetterFG.Services
         // the next Apply — that's why opening a fresh window used to ignore the scale.
         public static Vector2 CurrentRef => Enabled && Current >= 0.1f ? BaseRef / Current : BaseRef;
 
+        // anything that sized itself off CurrentRef rather than off anchors has to be rebuilt when the
+        // scale moves — the replay timeline spans the screen width, so it's one of them
+        public static event Action OnRescaled;
+
         // apply without persisting — used by the live preview before the user confirms
         public static void Apply(float scale)
         {
@@ -66,6 +71,8 @@ namespace BetterFG.Services
                 if (canvas == null) { Ours.RemoveAt(i); continue; }
                 canvas.GetComponent<CanvasScaler>().referenceResolution = newRef;
             }
+
+            OnRescaled?.Invoke();
         }
 
         public static void Save(float scale)

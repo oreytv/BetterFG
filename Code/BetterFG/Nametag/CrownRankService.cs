@@ -219,7 +219,12 @@ namespace BetterFG.Nametag
                     if (SwapSide) ccrown.transform.SetAsFirstSibling();
                     else ccrown.transform.SetAsLastSibling();
                 }
-                chelper?.CenterNameAndCrownRank();
+                if (chelper != null)
+                {
+                    var cbadge = canvasDisp._crownRankBadgeViewModel;
+                    if (cbadge != null && cbadge.CrownRankActive) chelper.CenterNameAndCrownRank();
+                    else chelper.CenterName();
+                }
                 return;
             }
 

@@ -1047,13 +1047,16 @@ namespace BetterFG.Customization.Menu
         public enum CreativeSlot { Backdrop, Glows, Drawings, Vignette }
         public const string KEY_CREATIVE_ENABLED = "screen.creative.enabled";
 
+        public static Color CreativeSlotDefault(CreativeSlot slot) =>
+              slot == CreativeSlot.Backdrop ? new Color(0.98f, 0.93f, 0.82f)
+            : slot == CreativeSlot.Glows ? new Color(1f, 0.98f, 0.9f)
+            : slot == CreativeSlot.Drawings ? new Color(0.2f, 0.3f, 0.45f)
+            : Color.black;
+
         public static Color CreativeSlotColor(CreativeSlot slot)
         {
             string k = $"screen.creative.{slot}";
-            Color d = slot == CreativeSlot.Backdrop ? new Color(0.98f, 0.93f, 0.82f)
-                    : slot == CreativeSlot.Glows ? new Color(1f, 0.98f, 0.9f)
-                    : slot == CreativeSlot.Drawings ? new Color(0.2f, 0.3f, 0.45f)
-                    : Color.black;
+            Color d = CreativeSlotDefault(slot);
             return new Color(ParseF(k + ".r", d.r), ParseF(k + ".g", d.g), ParseF(k + ".b", d.b));
         }
 

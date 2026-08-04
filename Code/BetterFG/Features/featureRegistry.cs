@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using BetterFG.Features.AllCosmetics;
 using BetterFG.Features.MorePlatformIcon;
 using BetterFG.Features.QualificationTime;
+using BetterFG.Features.Replay;
 using BetterFG.Features.Stars;
 using BetterFG.Features.TimePlacement;
 
@@ -15,6 +16,7 @@ namespace BetterFG.Features
             FeatureStars.feature,
             FeatureMorePlatformIcon.feature,
             FeatureTimePlacement.feature,
+            FeatureReplay.feature,
             //FeatureAllCosmetics.feature
         };
 

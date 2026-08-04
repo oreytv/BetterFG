@@ -43,7 +43,7 @@ namespace BetterFG.UI.Windows
                         v.ToString(System.Globalization.CultureInfo.InvariantCulture));
                     AudioService.SetMasterVolume(v);
                 }),
-                HINT_COL, new Color(0.7f, 0.7f, 0.7f, 1f));
+                HINT_COL, new Color(0.7f, 0.7f, 0.7f, 1f), true, 1f);
 
             // ── Right: per-type toggles ───────────────────────────────────────
             float rx = PAD + halfW + PAD;

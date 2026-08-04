@@ -92,9 +92,20 @@
 	</Target>
 
 	<Target Name="CopyNAudio" AfterTargets="Build">
-	  <Copy SourceFiles="$(NuGetPackageRoot)naudio.core\2.3.0\lib\netstandard2.0\NAudio.Core.dll" DestinationFolder="$(OutDir)" />
-	  <Copy SourceFiles="$(NuGetPackageRoot)naudio.winmm\2.3.0\lib\netstandard2.0\NAudio.WinMM.dll" DestinationFolder="$(OutDir)" />
-	  <Copy SourceFiles="$(NuGetPackageRoot)naudio\2.3.0\lib\net6.0\NAudio.dll" DestinationFolder="$(OutDir)" />
+	  <ItemGroup>
+	    <NAudioLib Include="$(NuGetPackageRoot)naudio.core\2.3.0\lib\netstandard2.0\NAudio.Core.dll" />
+	    <NAudioLib Include="$(NuGetPackageRoot)naudio.winmm\2.3.0\lib\netstandard2.0\NAudio.WinMM.dll" />
+	    <NAudioLib Include="$(NuGetPackageRoot)naudio.wasapi\2.3.0\lib\netstandard2.0\NAudio.Wasapi.dll" />
+	    <NAudioLib Include="$(NuGetPackageRoot)naudio\2.3.0\lib\net6.0\NAudio.dll" />
+	  </ItemGroup>
+	  <Copy SourceFiles="@(NAudioLib)" DestinationFolder="$(OutDir)" />
+	  <!-- the plugin's resolver loads NAudio out of Libs/, and repack_payload ships that folder as-is -->
+	  <Copy SourceFiles="@(NAudioLib)" DestinationFolder="$(OutDir)Libs" />
+	  <ItemGroup>
+	    <MediaLib Include="@(ReferencePath)" Condition="$([System.String]::Copy('%(Filename)').StartsWith('Vortice')) Or $([System.String]::Copy('%(Filename)').StartsWith('SharpGen'))" />
+	  </ItemGroup>
+	  <Copy SourceFiles="@(MediaLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+	  <Copy SourceFiles="@(MediaLib)" DestinationFolder="$(OutDir)Libs" SkipUnchangedFiles="true" />
 	</Target>
 
 	<Target Name="PackBetterFGPayload" AfterTargets="CopyDll">
@@ -189,8 +200,10 @@
     <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
     <PackageReference Include="NAudio.Core" Version="2.3.0" />
 	<PackageReference Include="NAudio.WinMM" Version="2.3.0" />
+	<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
 	<PackageReference Include="NAudio" Version="2.3.0" />
 	<PackageReference Include="System.Management" Version="10.0.5" />
+	<PackageReference Include="Vortice.MediaFoundation" Version="3.2.0" />
   </ItemGroup>
 
   <ItemGroup>

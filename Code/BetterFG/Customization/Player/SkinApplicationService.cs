@@ -785,7 +785,7 @@ namespace BetterFG.Customization.Player
             activeColour.Set(option, id, GetGameColourName(option));
             SettingsService.Set("allcosmetics.colour", id);
             ApplyGameColourPatternToAllBeans();
-            CustomSkinTextureTab.ReapplyAllEnabledFromSettings();
+            ReapplyAllEnabledFromSettings();
             if (changed) SpawnGameCosmeticPoof();
         }
 
@@ -798,7 +798,7 @@ namespace BetterFG.Customization.Player
             activePattern.Set(option, id, GetGamePatternName(option));
             SettingsService.Set("allcosmetics.pattern", id);
             ApplyGameColourPatternToAllBeans();
-            CustomSkinTextureTab.ReapplyAllEnabledFromSettings();
+            ReapplyAllEnabledFromSettings();
             if (changed) SpawnGameCosmeticPoof();
         }
 
@@ -1152,7 +1152,7 @@ namespace BetterFG.Customization.Player
                             ApplyGameColourPatternToBean(beans[i]);
                 }
             }
-            CustomSkinTextureTab.ReapplyAllEnabledFromSettings();
+            ReapplyAllEnabledFromSettings();
         }
 
         public bool IsBindingGameCosmetic(GameObject bean)

@@ -480,7 +480,7 @@ namespace BetterFG.UI.Tab
                     SettingsService.Set(KEY_CANVAS_SCALE, f.ToString(System.Globalization.CultureInfo.InvariantCulture));
                     if (_scaleInput != null) _scaleInput.text = f.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
                     ApplyCanvasScale();
-                }), reserveLabel: false);
+                }), reserveLabel: false, resetTo: Mathf.InverseLerp(scaleMin, scaleMax, 1.3333f));
 
             _scaleInput = UGUIShip.CreateInputField(content, new Rect(x + togW + PAD + sliderW + PAD, cy + inputY, inputW, inputH),
                 "1.33", Color.black, WHITE, FS_SM);
@@ -730,14 +730,16 @@ namespace BetterFG.UI.Tab
             cy += LH + SH;
             UGUIShip.CreateColorControls(content, x, ref cy, slidersW,
                 () => _scTopR, () => _scTopG, () => _scTopB,
-                v => _scTopR = v, v => _scTopG = v, v => _scTopB = v, () => RefreshScreenPreview(), out _, out _, out _);
+                v => _scTopR = v, v => _scTopG = v, v => _scTopB = v, () => RefreshScreenPreview(), out _, out _, out _,
+                Color.black);
 
             // bottom color
             UGUIShip.CreateLabel(content, new Rect(x, cy, slidersW, LH), "BOTTOM COLOR", FS_SM, HINT);
             cy += LH + SH;
             UGUIShip.CreateColorControls(content, x, ref cy, slidersW,
                 () => _scBotR, () => _scBotG, () => _scBotB,
-                v => _scBotR = v, v => _scBotG = v, v => _scBotB = v, () => RefreshScreenPreview(), out _, out _, out _);
+                v => _scBotR = v, v => _scBotG = v, v => _scBotB = v, () => RefreshScreenPreview(), out _, out _, out _,
+                Color.white);
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -745,9 +747,9 @@ namespace BetterFG.UI.Tab
             // shader (texture bake) params
             UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "GRADIENT SHAPE", FS_SM, HINT);
             cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Bias", _scBias, -1f, 1f, v => { _scBias = v; RefreshScreenPreview(); });
+            BuildSliderRaw(content, x, cy, w, "Bias", _scBias, -1f, 1f, v => { _scBias = v; RefreshScreenPreview(); }, 0f);
             cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Smooth", _scSmooth, 0.1f, 8f, v => { _scSmooth = v; RefreshScreenPreview(); });
+            BuildSliderRaw(content, x, cy, w, "Smooth", _scSmooth, 0.1f, 8f, v => { _scSmooth = v; RefreshScreenPreview(); }, 1f);
             cy += LH + PAD;
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -948,7 +950,8 @@ namespace BetterFG.UI.Tab
             _lbSwatch0.color = new Color(_lbSlot0R, _lbSlot0G, _lbSlot0B);
             UGUIShip.CreateColorControls(content, x, ref cy, lbSliderW,
                 () => _lbSlot0R, () => _lbSlot0G, () => _lbSlot0B,
-                v => _lbSlot0R = v, v => _lbSlot0G = v, v => _lbSlot0B = v, () => SyncLbSwatches(), out _, out _, out _);
+                v => _lbSlot0R = v, v => _lbSlot0G = v, v => _lbSlot0B = v, () => SyncLbSwatches(), out _, out _, out _,
+                new Color(0f, 0f, 1f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -963,7 +966,8 @@ namespace BetterFG.UI.Tab
             _lbSwatch1.color = new Color(_lbSlot1R, _lbSlot1G, _lbSlot1B);
             UGUIShip.CreateColorControls(content, x, ref cy, lbSliderW,
                 () => _lbSlot1R, () => _lbSlot1G, () => _lbSlot1B,
-                v => _lbSlot1R = v, v => _lbSlot1G = v, v => _lbSlot1B = v, () => SyncLbSwatches(), out _, out _, out _);
+                v => _lbSlot1R = v, v => _lbSlot1G = v, v => _lbSlot1B = v, () => SyncLbSwatches(), out _, out _, out _,
+                new Color(0f, 0.5f, 1f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -978,7 +982,8 @@ namespace BetterFG.UI.Tab
             _lbSwatch2.color = new Color(_lbSlot2R, _lbSlot2G, _lbSlot2B);
             UGUIShip.CreateColorControls(content, x, ref cy, lbSliderW,
                 () => _lbSlot2R, () => _lbSlot2G, () => _lbSlot2B,
-                v => _lbSlot2R = v, v => _lbSlot2G = v, v => _lbSlot2B = v, () => SyncLbSwatches(), out _, out _, out _);
+                v => _lbSlot2R = v, v => _lbSlot2G = v, v => _lbSlot2B = v, () => SyncLbSwatches(), out _, out _, out _,
+                new Color(0.8f, 0.8f, 1f));
 
             content.sizeDelta = new Vector2(0f, cy + PAD);
         }
@@ -1091,7 +1096,8 @@ namespace BetterFG.UI.Tab
                     () => _crR[slot], () => _crG[slot], () => _crB[slot],
                     v => _crR[slot] = v, v => _crG[slot] = v, v => _crB[slot] = v,
                     () => { if (_crSwatch[slot] != null) _crSwatch[slot].color = new Color(_crR[slot], _crG[slot], _crB[slot]); },
-                    out _, out _, out _);
+                    out _, out _, out _,
+                    MenuCustomizationApplication.CreativeSlotDefault((MenuCustomizationApplication.CreativeSlot)slot));
 
                 if (slot < 3) { UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f)); cy += 1f + PAD; }
             }
@@ -1636,7 +1642,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, fullSliderW,
                 () => _fgCyanR, () => _fgCyanG, () => _fgCyanB,
-                v => _fgCyanR = v, v => _fgCyanG = v, v => _fgCyanB = v, () => SyncCyan(), out _, out _, out _);
+                v => _fgCyanR = v, v => _fgCyanG = v, v => _fgCyanB = v, () => SyncCyan(), out _, out _, out _,
+                new Color(0f, 0.3f, 1f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -1677,7 +1684,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, fullSliderW,
                 () => _fgBlackR, () => _fgBlackG, () => _fgBlackB,
-                v => _fgBlackR = v, v => _fgBlackG = v, v => _fgBlackB = v, () => SyncBlack(), out _, out _, out _);
+                v => _fgBlackR = v, v => _fgBlackG = v, v => _fgBlackB = v, () => SyncBlack(), out _, out _, out _,
+                new Color(0.75f, 0.75f, 0.75f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -1718,7 +1726,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, fullSliderW,
                 () => _fgYellowR, () => _fgYellowG, () => _fgYellowB,
-                v => _fgYellowR = v, v => _fgYellowG = v, v => _fgYellowB = v, () => SyncYellow(), out _, out _, out _);
+                v => _fgYellowR = v, v => _fgYellowG = v, v => _fgYellowB = v, () => SyncYellow(), out _, out _, out _,
+                new Color(1f, 0.5f, 0f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -1759,7 +1768,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, fullSliderW,
                 () => _fgBlueR, () => _fgBlueG, () => _fgBlueB,
-                v => _fgBlueR = v, v => _fgBlueG = v, v => _fgBlueB = v, () => SyncBlue(), out _, out _, out _);
+                v => _fgBlueR = v, v => _fgBlueG = v, v => _fgBlueB = v, () => SyncBlue(), out _, out _, out _,
+                new Color(0.1f, 0.25f, 0.85f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -1800,7 +1810,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, fullSliderW,
                 () => _fgPinkR, () => _fgPinkG, () => _fgPinkB,
-                v => _fgPinkR = v, v => _fgPinkG = v, v => _fgPinkB = v, () => SyncPink(), out _, out _, out _);
+                v => _fgPinkR = v, v => _fgPinkG = v, v => _fgPinkB = v, () => SyncPink(), out _, out _, out _,
+                new Color(1f, 0.2f, 0.5f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -1841,7 +1852,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, fullSliderW,
                 () => _fgOrangeR, () => _fgOrangeG, () => _fgOrangeB,
-                v => _fgOrangeR = v, v => _fgOrangeG = v, v => _fgOrangeB = v, () => SyncOrange(), out _, out _, out _);
+                v => _fgOrangeR = v, v => _fgOrangeG = v, v => _fgOrangeB = v, () => SyncOrange(), out _, out _, out _,
+                new Color(1f, 0.55f, 0.1f));
 
             content.sizeDelta = new Vector2(0f, cy + PAD);
         }
@@ -2379,15 +2391,17 @@ namespace BetterFG.UI.Tab
             cy += 1f + PAD;
 
             foreach (var slot in def.slots)
-                BuildBannerSection(content, x, ref cy, w, sectionH, fullSliderW, swatchW, toggleW, slot.label, slot.ui);
-            BuildBannerSection(content, x, ref cy, w, sectionH, fullSliderW, swatchW, toggleW, def.highlight.label, def.highlight.ui);
+                BuildBannerSection(content, x, ref cy, w, sectionH, fullSliderW, swatchW, toggleW, slot);
+            BuildBannerSection(content, x, ref cy, w, sectionH, fullSliderW, swatchW, toggleW, def.highlight);
 
             content.sizeDelta = new Vector2(0f, cy + PAD);
         }
 
         private void BuildBannerSection(Transform content, float x, ref float cy, float w, float sectionH,
-            float fullSliderW, float swatchW, float toggleW, string title, BannerColourUI ch)
+            float fullSliderW, float swatchW, float toggleW, BannerSlotUI slot)
         {
+            string title = slot.label;
+            var ch = slot.ui;
             float sectionStart = cy;
             var bgGo = new GameObject(title + "_AreaBg");
             bgGo.transform.SetParent(content, false);
@@ -2423,7 +2437,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, fullSliderW,
                 () => ch.r, () => ch.g, () => ch.b,
-                v => ch.r = v, v => ch.g = v, v => ch.b = v, () => SyncBannerColour(ch), out _, out _, out _);
+                v => ch.r = v, v => ch.g = v, v => ch.b = v, () => SyncBannerColour(ch), out _, out _, out _,
+                new Color(slot.dr, slot.dg, slot.db));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -2624,12 +2639,13 @@ namespace BetterFG.UI.Tab
 
         private Slider BuildSlider(Transform parent, float x, float y, float w,
             string lbl, float init, Action<float> onChange,
-            Color? labelColor = null, Color? fillColor = null)
-            => UGUIShip.CreateSlider(parent, x, y, w, lbl, init, LH, PAD, FS_SM, onChange, labelColor, fillColor);
+            Color? labelColor = null, Color? fillColor = null, float? resetTo = null)
+            => UGUIShip.CreateSlider(parent, x, y, w, lbl, init, LH, PAD, FS_SM, onChange, labelColor, fillColor, true, resetTo);
 
         private Slider BuildSliderRaw(Transform parent, float x, float y, float w,
-            string lbl, float init, float min, float max, Action<float> onChange)
+            string lbl, float init, float min, float max, Action<float> onChange, float? resetTo = null)
             => UGUIShip.CreateSlider(parent, x, y, w, lbl, Mathf.InverseLerp(min, max, init),
-                LH, PAD, FS_SM, t => onChange(Mathf.Lerp(min, max, t)));
+                LH, PAD, FS_SM, t => onChange(Mathf.Lerp(min, max, t)), null, null, true,
+                resetTo.HasValue ? Mathf.InverseLerp(min, max, resetTo.Value) : (float?)null);
     }
 }

@@ -340,15 +340,15 @@ namespace BetterFG.UI.Tab
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, imgCtrlW, "X", _bgImgPosX,
                 MenuCustomizationApplication.BG_IMG_POS_MIN, MenuCustomizationApplication.BG_IMG_POS_MAX,
-                v => { _bgImgPosX = v; ApplyBgImgTransform(); });
+                v => { _bgImgPosX = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, imgCtrlW, "Y", _bgImgPosY,
                 MenuCustomizationApplication.BG_IMG_POS_MIN, MenuCustomizationApplication.BG_IMG_POS_MAX,
-                v => { _bgImgPosY = v; ApplyBgImgTransform(); });
+                v => { _bgImgPosY = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, imgCtrlW, "Z", _bgImgPosZ,
                 MenuCustomizationApplication.BG_IMG_POS_MIN, MenuCustomizationApplication.BG_IMG_POS_MAX,
-                v => { _bgImgPosZ = v; ApplyBgImgTransform(); });
+                v => { _bgImgPosZ = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
             cy += LH + PAD;
 
             // scale
@@ -356,15 +356,15 @@ namespace BetterFG.UI.Tab
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, imgCtrlW, "Uniform", _bgImgScale,
                 MenuCustomizationApplication.BG_IMG_SCALE_MIN, MenuCustomizationApplication.BG_IMG_SCALE_MAX,
-                v => { _bgImgScale = v; ApplyBgImgTransform(); });
+                v => { _bgImgScale = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_SCALE_DEFAULT);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, imgCtrlW, "X", _bgImgScaleX,
                 MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MIN, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MAX,
-                v => { _bgImgScaleX = v; ApplyBgImgTransform(); });
+                v => { _bgImgScaleX = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, imgCtrlW, "Y", _bgImgScaleY,
                 MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MIN, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MAX,
-                v => { _bgImgScaleY = v; ApplyBgImgTransform(); });
+                v => { _bgImgScaleY = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT);
             cy += LH + PAD;
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -400,7 +400,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, w,
                 () => _ambientR, () => _ambientG, () => _ambientB,
-                v => _ambientR = v, v => _ambientG = v, v => _ambientB = v, () => ApplyAmbient(), out _, out _, out _);
+                v => _ambientR = v, v => _ambientG = v, v => _ambientB = v, () => ApplyAmbient(), out _, out _, out _,
+                new Color(0.5f, 0.5f, 0.5f));
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -425,13 +426,13 @@ namespace BetterFG.UI.Tab
             cy += BTN_H + SH;
 
             BuildSliderRaw(content, x, cy, w, "X", _sunRotX, 0f, 360f,
-                v => { _sunRotX = v; ApplySun(); });
+                v => { _sunRotX = v; ApplySun(); }, 50f);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, w, "Y", _sunRotY, 0f, 360f,
-                v => { _sunRotY = v; ApplySun(); });
+                v => { _sunRotY = v; ApplySun(); }, 0f);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, w, "Z", _sunRotZ, 0f, 360f,
-                v => { _sunRotZ = v; ApplySun(); });
+                v => { _sunRotZ = v; ApplySun(); }, 0f);
             cy += LH + PAD;
 
             content.sizeDelta = new Vector2(0f, cy + PAD);
@@ -515,7 +516,7 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "FOV", FS_SM, HINT);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, w, "FOV", _fov, 20f, 120f,
-                v => _fov = v);
+                v => _fov = v, 40f);
             cy += LH + PAD;
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -524,11 +525,11 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "POSITION", FS_SM, HINT);
             cy += LH + SH;
 
-            BuildSliderRaw(content, x, cy, w, "X", _camX, -5f, 5f, v => _camX = v);
+            BuildSliderRaw(content, x, cy, w, "X", _camX, -5f, 5f, v => _camX = v, 0f);
             cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Y", _camY, -5f, 5f, v => _camY = v);
+            BuildSliderRaw(content, x, cy, w, "Y", _camY, -5f, 5f, v => _camY = v, 0f);
             cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Z", _camZ, -5f, 5f, v => _camZ = v);
+            BuildSliderRaw(content, x, cy, w, "Z", _camZ, -5f, 5f, v => _camZ = v, 0f);
 
             cy += LH + PAD;
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -537,11 +538,11 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "LOOK AT OFFSET", FS_SM, HINT);
             cy += LH + SH;
 
-            BuildSliderRaw(content, x, cy, w, "X", _lookAtX, -5f, 5f, v => _lookAtX = v);
+            BuildSliderRaw(content, x, cy, w, "X", _lookAtX, -5f, 5f, v => _lookAtX = v, 0f);
             cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Y", _lookAtY, -5f, 5f, v => _lookAtY = v);
+            BuildSliderRaw(content, x, cy, w, "Y", _lookAtY, -5f, 5f, v => _lookAtY = v, 0f);
             cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Z", _lookAtZ, -5f, 5f, v => _lookAtZ = v);
+            BuildSliderRaw(content, x, cy, w, "Z", _lookAtZ, -5f, 5f, v => _lookAtZ = v, 0f);
             cy += LH + PAD;
 
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -576,7 +577,8 @@ namespace BetterFG.UI.Tab
 
             UGUIShip.CreateColorControls(content, x, ref cy, w,
                 () => _plinthColR, () => _plinthColG, () => _plinthColB,
-                v => _plinthColR = v, v => _plinthColG = v, v => _plinthColB = v, () => ApplyPlinthCol(), out _, out _, out _);
+                v => _plinthColR = v, v => _plinthColG = v, v => _plinthColB = v, () => ApplyPlinthCol(), out _, out _, out _,
+                Color.white);
 
             content.sizeDelta = new Vector2(0f, cy + PAD);
         }
@@ -791,22 +793,23 @@ namespace BetterFG.UI.Tab
         // 0..1 slider (for RGB/A)
         private Slider BuildSlider(Transform parent, float x, float y, float w,
             string lbl, float init, Action<float> onChange,
-            Color? labelColor = null, Color? fillColor = null)
-            => UGUIShip.CreateSlider(parent, x, y, w, lbl, init, LH, PAD, FS_SM, onChange, labelColor, fillColor);
+            Color? labelColor = null, Color? fillColor = null, float? resetTo = null)
+            => UGUIShip.CreateSlider(parent, x, y, w, lbl, init, LH, PAD, FS_SM, onChange, labelColor, fillColor, true, resetTo);
 
         // arbitrary range slider
         private Slider BuildSliderRaw(Transform parent, float x, float y, float w,
-            string lbl, float init, float min, float max, Action<float> onChange)
+            string lbl, float init, float min, float max, Action<float> onChange, float? resetTo = null)
         {
             var s = UGUIShip.CreateSlider(parent, x, y, w, lbl, Mathf.InverseLerp(min, max, init),
-                LH, PAD, FS_SM, t => onChange(Mathf.Lerp(min, max, t)));
+                LH, PAD, FS_SM, t => onChange(Mathf.Lerp(min, max, t)), null, null, true,
+                resetTo.HasValue ? Mathf.InverseLerp(min, max, resetTo.Value) : (float?)null);
             return s;
         }
 
         // overload for 0..1 sliders without range (matches nametag pattern)
         private Slider BuildSliderRaw(Transform parent, float x, float y, float w,
-            string lbl, float init, Action<float> onChange)
-            => BuildSlider(parent, x, y, w, lbl, init, onChange);
+            string lbl, float init, Action<float> onChange, float? resetTo = null)
+            => BuildSlider(parent, x, y, w, lbl, init, onChange, null, null, resetTo);
 
     }
 }

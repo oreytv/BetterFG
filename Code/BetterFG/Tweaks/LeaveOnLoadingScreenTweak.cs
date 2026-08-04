@@ -1,15 +1,12 @@
 ﻿using System;
 using BetterFG.Core;
+using BetterFG.Utilities;
 using FallGuysLib.UI;
 using FG.Common;
 using FG.Common.CMS;
 using FGClient;
 using FGClient.UI;
 using FGClient.UI.Core;
-using FMOD;
-using FMOD.Studio;
-using FMODUnity;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Rewired;
 using UnityEngine;
 using static FGClient.UI.UIModalMessage;
@@ -167,32 +164,8 @@ namespace BetterFG.Tweaks
             GlobalGameStateClient.Instance.ReloadGame(true, EnumDisconnectReasonGraceful.ConnectToGameFailed);
         }
 
-        private static void StopAmbienceMuteSnapshot()
-        {
-            try
-            {
-                var sys = RuntimeManager.StudioSystem;
-                if (!sys.isValid()) return;
-                if (sys.getBankList(out Il2CppStructArray<Bank> banks) != RESULT.OK || banks == null) return;
-                foreach (var bank in banks)
-                {
-                    if (!bank.isValid()) continue;
-                    if (bank.getEventList(out Il2CppStructArray<EventDescription> descs) != RESULT.OK || descs == null) continue;
-                    foreach (var d in descs)
-                    {
-                        if (!d.isValid()) continue;
-                        if (d.getPath(out string path) != RESULT.OK) continue;
-                        if (path != "snapshot:/Mix/SNAP_Mute_Ambience") continue;
-                        if (d.getInstanceList(out Il2CppStructArray<EventInstance> insts) != RESULT.OK || insts == null) continue;
-                        foreach (var inst in insts)
-                        {
-                            if (inst.isValid()) inst.stop(FMOD.Studio.STOP_MODE.IMMEDIATE);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex) { Plugin.Log?.LogWarning("LeaveOnLoading: StopAmbienceMuteSnapshot failed: " + ex.Message); }
-        }
+        private static void StopAmbienceMuteSnapshot() =>
+            FmodUtil.StopSnapshots(path => path == "snapshot:/Mix/SNAP_Mute_Ambience");
 
         // external triggers (e.g. StateQualificationScreen.Teardown) flip this on so the leave
         // window also covers the post-round transition where we'd otherwise reject the back press.

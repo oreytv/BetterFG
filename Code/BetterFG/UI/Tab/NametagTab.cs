@@ -385,7 +385,7 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateColorControls(parent, x, ref cy, sw,
                 () => _r, () => _g, () => _b,
                 v => _r = v, v => _g = v, v => _b = v, () => RefreshSampleText(),
-                out _sliderR, out _sliderG, out _sliderB);
+                out _sliderR, out _sliderG, out _sliderB, Color.white);
 
             UGUIShip.CreatePanel(parent, new Rect(x, cy, sw, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
@@ -654,17 +654,17 @@ namespace BetterFG.UI.Tab
 
             _sliderIconScale = BuildSlider(_customIconRow.transform, 0f, cy, w,
                 "S", _iconScale * 0.5f,
-                val => { _iconScale = val * 2f; SaveIconTransform(); QueueIconTransformApply(); });
+                val => { _iconScale = val * 2f; SaveIconTransform(); QueueIconTransformApply(); }, null, null, 0.5f);
             cy += LH + SH;
 
             _sliderIconOffX = BuildSlider(_customIconRow.transform, 0f, cy, w,
                 "X", _iconOffsetX + 0.5f,
-                val => { _iconOffsetX = val - 0.5f; SaveIconTransform(); QueueIconTransformApply(); });
+                val => { _iconOffsetX = val - 0.5f; SaveIconTransform(); QueueIconTransformApply(); }, null, null, 0.5f);
             cy += LH + SH;
 
             _sliderIconOffY = BuildSlider(_customIconRow.transform, 0f, cy, w,
                 "Y", _iconOffsetY + 0.5f,
-                val => { _iconOffsetY = val - 0.5f; SaveIconTransform(); QueueIconTransformApply(); });
+                val => { _iconOffsetY = val - 0.5f; SaveIconTransform(); QueueIconTransformApply(); }, null, null, 0.5f);
         }
 
         // ── Platform section ──────────────────────────────────────────────────
@@ -827,17 +827,18 @@ namespace BetterFG.UI.Tab
 
             _sliderBackingScale = BuildSlider(parent, x, cy, w,
                 "S", _backingScale / BACKING_SCALE_MAX,
-                val => { _backingScale = val * BACKING_SCALE_MAX; SaveBackingTransform(); RefreshBackingPreview(); QueueBackingApply(); });
+                val => { _backingScale = val * BACKING_SCALE_MAX; SaveBackingTransform(); RefreshBackingPreview(); QueueBackingApply(); },
+                null, null, 1f / BACKING_SCALE_MAX);
             cy += LH + SH;
 
             _sliderBackingOffX = BuildSlider(parent, x, cy, w,
                 "X", _backingOffX + 0.5f,
-                val => { _backingOffX = val - 0.5f; SaveBackingTransform(); RefreshBackingPreview(); QueueBackingApply(); });
+                val => { _backingOffX = val - 0.5f; SaveBackingTransform(); RefreshBackingPreview(); QueueBackingApply(); }, null, null, 0.5f);
             cy += LH + SH;
 
             _sliderBackingOffY = BuildSlider(parent, x, cy, w,
                 "Y", _backingOffY + 0.5f,
-                val => { _backingOffY = val - 0.5f; SaveBackingTransform(); RefreshBackingPreview(); QueueBackingApply(); });
+                val => { _backingOffY = val - 0.5f; SaveBackingTransform(); RefreshBackingPreview(); QueueBackingApply(); }, null, null, 0.5f);
             cy += LH + PAD;
 
             UGUIShip.CreatePanel(parent, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -1021,14 +1022,14 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateColorControls(content, x, ref cy, slidersW,
                 () => _crMainR, () => _crMainG, () => _crMainB,
                 v => _crMainR = v, v => _crMainG = v, v => _crMainB = v, () => RefreshCrownPreview(),
-                out _, out _, out _);
+                out _, out _, out _, new Color(1f, 0.55f, 0.1f));
 
             UGUIShip.CreateLabel(content, new Rect(x, cy, slidersW, LH), "HIGHLIGHT COLOUR", FS_SM, HINT);
             cy += LH + SH;
             UGUIShip.CreateColorControls(content, x, ref cy, slidersW,
                 () => _crHiR, () => _crHiG, () => _crHiB,
                 v => _crHiR = v, v => _crHiG = v, v => _crHiB = v, () => RefreshCrownPreview(),
-                out _, out _, out _);
+                out _, out _, out _, new Color(1f, 0.92f, 0.55f));
 
             RefreshCrownPreview();
 
@@ -1041,7 +1042,7 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateColorControls(content, x, ref cy, cw,
                 () => _crOutR, () => _crOutG, () => _crOutB,
                 v => _crOutR = v, v => _crOutG = v, v => _crOutB = v, () => { },
-                out _, out _, out _);
+                out _, out _, out _, Color.black);
 
             content.sizeDelta = new Vector2(0f, cy + PAD);
         }
@@ -1250,8 +1251,8 @@ namespace BetterFG.UI.Tab
 
         // ── Slider builder ────────────────────────────────────────────────────
 
-        private Slider BuildSlider(Transform parent, float x, float y, float w, string lbl, float init, Action<float> onChange, Color? labelColor = null, Color? fillColor = null)
-            => UGUIShip.CreateSlider(parent, x, y, w, lbl, init, LH, PAD, FS_SM, onChange, labelColor, fillColor);
+        private Slider BuildSlider(Transform parent, float x, float y, float w, string lbl, float init, Action<float> onChange, Color? labelColor = null, Color? fillColor = null, float? resetTo = null)
+            => UGUIShip.CreateSlider(parent, x, y, w, lbl, init, LH, PAD, FS_SM, onChange, labelColor, fillColor, true, resetTo);
 
         // ── Logic ─────────────────────────────────────────────────────────────
 

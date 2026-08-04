@@ -146,7 +146,7 @@ namespace BetterFG.UI.Windows
                 () => UIScaleService.Current,
                 v => UIScaleService.SetValue(v),
                 v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
-                () => UIScaleService.SetEnabled(true));
+                () => UIScaleService.SetEnabled(true), 1.2f);
 
             // ── Customization ─────────────────────────────────────────────────
             BuildHeader(parent, "CUSTOMIZATION");
@@ -154,7 +154,7 @@ namespace BetterFG.UI.Windows
             BuildSliderRow(parent, "BG opacity", ROW_EVEN, 0f, 1f,
                 () => BetterFGUIMan.BackdropOpacity,
                 v => { if (BetterFGUIMan.Instance != null) BetterFGUIMan.Instance.SetBackdropOpacity(v); },
-                v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), null, 1f);
 
             // ── Tab hover background ──────────────────────────────────────────
             // the faint pic behind a tab title on hover. optionally keep it visible always at a
@@ -180,11 +180,11 @@ namespace BetterFG.UI.Windows
             BuildSliderRow(parent, "Idle opacity", ROW_ODD, 0f, 1f,
                 () => TabHoverStyle.IdleAlpha,
                 v => { TabHoverStyle.IdleAlpha = v; TabHoverStyle.Save(); TabHoverStyle.ApplyAll(); },
-                v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), null, 0.25f);
             BuildColorRow(parent, "Tint", ROW_EVEN,
                 () => TabHoverStyle.Tint,
                 c => { TabHoverStyle.Tint = c; TabHoverStyle.Save(); TabHoverStyle.ApplyAll(); },
-                c => { if (swImg != null) swImg.color = c; });
+                c => { if (swImg != null) swImg.color = c; }, Color.white);
 
             // ── Tabs ──────────────────────────────────────────────────────────
             BuildHeader(parent, "TABS");
@@ -209,10 +209,12 @@ namespace BetterFG.UI.Windows
             BuildHeader(parent, "CONTROLLER");
             BuildSliderRow(parent, "Cursor speed", ROW_EVEN,
                 ControllerBindService.MinCursorSpeed, ControllerBindService.MaxCursorSpeed,
-                () => ControllerBindService.CursorSpeed, v => ControllerBindService.CursorSpeed = v);
+                () => ControllerBindService.CursorSpeed, v => ControllerBindService.CursorSpeed = v,
+                null, null, ControllerBindService.DefaultCursorSpeed);
             BuildSliderRow(parent, "Scroll speed", ROW_ODD,
                 ControllerBindService.MinScrollSpeed, ControllerBindService.MaxScrollSpeed,
-                () => ControllerBindService.ScrollSpeed, v => ControllerBindService.ScrollSpeed = v);
+                () => ControllerBindService.ScrollSpeed, v => ControllerBindService.ScrollSpeed = v,
+                null, null, ControllerBindService.DefaultScrollSpeed);
             BuildControllerRow(parent, ControllerBindId.ToggleUI,    "Toggle BettrFG UI", ROW_EVEN);
             BuildControllerRow(parent, ControllerBindId.ToggleWheel, "Toggle Sidewheel",  ROW_ODD);
             BuildControllerRow(parent, ControllerBindId.LeftClick,   "Left click",        ROW_EVEN);
@@ -239,10 +241,15 @@ namespace BetterFG.UI.Windows
                     Plugin.Log?.LogWarning("couldn't open backup folder: " + ex.Message);
                 }
             });
+
+            BuildHeader(parent, "BUG REPORT");
+            BuildActionRow(parent, "Make safe log copies", ROW_ODD,
+                () => BugReportService.Export(true), "Make");
         }
 
         // simple label + button row that just fires an action, no state to track
-        private static void BuildActionRow(RectTransform parent, string label, Color bg, Action onClick)
+        private static void BuildActionRow(RectTransform parent, string label, Color bg, Action onClick,
+            string btnText = "Open")
         {
             var rowGo = new GameObject("ActionRow_" + label);
             rowGo.transform.SetParent(parent, false);
@@ -264,7 +271,7 @@ namespace BetterFG.UI.Windows
             btnRt.sizeDelta = new Vector2(BTN_W, BTN_H);
 
             var btn = UGUIShip.CreateButton(btnGo.transform,
-                new Rect(0f, 0f, BTN_W, BTN_H), "Open", BTN_IDLE, Color.white, 11);
+                new Rect(0f, 0f, BTN_W, BTN_H), btnText, BTN_IDLE, Color.white, 11);
             btn.onClick.AddListener(new Action(onClick));
         }
 
@@ -313,17 +320,17 @@ namespace BetterFG.UI.Windows
         // onChange (optional) fires after each slider move with the new colour — used to live-update
         // a swatch elsewhere in the window.
         private static void BuildColorRow(RectTransform parent, string label, Color bg,
-            Func<Color> get, Action<Color> set, Action<Color> onChange = null)
+            Func<Color> get, Action<Color> set, Action<Color> onChange = null, Color? resetTo = null)
         {
             var innerSet = set;
             set = c => { innerSet(c); onChange?.Invoke(c); };
             Func<float, string> fmt = v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
             BuildSliderRow(parent, label + " R", bg, 0f, 1f,
-                () => get().r, v => { var c = get(); set(new Color(v, c.g, c.b)); }, fmt);
+                () => get().r, v => { var c = get(); set(new Color(v, c.g, c.b)); }, fmt, null, resetTo?.r);
             BuildSliderRow(parent, label + " G", bg, 0f, 1f,
-                () => get().g, v => { var c = get(); set(new Color(c.r, v, c.b)); }, fmt);
+                () => get().g, v => { var c = get(); set(new Color(c.r, v, c.b)); }, fmt, null, resetTo?.g);
             BuildSliderRow(parent, label + " B", bg, 0f, 1f,
-                () => get().b, v => { var c = get(); set(new Color(c.r, c.g, v)); }, fmt);
+                () => get().b, v => { var c = get(); set(new Color(c.r, c.g, v)); }, fmt, null, resetTo?.b);
         }
 
         private static void BuildHeader(RectTransform parent, string title)
@@ -353,7 +360,7 @@ namespace BetterFG.UI.Windows
         // pointer-up so live-rescaling controls don't apply on every drag tick.
         private static void BuildSliderRow(RectTransform parent, string label, Color bg,
             float min, float max, Func<float> get, Action<float> set,
-            Func<float, string> fmt = null, Action onCommit = null)
+            Func<float, string> fmt = null, Action onCommit = null, float? resetTo = null)
         {
             if (fmt == null) fmt = v => ((int)v).ToString();
 
@@ -446,9 +453,12 @@ namespace BetterFG.UI.Windows
                 valLbl.text = fmt(v);
             }));
 
+            if (resetTo.HasValue) UGUIShip.WireSliderReset(slider, resetTo.Value);
+
             if (onCommit != null)
             {
-                var trig = sldGo.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+                var trig = sldGo.GetComponent<UnityEngine.EventSystems.EventTrigger>()
+                    ?? sldGo.AddComponent<UnityEngine.EventSystems.EventTrigger>();
                 var up = new UnityEngine.EventSystems.EventTrigger.Entry
                 { eventID = UnityEngine.EventSystems.EventTriggerType.PointerUp };
                 up.callback.AddListener(new Action<UnityEngine.EventSystems.BaseEventData>(_ => onCommit()));

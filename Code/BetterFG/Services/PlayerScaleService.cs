@@ -14,7 +14,7 @@ namespace BetterFG.Services
 
         private const string KEY_PLAYER_SCALE = "player.scale";
         private const string KEY_SCALE_USERSET = "player.scale.userset";
-        private const string WRAPPER_NAME = "BetterFG_ScaleWrapper";
+        public const string WRAPPER_NAME = "BetterFG_ScaleWrapper";
 
         private readonly Dictionary<int, Transform> _wrappers = new Dictionary<int, Transform>();
 

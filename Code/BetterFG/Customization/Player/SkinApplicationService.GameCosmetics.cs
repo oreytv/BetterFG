@@ -226,7 +226,7 @@ namespace BetterFG.Customization.Player
             KillExistingAppliedAtKey(pendingKey);
             appliedSkins[pendingKey] = new AppliedSkinInfo { instance = clone, bean = bean, type = SkinType.Costume, disabledChildren = disabled, boundRenderers = boundRenderers, addressableInstance = true };
             pendingKeys.Remove(pendingKey);
-            CustomSkinTextureTab.ReapplyAllEnabledFromSettings();
+            ReapplyAllEnabledFromSettings();
             OnSkinApplied?.Invoke(new SkinApplyEvent { skinInfo = info, bean = bean, reason = reason });
         }
 

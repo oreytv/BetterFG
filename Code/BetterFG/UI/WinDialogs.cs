@@ -183,8 +183,9 @@ namespace BetterFG.UI
                 _mainQueue.Enqueue(() => callback(result));
             });
 
-        /// <summary>Opens a generic file picker and returns the picked file path. callback(path) on result, path is null on cancel.</summary>
-        public static void PickFile(string title, Action<string> callback)
+        /// <summary>Opens a generic file picker and returns the picked file path. callback(path) on result, path is null on cancel.
+        /// filter is a raw win32 filter ("Label\0*.ext\0"), null for every file.</summary>
+        public static void PickFile(string title, Action<string> callback, string filter = null)
             => RunOnSta(() =>
             {
                 string result = null;
@@ -194,7 +195,7 @@ namespace BetterFG.UI
                     var ofn = new OPENFILENAME
                     {
                         lStructSize = Marshal.SizeOf(typeof(OPENFILENAME)),
-                        lpstrFilter = "All Files\0*.*\0",
+                        lpstrFilter = string.IsNullOrEmpty(filter) ? "All Files\0*.*\0" : filter,
                         nFilterIndex = 1,
                         lpstrFile = buf,
                         nMaxFile = buf.Length,
@@ -220,7 +221,7 @@ namespace BetterFG.UI
                     var ofn = new OPENFILENAME
                     {
                         lStructSize = Marshal.SizeOf(typeof(OPENFILENAME)),
-                        lpstrFilter = $"BettrFG Profile\0*.{defExt}\0All Files\0*.*\0",
+                        lpstrFilter = $"{defExt.ToUpperInvariant()} file\0*.{defExt}\0All Files\0*.*\0",
                         nFilterIndex = 1,
                         lpstrFile = buf,
                         nMaxFile = buf.Length,

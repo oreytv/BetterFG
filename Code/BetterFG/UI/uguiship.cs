@@ -355,9 +355,13 @@ namespace BetterFG.UI
         }
 
         // �� Button (Rect overload) ��������������������������������������������
+        // passThroughDrag: skip the EventTrigger entirely. it implements IDragHandler, so uGUI hands
+        // it the drag and an enclosing ScrollRect never sees one — list rows can't be dragged, and a
+        // drag that starts on a row still counts as a click on release. with no trigger the
+        // ScrollRect is the drag handler, wheel included, and the click cancels itself on drag.
         public static Button CreateButton(Transform parent, Rect rect, string label,
             Color bgColor, Color textColor, int fontSize = 13, Action onClick = null,
-            bool skipHoverSound = false, bool customSprite = true)
+            bool skipHoverSound = false, bool customSprite = true, bool passThroughDrag = false)
         {
             var go = new GameObject("Button_" + label);
             go.transform.SetParent(parent, false);
@@ -394,8 +398,11 @@ namespace BetterFG.UI
                 if (shineGo != null) WireShineHover(go, shineGo);
             }
 
-            WireButtonAudio(go, skipHoverSound);
-            ForwardScrollToParent(go);
+            if (!passThroughDrag)
+            {
+                WireButtonAudio(go, skipHoverSound);
+                ForwardScrollToParent(go);
+            }
 
             CreateLabel(go.transform,
                 new Rect(0, 0, rect.width, rect.height),
@@ -797,7 +804,8 @@ namespace BetterFG.UI
         /// </summary>
         public static Slider CreateSlider(Transform parent, float x, float y, float w,
             string lbl, float init, float lh, float pad, int fontSize, Action<float> onChange,
-            Color? labelColor = null, Color? fillColor = null, bool reserveLabel = true)
+            Color? labelColor = null, Color? fillColor = null, bool reserveLabel = true,
+            float? resetTo = null)
         {
             bool hasLabel = reserveLabel && !string.IsNullOrEmpty(lbl);
             float lblW = hasLabel ? fontSize * 2f : 0f;
@@ -888,7 +896,27 @@ namespace BetterFG.UI
 
             slider.onValueChanged.AddListener(new Action<float>(v => onChange(v)));
 
+            if (resetTo.HasValue) WireSliderReset(slider, resetTo.Value);
+
             return slider;
+        }
+
+        public static void WireSliderReset(Slider slider, float resetTo)
+        {
+            float def = Mathf.Clamp(resetTo, slider.minValue, slider.maxValue);
+            var go = slider.gameObject;
+            ForwardScrollToParent(go);
+
+            var entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
+            entry.callback.AddListener(new Action<BaseEventData>(data =>
+            {
+                var ped = data?.TryCast<PointerEventData>();
+                if (ped == null || ped.button != PointerEventData.InputButton.Right) return;
+                if (Mathf.Approximately(slider.value, def)) return;
+                AudioService.PlayButtonClick();
+                slider.value = def;
+            }));
+            go.GetComponent<EventTrigger>().triggers.Add(entry);
         }
 
         // ── RGB sliders + compact hex input ──────────────────────────────────
@@ -899,7 +927,7 @@ namespace BetterFG.UI
         public static void CreateColorControls(Transform parent, float x, ref float cy, float w,
             Func<float> getR, Func<float> getG, Func<float> getB,
             Action<float> setR, Action<float> setG, Action<float> setB, Action onApply,
-            out Slider sR, out Slider sG, out Slider sB)
+            out Slider sR, out Slider sG, out Slider sB, Color? resetTo = null)
         {
             float lh = UIScale.LH, sh = UIScale.SH, pad = UIScale.PAD;
             int fs = UIScale.FS_SM;
@@ -917,15 +945,15 @@ namespace BetterFG.UI
 
             lsR = CreateSlider(parent, x, cy, w, "R", getR(), lh, pad, fs,
                 v => { if (suppress[0]) return; setR(v); onApply(); RefreshHex(); },
-                new Color(1f, 0.3f, 0.3f), new Color(1f, 0.3f, 0.3f));
+                new Color(1f, 0.3f, 0.3f), new Color(1f, 0.3f, 0.3f), true, resetTo?.r);
             cy += lh + sh;
             lsG = CreateSlider(parent, x, cy, w, "G", getG(), lh, pad, fs,
                 v => { if (suppress[0]) return; setG(v); onApply(); RefreshHex(); },
-                new Color(0.3f, 1f, 0.3f), new Color(0.3f, 1f, 0.3f));
+                new Color(0.3f, 1f, 0.3f), new Color(0.3f, 1f, 0.3f), true, resetTo?.g);
             cy += lh + sh;
             lsB = CreateSlider(parent, x, cy, w, "B", getB(), lh, pad, fs,
                 v => { if (suppress[0]) return; setB(v); onApply(); RefreshHex(); },
-                new Color(0.4f, 0.6f, 1f), new Color(0.4f, 0.6f, 1f));
+                new Color(0.4f, 0.6f, 1f), new Color(0.4f, 0.6f, 1f), true, resetTo?.b);
             cy += lh + sh;
 
             float lblW = fs * 2.4f;
@@ -1048,9 +1076,44 @@ namespace BetterFG.UI
             return field;
         }
 
-        // sized off the field's font size at 0.75x — same ratio as the PersonalBestTab header
-        // dropdown icons so all search bars match. exposed public for the one hand-rolled search
-        // field that doesn't go through CreateInputField (CustomizationTab).
+        // small icon left of the centered label on a header dropdown. shifts the label right and
+        // parks the icon at the (shifted) label's left edge so icon+text read as one centered block
+        // instead of the icon floating off in the left margin alone.
+        public static void AddHeaderIcon(Button btn, string resource)
+        {
+            if (btn == null) return;
+            var sprite = BetterFG.Utilities.EmbeddedResourceandUnity.LoadSprite(resource);
+            if (sprite == null) return;
+
+            var lbl = btn.GetComponentInChildren<Text>();
+            float size = (lbl != null ? lbl.fontSize : UIScale.FS_SM) * 0.75f;
+            float gap = 3f;
+            float shift = (size + gap) * 0.5f;
+
+            if (lbl != null)
+            {
+                var lrt = lbl.GetComponent<RectTransform>();
+                if (lrt != null) lrt.anchoredPosition += new Vector2(shift, 0f);
+            }
+
+            var go = new GameObject("HeaderIcon");
+            go.transform.SetParent(btn.transform, false);
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(1f, 0.5f);
+            rt.sizeDelta = new Vector2(size, size);
+            var img = go.AddComponent<Image>();
+            img.sprite = sprite;
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+
+            float textW = lbl != null ? lbl.preferredWidth : 0f;
+            rt.anchoredPosition = new Vector2(shift - textW * 0.5f - gap, 0f);
+        }
+
+        // sized off the field's font size at 0.75x — same ratio as the header dropdown icons so all
+        // search bars match. exposed public for the one hand-rolled search field that doesn't go
+        // through CreateInputField (CustomizationTab).
         public static void AddSearchIcon(InputField field, string resource = "BetterFG.assets.ui.button.search.png")
         {
             if (field == null) return;
@@ -1216,7 +1279,7 @@ namespace BetterFG.UI
                 onChange == null ? null : new Action<float>(v => onChange(Mathf.RoundToInt(v))));
 
         // �� Dropdown ����������������������������������������������������������
-        // shared dropdown control (the one the Font tab and Skin Texture tab use). pass options
+        // pass options
         // and an onChange; templateHeight controls how tall the open list gets. listWidth, when
         // > 0, fixes the open list to that pixel width (left-aligned) instead of matching the button.
         public static Dropdown CreateDropdown(Transform parent, Rect rect,
@@ -1640,16 +1703,20 @@ namespace BetterFG.UI
             rt.sizeDelta = new Vector2(rect.width, rect.height);
         }
 
-        public static void SetButtonSelected(Button btn, bool selected, Color selectedColor)
+        public static void SetButtonColor(Button btn, Color color)
         {
             if (btn == null) return;
-            var img = btn.GetComponent<Image>();
             var cols = btn.colors;
-            cols.normalColor = selected ? selectedColor : new Color(0.2f, 0.2f, 0.2f, 1f);
-            cols.highlightedColor = selected ? selectedColor * 1.2f : new Color(0.3f, 0.3f, 0.3f, 1f);
+            cols.normalColor = color;
+            cols.highlightedColor = color * 1.2f;
+            cols.pressedColor = color * 0.8f;
             btn.colors = cols;
-            if (img != null) img.color = cols.normalColor;
+            var img = btn.GetComponent<Image>();
+            if (img != null) img.color = color;
         }
+
+        public static void SetButtonSelected(Button btn, bool selected, Color selectedColor)
+            => SetButtonColor(btn, selected ? selectedColor : new Color(0.2f, 0.2f, 0.2f, 1f));
     }
 
     // �� GradientImage ���������������������������������������������������������

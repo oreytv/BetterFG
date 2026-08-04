@@ -2224,7 +2224,7 @@ namespace BetterFG.UI.Tab
         private System.Collections.IEnumerator ReapplySkinTexturesAfterApply()
         {
             yield return new WaitForSeconds(0.35f);
-            CustomSkinTextureTab.ReapplyAllEnabledFromSettings();
+            SkinApplicationService.ReapplyAllEnabledFromSettings();
         }
 
         private System.Collections.IEnumerator KickWithSizeCheck(SkinInfo next, string url, string infoUrl)

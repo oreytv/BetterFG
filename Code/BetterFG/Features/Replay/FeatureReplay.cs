@@ -1,0 +1,774 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
+using BetterFG.Core;
+using BetterFG.Customization.Player;
+using BetterFG.Network;
+using BetterFG.UI;
+using BetterFG.UI.Tab;
+using BetterFG.Utilities;
+using Character;
+using FG.Common;
+using FG.Common.Fraggle;
+using FGClient;
+using MPG.Utility;
+using UnityEngine;
+
+namespace BetterFG.Features.Replay
+{
+    public struct ReplayFrame
+    {
+        public float t;
+        public Vector3 pos;
+        public Quaternion rot;
+        public int stateHash;
+        public float animTime;
+        public bool ragdoll;
+        public Quaternion upperBody;
+        public Quaternion armLeft;
+        public Quaternion armRight;
+    }
+
+    public class ReplayPlayer
+    {
+        public uint playerId;
+        public string name = "";
+        public string generatedName = "";
+        public string accountId = "";
+        public string platformId = "";
+        public int teamId;
+        public uint squadId;
+        public string partyId = "";
+        public bool isLocal;
+        public bool isBot;
+        public string colour = "";
+        public string pattern = "";
+        public string costumeTop = "";
+        public string costumeBottom = "";
+        public string costumeFull = "";
+        public string faceplate = "";
+        public string victoryPose = "";
+        public string nickname = "";
+        public string nameplate = "";
+        public float bfgScale;
+        public string bfgCosmetics = "";
+        public string bfgColour = "";
+        public string bfgPattern = "";
+        public string bfgFaceplate = "";
+        public readonly List<RemoteSkinEntry> bfgSkins = new List<RemoteSkinEntry>();
+        public readonly List<SkinTexEntry> bfgTextures = new List<SkinTexEntry>();
+        public readonly List<ReplayFrame> frames = new List<ReplayFrame>();
+    }
+
+    public class ReplaySet
+    {
+        public string key = "";
+        public string chosen = "";
+        public string path = "";
+    }
+
+    public struct ReplayAudioEvent
+    {
+        public float t;
+        public uint playerId;
+        public Vector3 pos;
+        public int key;
+        public int paramStart;
+        public int paramCount;
+    }
+
+    public struct ReplayAudioParam
+    {
+        public int name;
+        public float value;
+    }
+
+    public enum ReplayCameraType { Free, Fixed, Gameplay, FixedObject }
+
+    public enum ReplayLookAt { FixedRotation, Player, Object }
+
+    public enum ReplayEasingCurve { Linear, Constant, Sine, Quadratic, Cubic, Quartic, Quintic, Exponential, Circular, Back, Elastic, Bounce }
+
+    public enum ReplayEasingDirection { In, Out, InOut, OutIn }
+
+    public static class ReplayEase
+    {
+        public const int CurveCount = 12;
+        public const int DirectionCount = 4;
+
+        public static float Apply(ReplayEasingCurve curve, ReplayEasingDirection direction, float t)
+        {
+            t = Mathf.Clamp01(t);
+            if (curve == ReplayEasingCurve.Linear) return t;
+            if (curve == ReplayEasingCurve.Constant) return 0f;
+
+            switch (direction)
+            {
+                case ReplayEasingDirection.Out:
+                    return 1f - In(curve, 1f - t);
+                case ReplayEasingDirection.InOut:
+                    return t < 0.5f ? In(curve, t * 2f) * 0.5f : 1f - In(curve, 2f - t * 2f) * 0.5f;
+                case ReplayEasingDirection.OutIn:
+                    return t < 0.5f ? (1f - In(curve, 1f - t * 2f)) * 0.5f : 0.5f + In(curve, t * 2f - 1f) * 0.5f;
+                default:
+                    return In(curve, t);
+            }
+        }
+
+        static float In(ReplayEasingCurve curve, float t)
+        {
+            switch (curve)
+            {
+                case ReplayEasingCurve.Sine: return 1f - Mathf.Cos(t * Mathf.PI * 0.5f);
+                case ReplayEasingCurve.Quadratic: return t * t;
+                case ReplayEasingCurve.Cubic: return t * t * t;
+                case ReplayEasingCurve.Quartic: return t * t * t * t;
+                case ReplayEasingCurve.Quintic: return t * t * t * t * t;
+                case ReplayEasingCurve.Exponential: return t <= 0f ? 0f : Mathf.Pow(2f, 10f * (t - 1f));
+                case ReplayEasingCurve.Circular: return 1f - Mathf.Sqrt(Mathf.Max(0f, 1f - t * t));
+                case ReplayEasingCurve.Back: return 2.70158f * t * t * t - 1.70158f * t * t;
+                case ReplayEasingCurve.Elastic:
+                    if (t <= 0f || t >= 1f) return t;
+                    return -Mathf.Pow(2f, 10f * t - 10f) * Mathf.Sin((t * 10f - 10.75f) * (2f * Mathf.PI / 3f));
+                case ReplayEasingCurve.Bounce: return 1f - BounceOut(1f - t);
+                default: return t;
+            }
+        }
+
+        static float BounceOut(float t)
+        {
+            const float n = 7.5625f;
+            const float d = 2.75f;
+            if (t < 1f / d) return n * t * t;
+            if (t < 2f / d) { t -= 1.5f / d; return n * t * t + 0.75f; }
+            if (t < 2.5f / d) { t -= 2.25f / d; return n * t * t + 0.9375f; }
+            t -= 2.625f / d;
+            return n * t * t + 0.984375f;
+        }
+    }
+
+    public class ReplayKeyframe
+    {
+        public float time;
+        public ReplayCameraType cameraType = ReplayCameraType.Free;
+        public ReplayLookAt lookAt = ReplayLookAt.FixedRotation;
+        public ReplayEasingCurve easingCurve = ReplayEasingCurve.Linear;
+        public ReplayEasingDirection easingDirection = ReplayEasingDirection.InOut;
+        public Vector3 position;
+        public Quaternion rotation = Quaternion.identity;
+        public float fov;
+        public uint targetPlayerId;
+        public uint lookAtPlayerId;
+        public int targetObject = -1;
+        public int lookAtObject = -1;
+        public float speed = 1f;
+        public bool cut;
+
+        public static readonly float[] Speeds = { 0.1f, 0.25f, 0.5f, 0.75f, 1f, 1.5f, 2f, 3f, 4f };
+
+        public static string SpeedLabel(float speed) => speed.ToString("0.##") + "x";
+
+        public static string CutLabel(bool cut) => cut ? "Hard cut" : "Blend in";
+
+        public static string TypeLabel(ReplayCameraType t) =>
+            t == ReplayCameraType.Free ? "Free camera"
+            : t == ReplayCameraType.Fixed ? "Fixed camera"
+            : t == ReplayCameraType.Gameplay ? "Gameplay camera" : "Fixed to object";
+
+        public static string LookAtLabel(ReplayLookAt l) =>
+            l == ReplayLookAt.FixedRotation ? "Fixed rotation"
+            : l == ReplayLookAt.Player ? "Certain player" : "Certain object";
+
+        public static string EasingLabel(ReplayEasingCurve c)
+        {
+            switch (c)
+            {
+                case ReplayEasingCurve.Constant: return "Constant";
+                case ReplayEasingCurve.Sine: return "Sine";
+                case ReplayEasingCurve.Quadratic: return "Quadratic";
+                case ReplayEasingCurve.Cubic: return "Cubic";
+                case ReplayEasingCurve.Quartic: return "Quartic";
+                case ReplayEasingCurve.Quintic: return "Quintic";
+                case ReplayEasingCurve.Exponential: return "Exponential";
+                case ReplayEasingCurve.Circular: return "Circular";
+                case ReplayEasingCurve.Back: return "Back";
+                case ReplayEasingCurve.Elastic: return "Elastic";
+                case ReplayEasingCurve.Bounce: return "Bounce";
+                default: return "Linear";
+            }
+        }
+
+        public static string DirectionLabel(ReplayEasingDirection d)
+        {
+            switch (d)
+            {
+                case ReplayEasingDirection.Out: return "Out";
+                case ReplayEasingDirection.InOut: return "In & out";
+                case ReplayEasingDirection.OutIn: return "Out & in";
+                default: return "In";
+            }
+        }
+    }
+
+    public class ReplayRecording
+    {
+        public int version = SaveReplay.FormatVersion;
+        public string name = "";
+        public string recordedAt = "";
+        public string buildHash = "";
+        public string roundId = "";
+        public string roundName = "";
+        public string sceneName = "";
+        public string archetypeId = "";
+        public string shareCode = "";
+        public int levelVersion;
+        public string backgroundScene = "";
+        public string levelJson = "";
+        public bool isUgc;
+        public bool isFinal;
+        public uint squadSize;
+        public float duration;
+        public float trimStart;
+        public float trimEnd;
+        public string sourcePath = "";
+        public byte[] thumbJpg;
+        public readonly List<ReplaySet> sets = new List<ReplaySet>();
+        public readonly List<ReplayPlayer> players = new List<ReplayPlayer>();
+        public readonly List<ReplayKeyframe> keyframes = new List<ReplayKeyframe>();
+        public readonly List<ReplayFrame> cameraFrames = new List<ReplayFrame>();
+        public readonly List<ReplayObject> worldObjects = new List<ReplayObject>();
+        public readonly List<string> audioKeys = new List<string>();
+        public readonly List<string> audioParamNames = new List<string>();
+        public readonly List<ReplayAudioParam> audioParams = new List<ReplayAudioParam>();
+        public readonly List<ReplayAudioEvent> audioEvents = new List<ReplayAudioEvent>();
+        public readonly List<ReplaySpeechOption> speechOptions = new List<ReplaySpeechOption>();
+        public readonly List<ReplaySpeechEvent> speechEvents = new List<ReplaySpeechEvent>();
+
+        public void SortKeyframes() => keyframes.Sort((a, b) => a.time.CompareTo(b.time));
+    }
+
+    internal static class FeatureReplay
+    {
+        public const float SampleHz = 30f;
+        const float THUMB_AT = 10f;
+
+        public static readonly BfgFeature feature = new BfgFeature("replay", "Replays", true, new List<FeatureSetting>
+        {
+            new FeatureSetting { id = "record", label = "Auto-record rounds", defaultOn = false },
+        },
+        note: "Saves what happened each round to AppData/BettrFG/Replays.");
+
+        public static bool AutoRecord => FeatureRegistry.IsOn("replay", "record");
+
+        public static void SetAutoRecord(bool on)
+        {
+            if (on) feature.SetEnabled(true);
+            feature.Set("record", on);
+        }
+
+        class Tracked
+        {
+            public ReplayPlayer player;
+            public Transform tf;
+            public Animator anim;
+            public Transform animTf;
+            public int beanId;
+            public Transform upperBody;
+            public Transform armLeft;
+            public Transform armRight;
+        }
+
+        static ReplayRecording _live;
+        static int _recGen;
+        static Transform _gameCam;
+        static RenderTexture _thumbRt;
+        static ClientGameStateView _gsv;
+        static readonly Dictionary<uint, Tracked> _tracked = new Dictionary<uint, Tracked>();
+        static readonly Dictionary<int, uint> _beanOwners = new Dictionary<int, uint>();
+        static readonly Dictionary<int, FallGuysCharacterController> _animBeans = new Dictionary<int, FallGuysCharacterController>();
+        static readonly Dictionary<string, int> _keyIds = new Dictionary<string, int>();
+        static readonly Dictionary<string, int> _paramIds = new Dictionary<string, int>();
+        static readonly Dictionary<int, int> _speechIds = new Dictionary<int, int>();
+        static readonly Dictionary<IntPtr, int> _pairKeys = new Dictionary<IntPtr, int>();
+        static readonly Dictionary<IntPtr, int[]> _paramSets = new Dictionary<IntPtr, int[]>();
+
+        public static ReplayRecording Live => _live;
+
+        public static void OnCleanupLoadingScreens()
+        {
+            ReplayThumbnail.Release(_thumbRt);
+            _thumbRt = null;
+            if (!AutoRecord) { _live = null; return; }
+
+            var rec = new ReplayRecording
+            {
+                recordedAt = DateTime.UtcNow.ToString("o"),
+                buildHash = BetterFGInfo.BuildHash,
+            };
+
+            ClientGameManager cgm = null;
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            if (gsv != null) gsv.GetLiveClientGameManager(out cgm);
+
+            if (cgm != null)
+            {
+                rec.isUgc = cgm.IsUGCRound;
+                rec.isFinal = cgm.IsFinalRound;
+                rec.squadSize = cgm.SquadSize;
+
+                var round = cgm._round;
+                if (round != null)
+                {
+                    rec.roundId = round.Id ?? "";
+                    rec.roundName = round.DisplayNameUnindented ?? "";
+                    rec.archetypeId = round.Archetype?.Id ?? "";
+                    try { rec.sceneName = round.GetSceneName() ?? ""; }
+                    catch (Exception ex) { Plugin.Log.LogWarning($"replay: no scene name off the round ({ex.Message})"); }
+                }
+            }
+
+            if (string.IsNullOrEmpty(rec.sceneName))
+                rec.sceneName = gsv?.CurrentGameLevelName ?? "";
+
+            if (rec.isUgc) CaptureCreativeLevel(rec);
+
+            _tracked.Clear();
+            _beanOwners.Clear();
+            _animBeans.Clear();
+            _keyIds.Clear();
+            _paramIds.Clear();
+            _speechIds.Clear();
+            _pairKeys.Clear();
+            _paramSets.Clear();
+            _gameCam = null;
+            _gsv = gsv;
+            _live = rec;
+
+            if (cgm?._clientPlayerManager?._playerIdIndex != null)
+            {
+                foreach (var kvp in cgm._clientPlayerManager._playerIdIndex)
+                {
+                    var data = kvp.Value;
+                    if (data == null) continue;
+                    var p = Resolve(kvp.Key);
+                    p.name = data.playerKey ?? p.name;
+                    p.accountId = data.accountID ?? p.accountId;
+                    p.platformId = data.platformID ?? p.platformId;
+                    p.teamId = data.TeamID;
+                    p.squadId = data.SquadID;
+                    p.partyId = data.partyId ?? p.partyId;
+                    p.isLocal = data.isLocalPlayer;
+                    p.isBot = data.isBot;
+                    ReadCustomisation(p, cgm._clientPlayerManager.GetPlayerCustomisationSelection(kvp.Key));
+                }
+            }
+
+            ReplayWorldRecorder.Begin(rec, _gsv != null ? _gsv.GameplayTimeElapsed : 0f);
+
+            _recGen++;
+            BetterFGUIMan.Instance.StartCoroutine(RecordCoroutine(_recGen).WrapToIl2Cpp());
+            Plugin.Log.LogInfo($"replay recording {rec.roundName} ({rec.sceneName}), {rec.sets.Count} sets, {rec.players.Count} players in already");
+        }
+
+        static IEnumerator RecordCoroutine(int gen)
+        {
+            const float step = 1f / SampleHz;
+            float due = step;
+            int ticks = 0;
+
+            while (_live != null && _recGen == gen)
+            {
+                yield return null;
+                if (_live == null || _recGen != gen) yield break;
+
+                ClientGameManager cgm = null;
+                if (_gsv != null) _gsv.GetLiveClientGameManager(out cgm);
+
+                var index = cgm?._clientPlayerManager?._playerIdIndex;
+                if (index == null) continue;
+
+                float t = _gsv.GameplayTimeElapsed;
+                float dt = Time.unscaledDeltaTime;
+                ReplayWorldRecorder.Sample(t, dt);
+
+                due -= dt;
+                if (due > 0f) continue;
+                due = due < -step ? step : due + step;
+
+                if (_gameCam == null) _gameCam = FallGuysLib.Camera.CameraUtils.GetMainCameraTransform();
+                if (_gameCam != null)
+                {
+                    _gameCam.GetPositionAndRotation(out var camPos, out var camRot);
+                    _live.cameraFrames.Add(new ReplayFrame { t = t, pos = camPos, rot = camRot });
+                }
+
+                if (_thumbRt == null && t >= THUMB_AT)
+                    _thumbRt = ReplayThumbnail.Grab(FallGuysLib.Camera.CameraUtils.GetMainCamera());
+
+                bool scaleTick = (++ticks & 7) == 0;
+
+                foreach (var kvp in index)
+                {
+                    var fgcc = kvp.Value?.fgcc;
+                    if (fgcc == null) continue;
+
+                    int beanId = fgcc.GetInstanceID();
+                    if (!_tracked.TryGetValue(kvp.Key, out var tracked) || tracked.beanId != beanId)
+                    {
+                        var found = BeanAnimationUtil.FindAnimator(fgcc.gameObject);
+                        var rag = fgcc.GetComponentInChildren<FG.Common.Character.RagdollController>(true);
+                        tracked = new Tracked
+                        {
+                            player = Resolve(kvp.Key),
+                            tf = fgcc.transform,
+                            anim = found,
+                            animTf = found != null ? found.transform : null,
+                            beanId = beanId,
+                            upperBody = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.UpperBody)?.CachedTransform,
+                            armLeft = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.ArmLeft)?.CachedTransform,
+                            armRight = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.ArmRight)?.CachedTransform,
+                        };
+                        _tracked[kvp.Key] = tracked;
+                        _beanOwners[beanId] = kvp.Key;
+                        if (found != null) _animBeans[found.GetInstanceID()] = fgcc;
+                    }
+
+                    int sh = 0;
+                    float at = 0f;
+                    if (tracked.anim != null)
+                    {
+                        var info = tracked.anim.GetCurrentAnimatorStateInfo(0);
+                        sh = info.shortNameHash;
+                        at = info.normalizedTime;
+                        if (scaleTick) tracked.player.bfgScale = tracked.animTf.lossyScale.x;
+                    }
+
+                    tracked.tf.GetPositionAndRotation(out var pos, out var rot);
+                    tracked.player.frames.Add(new ReplayFrame
+                    {
+                        t = t,
+                        pos = pos,
+                        rot = rot,
+                        stateHash = sh,
+                        animTime = at,
+                        ragdoll = tracked.upperBody != null,
+                        upperBody = tracked.upperBody != null ? tracked.upperBody.localRotation : Quaternion.identity,
+                        armLeft = tracked.armLeft != null ? tracked.armLeft.localRotation : Quaternion.identity,
+                        armRight = tracked.armRight != null ? tracked.armRight.localRotation : Quaternion.identity,
+                    });
+                }
+            }
+        }
+
+        static void CaptureCreativeLevel(ReplayRecording rec)
+        {
+            var fcm = SingletonBehaviour<FraggleCommonManager>.Instance;
+            if (fcm == null)
+            {
+                Plugin.Log.LogWarning("creative round with no FraggleCommonManager around, so no level to save with the replay");
+                return;
+            }
+
+            rec.backgroundScene = fcm.BackgroundSceneToLoad ?? "";
+            rec.levelJson = fcm.LevelLoader?.TryCast<LevelLoader>()?.WholeFile ?? "";
+
+            if (rec.roundId.StartsWith("ugc-"))
+            {
+                string code = rec.roundId.Substring(4);
+                int cut = code.LastIndexOf('_');
+                if (cut > 0 && int.TryParse(code.Substring(cut + 1), out int version))
+                {
+                    rec.levelVersion = version;
+                    code = code.Substring(0, cut);
+                }
+                rec.shareCode = code;
+            }
+
+            if (string.IsNullOrEmpty(rec.levelJson) && !string.IsNullOrEmpty(rec.shareCode))
+                rec.levelJson = fcm.FraggleLevelsCache?.GetLevelJSONFromCache(rec.shareCode, null) ?? "";
+
+            Plugin.Log.LogInfo($"creative level {rec.shareCode} v{rec.levelVersion} on {rec.backgroundScene}, {rec.levelJson.Length} chars of level json saved with it");
+        }
+
+        public static void OnPlayerSpawned(uint playerId, string accountId, string platformId, string playerName,
+            string playerGeneratedName, int teamId, uint squadId, string partyId,
+            CustomisationSelections customisationSelections, bool isLocalPlayer, bool isNPC)
+        {
+            if (_live == null) return;
+
+            var p = Resolve(playerId);
+            if (!string.IsNullOrEmpty(playerName)) p.name = playerName;
+            if (!string.IsNullOrEmpty(playerGeneratedName)) p.generatedName = playerGeneratedName;
+            if (!string.IsNullOrEmpty(accountId)) p.accountId = accountId;
+            if (!string.IsNullOrEmpty(platformId)) p.platformId = platformId;
+            p.teamId = teamId;
+            p.squadId = squadId;
+            if (!string.IsNullOrEmpty(partyId)) p.partyId = partyId;
+            p.isLocal = isLocalPlayer;
+            p.isBot = isNPC;
+            ReadCustomisation(p, customisationSelections);
+        }
+
+        public static void OnClientGameManagerShutdown()
+        {
+            var rec = _live;
+            _live = null;
+            ReplayWorldRecorder.End();
+            _tracked.Clear();
+            _beanOwners.Clear();
+            _animBeans.Clear();
+            _keyIds.Clear();
+            _paramIds.Clear();
+            _speechIds.Clear();
+            _pairKeys.Clear();
+            _paramSets.Clear();
+            _gameCam = null;
+            if (rec == null) { _gsv = null; return; }
+
+            rec.duration = _gsv?.GameplayTimeElapsed ?? 0f;
+            _gsv = null;
+            rec.thumbJpg = ReplayThumbnail.Encode(_thumbRt);
+            _thumbRt = null;
+            CaptureBfgLooks(rec);
+
+            int frames = 0;
+            foreach (var p in rec.players) frames += p.frames.Count;
+            Plugin.Log.LogInfo($"round over, {frames} frames across {rec.players.Count} players, {rec.audioEvents.Count} bean sounds over {rec.audioKeys.Count} events");
+
+            SaveReplay.Write(rec);
+        }
+
+        static void CaptureBfgLooks(ReplayRecording rec)
+        {
+            var app = CustomizationServices.ApplicationService;
+            int dressed = 0;
+
+            foreach (var p in rec.players)
+            {
+                var profile = RemoteProfileStore.TryGet(p.name);
+                if (profile == null && p.isLocal) profile = RemoteProfileStore.LocalLoadout();
+                if (profile != null) p.bfgSkins.AddRange(profile.skins);
+
+                if (p.isLocal && app != null)
+                {
+                    p.bfgCosmetics = string.Join("|", app.GetAppliedGameCosmeticIds());
+                    p.bfgColour = app.GetAppliedGameColourId();
+                    p.bfgPattern = app.GetAppliedGamePatternId();
+                    p.bfgFaceplate = app.GetAppliedGameFaceplateId();
+
+                    foreach (var tex in SkinApplicationService.LoadEntries())
+                        if (tex.enabled && !string.IsNullOrEmpty(tex.texPath)) p.bfgTextures.Add(tex);
+                }
+
+                if (p.bfgSkins.Count > 0 || p.bfgTextures.Count > 0 || !string.IsNullOrEmpty(p.bfgCosmetics)) dressed++;
+            }
+
+            if (dressed > 0) Plugin.Log.LogInfo($"replay kept the BettrFG look for {dressed}/{rec.players.Count} players");
+        }
+
+        public static FallGuysCharacterController BeanFor(Animator animator)
+        {
+            int id = animator.GetInstanceID();
+            if (_animBeans.TryGetValue(id, out var bean)) return bean;
+            bean = animator.GetComponentInParent<FallGuysCharacterController>();
+            _animBeans[id] = bean;
+            return bean;
+        }
+
+        public static void CaptureAudio(AudioEvent2D3DPairSO pair, FallGuysCharacterController controller, Vector3 pos, AudioParamContainer parameters)
+        {
+            if (_live == null || pair == null) return;
+
+            IntPtr handle = pair.Pointer;
+            if (!_pairKeys.TryGetValue(handle, out int key))
+            {
+                string name = pair.audioEvent3D;
+                if (string.IsNullOrEmpty(name)) name = pair.audioEvent2D;
+                key = string.IsNullOrEmpty(name) ? -1 : Intern(_live.audioKeys, _keyIds, name);
+                _pairKeys[handle] = key;
+            }
+            if (key < 0) return;
+
+            RecordAudio(key, controller, pos, parameters);
+        }
+
+        public static void CaptureAudio(string key, FallGuysCharacterController controller, Vector3 pos)
+        {
+            if (_live == null || string.IsNullOrEmpty(key)) return;
+            if (key.StartsWith("UI_Gen_", StringComparison.Ordinal)) return;
+            RecordAudio(Intern(_live.audioKeys, _keyIds, key), controller, pos, null);
+        }
+
+        static void RecordAudio(int key, FallGuysCharacterController controller, Vector3 pos, AudioParamContainer parameters)
+        {
+            var rec = _live;
+            int paramStart = rec.audioParams.Count;
+            int paramCount = 0;
+
+            var values = parameters?._floatValues;
+            if (values != null)
+            {
+                var names = parameters._floatNames;
+                if (names != null && names.Length == values.Length)
+                {
+                    IntPtr handle = names.Pointer;
+                    if (!_paramSets.TryGetValue(handle, out var ids) || ids.Length != names.Length)
+                    {
+                        ids = new int[names.Length];
+                        for (int i = 0; i < ids.Length; i++)
+                        {
+                            string name = names[i];
+                            ids[i] = string.IsNullOrEmpty(name) ? -1 : Intern(rec.audioParamNames, _paramIds, name);
+                        }
+                        _paramSets[handle] = ids;
+                    }
+
+                    for (int i = 0; i < ids.Length; i++)
+                    {
+                        if (ids[i] < 0) continue;
+                        rec.audioParams.Add(new ReplayAudioParam { name = ids[i], value = values[i] });
+                        paramCount++;
+                    }
+                }
+            }
+
+            uint owner = 0;
+            if (controller != null) _beanOwners.TryGetValue(controller.GetInstanceID(), out owner);
+
+            rec.audioEvents.Add(new ReplayAudioEvent
+            {
+                t = _gsv?.GameplayTimeElapsed ?? 0f,
+                playerId = owner,
+                pos = pos,
+                key = key,
+                paramStart = paramStart,
+                paramCount = paramCount,
+            });
+        }
+
+        public static void CaptureSpeech(GameObject bean, int optionId)
+        {
+            if (_live == null || bean == null) return;
+
+            var fgcc = bean.GetComponent<FallGuysCharacterController>();
+            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.GetInstanceID(), out uint owner)) return;
+
+            if (!_speechIds.TryGetValue(optionId, out int index))
+            {
+                var lookup = SingletonBehaviour<SpeechOptionsManager>.Instance?._speechOptionsLookup;
+                var option = lookup != null && lookup.ContainsKey(optionId) ? lookup[optionId] : null;
+                var image = option?.TryCast<ImageSpeechOption>();
+
+                index = image == null ? -1 : _live.speechOptions.Count;
+                if (image != null) _live.speechOptions.Add(Describe(option, image, optionId));
+                _speechIds[optionId] = index;
+
+                if (option == null) Plugin.Log.LogWarning($"replay: speech option {optionId} isn't in the lookup, that bubble won't be saved");
+                else if (image == null) Plugin.Log.LogInfo($"{option.name} is an action prompt, not a phrase or emoticon — leaving it out of the replay");
+            }
+            if (index < 0) return;
+
+            float t = _gsv?.GameplayTimeElapsed ?? 0f;
+            var saved = _live.speechOptions[index];
+            _live.speechEvents.Add(new ReplaySpeechEvent
+            {
+                t = t,
+                end = t + saved.duration,
+                playerId = owner,
+                option = index,
+            });
+        }
+
+        static ReplaySpeechOption Describe(SocialOption option, ImageSpeechOption image, int optionId)
+        {
+            var saved = new ReplaySpeechOption
+            {
+                itemId = ItemId(option),
+                speechId = optionId,
+                duration = option.HasDuration && option.Duration > 0f ? option.Duration : 3f,
+                text = option.DisplayName ?? "",
+                hasText = option.TryCast<TextAndImageSpeechOption>() != null,
+                shiny = option.IsShiny,
+            };
+
+            var sprite = image._sprite;
+            if (!Packable(sprite)) sprite = image.CurrentSprite;
+            if (!Packable(sprite)) return saved;
+
+            try
+            {
+                saved.image = sprite.texture.EncodeToPNG();
+                Plugin.Log.LogInfo($"packed the custom art for '{option.name}' with the replay, {saved.image.Length / 1024}kb");
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't pack the art for '{option.name}': {ex.Message}"); }
+
+            return saved;
+        }
+
+        static bool Packable(Sprite sprite)
+        {
+            var texture = sprite?.texture;
+            if (texture == null || !texture.isReadable) return false;
+            return sprite.rect.width == texture.width && sprite.rect.height == texture.height;
+        }
+
+        static int Intern(List<string> table, Dictionary<string, int> ids, string value)
+        {
+            if (ids.TryGetValue(value, out int index)) return index;
+            index = table.Count;
+            table.Add(value);
+            ids[value] = index;
+            return index;
+        }
+
+        static ReplayPlayer Resolve(uint playerId)
+        {
+            var list = _live.players;
+            for (int i = 0; i < list.Count; i++)
+                if (list[i].playerId == playerId) return list[i];
+            var p = new ReplayPlayer { playerId = playerId };
+            list.Add(p);
+            return p;
+        }
+
+        static void ReadCustomisation(ReplayPlayer p, CustomisationSelections sel)
+        {
+            if (sel == null) return;
+            p.colour = ItemId(sel.ColourOption);
+            p.pattern = ItemId(sel.PatternOption);
+            p.costumeTop = CostumeId(sel.CostumeTopOption);
+            p.costumeBottom = CostumeId(sel.CostumeBottomOption);
+            p.costumeFull = CostumeId(sel.CostumeFullOption);
+            p.faceplate = ItemId(sel.FaceplateOption);
+            p.victoryPose = ItemId(sel.VictoryPoseOption);
+            p.nameplate = ItemId(sel.NameplateOption);
+            p.nickname = ItemId(sel.NicknameOption);
+        }
+
+        static string CostumeId(CostumeOption item)
+        {
+            if (item == null || item.IsNoneCostume) return "";
+            return ItemId(item);
+        }
+
+        public static string ItemId(ItemDefinitionSO item)
+        {
+            if (item == null) return "";
+            return FirstNonEmpty(item.FullItemId, item.ItemId, item.name);
+        }
+
+        static string ItemId(ItemDefinitionClass item)
+        {
+            if (item == null) return "";
+            return FirstNonEmpty(item.FullItemId, item.ItemId, item.DisplayName);
+        }
+
+        static string FirstNonEmpty(string a, string b, string c)
+        {
+            if (!string.IsNullOrEmpty(a)) return a;
+            if (!string.IsNullOrEmpty(b)) return b;
+            return c ?? "";
+        }
+    }
+}

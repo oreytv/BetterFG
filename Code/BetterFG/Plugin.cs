@@ -42,6 +42,7 @@ namespace BetterFG
             Log.LogInfo($"{BettrFGMeta.DisplayName} {BetterFGInfo.Version} [{BetterFGInfo.BuildHash}] loaded");
 
             SettingsService.Init();
+            BugReportService.Init();
             BetterFGConfig.Init();
             AudioService.Init();
             MenuMusicService.Init();
@@ -74,7 +75,6 @@ namespace BetterFG
 
             // decode saved custom skin textures now, at load, so the first auto-reapply on menu enter
             // hits the cache instead of reading + decoding the whole png on that frame.
-            BetterFG.UI.Tab.CustomSkinTextureTab.PrewarmTextureCache();
             BetterFG.Customization.Player.SkinApplicationService.PrewarmCustomTexCache();
 
             Cursor.lockState = CursorLockMode.None;
@@ -97,7 +97,6 @@ namespace BetterFG
 
         private static Assembly ResolveNAudio(object _, ResolveEventArgs args)
         {
-            if (!args.Name.StartsWith("NAudio")) return null;
             string libs = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Libs");
             string path = Path.Combine(libs, new AssemblyName(args.Name).Name + ".dll");
             return File.Exists(path) ? Assembly.LoadFrom(path) : null;
@@ -142,6 +141,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.QualificationTime.PBPopupDestroyWatcher>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Nametag.GifAnimator>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Tweaks.BlinkDriverComponent>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.Replay.ReplayViewer>();
 
             // tabs
             ClassInjector.RegisterTypeInIl2Cpp<CustomizationTab>();
@@ -151,10 +151,12 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<EmoticonsPhrasesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<FeaturesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomSkinTextureTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<SkinTextureWizardTab>();
             ClassInjector.RegisterTypeInIl2Cpp<AllCosmeticsTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CreativeTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomCreativeTextureTab>();
             ClassInjector.RegisterTypeInIl2Cpp<PersonalBestTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<ReplayTab>();
 
             // windows
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGWindow>();
@@ -171,7 +173,6 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<ObstacleTextureWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.BatchEditWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.CreativeSelectionWatcher>();
-            ClassInjector.RegisterTypeInIl2Cpp<SkinTextureCostumeWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<WindowDragHandle>();
             ClassInjector.RegisterTypeInIl2Cpp<TweaksWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<OptionsWindow>();
@@ -284,6 +285,7 @@ namespace BetterFG
             BetterFGTabRegistry.Register<AllCosmeticsTab>();
             BetterFGTabRegistry.Register<CreativeTab>();
             BetterFGTabRegistry.Register<PersonalBestTab>();
+            BetterFGTabRegistry.Register<ReplayTab>();
 
             var uiManGo = new GameObject("BetterFG_UI");
             uiManGo.hideFlags = HideFlags.HideAndDontSave;

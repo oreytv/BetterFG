@@ -31,6 +31,7 @@ namespace BetterFG.Patches.BettrFGRounds
         {
             BetterFG.Features.UnityRound.RoundMusicService.Stop();
             UnityRoundAbortHooks.Remove();
+            BetterFG.Features.Replay.FeatureReplay.OnClientGameManagerShutdown();
         }
 
         [HarmonyPostfix]

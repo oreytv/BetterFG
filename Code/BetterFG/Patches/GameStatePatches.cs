@@ -197,7 +197,7 @@ namespace BetterFG.Patches.GameStates
         private static IEnumerator DelayedCustomSkinTextureReapply()
         {
             yield return new WaitForSeconds(0.3f);
-            CustomSkinTextureTab.ReapplyAllEnabledFromSettings();
+            SkinApplicationService.ReapplyAllEnabledFromSettings();
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
         }
 
@@ -464,13 +464,8 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix()
         {
-            var bean = BeanMonitorService.CheckLevelEditorBean();
-            var fgcc = bean != null ? bean.GetComponent<FallGuysCharacterController>() : null;
+            BeanMonitorService.CheckLevelEditorBean();
             CameraUtils.DisableXRayRenderer();
-
-            var host = BeanMonitorService.Instance;
-            if (host != null && fgcc != null)
-                host.StartCoroutine(HandleServerStartRoundPa.DelayedDisableRagdoll(fgcc, 1f).WrapToIl2Cpp());
         }
     }
 
@@ -753,8 +748,13 @@ namespace BetterFG.Patches.GameStates
     internal static class RoundBeanSpawn
     {
         [HarmonyPostfix]
-        public static void Postfix(MPGNetObject pNetObject, bool isLocalPlayer)
+        public static void Postfix(MPGNetObject pNetObject, string accountId, string platformId, uint playerId,
+            string playerName, string playerGeneratedName, int teamId, uint squadId, string partyId,
+            CustomisationSelections customisationSelections, bool isLocalPlayer, bool isNPC)
         {
+            BetterFG.Features.Replay.FeatureReplay.OnPlayerSpawned(playerId, accountId, platformId, playerName,
+                playerGeneratedName, teamId, squadId, partyId, customisationSelections, isLocalPlayer, isNPC);
+
             if (!isLocalPlayer || pNetObject == null) return;
             var bean = pNetObject.gameObject;
             if (bean == null) return;
@@ -1245,6 +1245,7 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix()
         {
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnCleanupLoadingScreens();
+            BetterFG.Features.Replay.FeatureReplay.OnCleanupLoadingScreens();
 
             BetterFGUnityRounds.RestoreMusic();
 
@@ -1353,7 +1354,7 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // round start � bean + nametag + ragdoll + phrases
+    // round start � bean + nametag + phrases
 
     [HarmonyPatch(typeof(GlobalGameStateClient), "HandleServerStartRound")]
     public class HandleServerStartRoundPa
@@ -1422,10 +1423,6 @@ namespace BetterFG.Patches.GameStates
             // assist, server info, respawn, lively fall guys). each keeps its own logic; this is the
             // single call site. InstantLandingIndicator isn't registered as a tweak so it stays above.
             BetterFG.Tweaks.BfgTweak.RaiseRoundStart();
-
-            var host = BeanMonitorService.Instance;
-            if (host != null)
-                host.StartCoroutine(DelayedDisableRagdoll(fgcc, 5.1f).WrapToIl2Cpp());
         }
 
 
@@ -1446,16 +1443,6 @@ namespace BetterFG.Patches.GameStates
                 yield return new WaitForSeconds(1f);
                 NametagPatchHub.RefreshRemoteNametags();
                 NametagIconApplicator.ApplyNametag();
-            }
-        }
-
-        public static IEnumerator DelayedDisableRagdoll(FallGuysCharacterController fgcc, float time)
-        {
-            yield return new WaitForSeconds(time);
-            if (fgcc != null)
-            {
-                //Debug.Log("disabling upper body ragdoll");
-                //PlayerUtils.DisablePlayerUpperBodyRagdoll(fgcc);
             }
         }
     }

@@ -86,5 +86,12 @@ foreach ($game in $folders) {
             Copy-Item -LiteralPath $src -Destination (Join-Path $pluginDir $name) -Force
         }
     }
+
+    $libsSource = Join-Path $BuildOutput "Libs"
+    if (Test-Path $libsSource) {
+        $libsDest = Join-Path $pluginDir "Libs"
+        New-Item -ItemType Directory -Path $libsDest -Force | Out-Null
+        Copy-Item -Path (Join-Path $libsSource "*") -Destination $libsDest -Force
+    }
     Write-Host "$Store -> plugin copied to $pluginDir"
 }

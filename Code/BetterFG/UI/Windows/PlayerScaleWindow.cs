@@ -56,6 +56,7 @@ namespace BetterFG.UI.Windows
             _slider.minValue = 0.5f;
             _slider.maxValue = 1.5f;
             _slider.value = savedScale;
+            UGUIShip.WireSliderReset(_slider, 1f);
 
             float bx = PAD + sliderW + spacing;
             UGUIShip.CreateButton(contentRoot,

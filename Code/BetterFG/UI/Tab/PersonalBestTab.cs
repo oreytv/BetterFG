@@ -198,7 +198,7 @@ namespace BetterFG.UI.Tab
                     UpdateFilterBtnColor();
                     ApplySearch();
                 }), FS_SM, listW);
-            AddHeaderIcon(_filterBtn, "BetterFG.assets.ui.button.filter.png");
+            UGUIShip.AddHeaderIcon(_filterBtn, "BetterFG.assets.ui.button.filter.png");
 
             // Sort: single-select, same control/look as Filters (radio checkmarks, closes on pick)
             var sortBtn = UGUIShip.CreateMultiSelectDropdown(contentRoot, new Rect(ddX + ddW + PAD, y, ddW, HEADER_H),
@@ -210,7 +210,7 @@ namespace BetterFG.UI.Tab
                     _sort = i == 1 ? SortMode.Name : i == 2 ? SortMode.Date : SortMode.Time;
                     SortRows();
                 }), FS_SM, listW, 20f, true, true);
-            AddHeaderIcon(sortBtn, "BetterFG.assets.ui.button.sort.png");
+            UGUIShip.AddHeaderIcon(sortBtn, "BetterFG.assets.ui.button.sort.png");
 
             // direction toggle: ↑ asc / ↓ desc, flips the active sort
             Button dirBtn = null;
@@ -308,42 +308,6 @@ namespace BetterFG.UI.Tab
         // drops an image overlay inside a sub-tab button, behind the text. not a raycast target so
         // it never steals the button's clicks. the label was added before this, so SetSiblingIndex(0)
         // puts the overlay underneath it.
-        // small icon left of the centered label on the header dropdowns. square, sized to the label
-        // glyph height so it lines up with the text regardless of font scale. shifts the label right
-        // and parks the icon at the (shifted) label's left edge so icon+text read as one centered
-        // block instead of the icon floating off in the left margin alone.
-        static void AddHeaderIcon(Button btn, string resource)
-        {
-            if (btn == null) return;
-            var sprite = EmbeddedResourceandUnity.LoadSprite(resource);
-            if (sprite == null) return;
-            var lbl = btn.GetComponentInChildren<Text>();
-            float size = (lbl != null ? lbl.fontSize : FS_SM) * 0.75f;
-            float gap = 3f;
-            float shift = (size + gap) * 0.5f;
-
-            if (lbl != null)
-            {
-                var lrt = lbl.GetComponent<RectTransform>();
-                if (lrt != null) lrt.anchoredPosition += new Vector2(shift, 0f);
-            }
-
-            // build, then measure the text and place the icon at the label's left edge
-            var go = new GameObject("HeaderIcon");
-            go.transform.SetParent(btn.transform, false);
-            var rt = go.AddComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(1f, 0.5f);
-            rt.sizeDelta = new Vector2(size, size);
-            var img = go.AddComponent<Image>();
-            img.sprite = sprite;
-            img.preserveAspect = true;
-            img.raycastTarget = false;
-
-            float textW = lbl != null ? lbl.preferredWidth : 0f;
-            rt.anchoredPosition = new Vector2(shift - textW * 0.5f - gap, 0f);
-        }
-
         static void AddButtonOverlay(Button btn, string resource)
         {
             if (btn == null) return;

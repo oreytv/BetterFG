@@ -1063,12 +1063,7 @@ namespace BetterFG.Features.QualificationTime
         static string LegacyGhostPath(string cacheId) =>
             Path.Combine(GhostDir, string.Concat(cacheId.Split(Path.GetInvalidFileNameChars())) + ".ghost");
 
-        static Animator FindBeanAnimator(GameObject bean)
-        {
-            var wrapper = bean.transform.Find("BetterFG_ScaleWrapper");
-            var charT = (wrapper != null ? wrapper : bean.transform).Find("Character");
-            return charT?.GetComponent<Animator>();
-        }
+        static Animator FindBeanAnimator(GameObject bean) => BeanAnimationUtil.FindAnimator(bean);
 
         static void SaveGhost(string cacheId, PbType type)
         {
@@ -1402,28 +1397,12 @@ namespace BetterFG.Features.QualificationTime
                         else driftFrames = 0;
                     }
 
-                    float r = FallGuysCharacterController.GroundCheckSphereCastRadius;
-                    bool grounded = Physics.SphereCast(ghostGo.transform.position + Vector3.up * (r + 0.1f),
-                        r, Vector3.down, out var hit, 0.4f,
-                        FallGuysCharacterController.groundMask, QueryTriggerInteraction.Ignore);
-                    ghostAnim.SetBool(FallGuysCharacterController.groundedParam, grounded);
-                    ghostAnim.SetFloat(FallGuysCharacterController.slopeAngleParam,
-                        grounded ? Vector3.Angle(hit.normal, Vector3.up) : 0f);
-
                     // velocity from the ghost's own per-frame movement, not the recorded frame pair whose
                     // replicated timestamps often match and give dt=0. zVel is XZ speed magnitude, not the
                     // facing-forward component, which collapsed to ~0 when the bean moved off its facing
                     Vector3 pos = ghostGo.transform.position;
-                    if (Time.deltaTime > 0f && havePrevPos)
-                    {
-                        Vector3 v = (pos - prevPos) / Time.deltaTime;
-                        Vector3 local = Quaternion.Inverse(ghostGo.transform.rotation) * new Vector3(v.x, 0f, v.z);
-                        float mod = FallGuysCharacterController.AnimationVelocityParamModifier;
-                        ghostAnim.SetFloat(FallGuysCharacterController.zVelParam, new Vector2(v.x, v.z).magnitude * mod);
-                        ghostAnim.SetFloat(FallGuysCharacterController.xVelParam, local.x * mod);
-                        ghostAnim.SetFloat(FallGuysCharacterController.yVelParam, v.y * mod);
-                        ghostAnim.SetFloat(FallGuysCharacterController.airOnlyYVelParam, grounded ? 0f : v.y * mod);
-                    }
+                    BeanAnimationUtil.DriveLocomotion(ghostAnim, ghostGo.transform,
+                        havePrevPos && Time.deltaTime > 0f ? (pos - prevPos) / Time.deltaTime : Vector3.zero);
                     prevPos = pos;
                     havePrevPos = true;
                 }

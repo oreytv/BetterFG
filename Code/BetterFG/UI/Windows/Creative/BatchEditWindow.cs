@@ -268,15 +268,15 @@ namespace BetterFG.UI.Windows.Creative
 
             var sR = UGUIShip.CreateSlider(root, PAD, y, w - 26f, "R", _colour.r, 16f, 4f, FS_SM,
                 new Action<float>(v => { if (suppress[0]) return; _colour.r = v; PreviewColourSet(); RefreshHex(); }),
-                new Color(1f, 0.4f, 0.4f), new Color(1f, 0.3f, 0.3f));
+                new Color(1f, 0.4f, 0.4f), new Color(1f, 0.3f, 0.3f), true, 1f);
             y += 22f;
             var sG = UGUIShip.CreateSlider(root, PAD, y, w, "G", _colour.g, 16f, 4f, FS_SM,
                 new Action<float>(v => { if (suppress[0]) return; _colour.g = v; PreviewColourSet(); RefreshHex(); }),
-                new Color(0.4f, 1f, 0.4f), new Color(0.3f, 1f, 0.3f));
+                new Color(0.4f, 1f, 0.4f), new Color(0.3f, 1f, 0.3f), true, 0.4f);
             y += 22f;
             var sB = UGUIShip.CreateSlider(root, PAD, y, w, "B", _colour.b, 16f, 4f, FS_SM,
                 new Action<float>(v => { if (suppress[0]) return; _colour.b = v; PreviewColourSet(); RefreshHex(); }),
-                new Color(0.4f, 0.6f, 1f), new Color(0.3f, 0.5f, 1f));
+                new Color(0.4f, 0.6f, 1f), new Color(0.3f, 0.5f, 1f), true, 0.2f);
             y += 26f;
 
             float lblW = FS_SM * 2.4f;
@@ -307,19 +307,19 @@ namespace BetterFG.UI.Windows.Creative
             _preview = null; // no flat-colour preview chip in modify mode
             UGUIShip.CreateSlider(root, PAD, y, w, "Bright", _modBright * 0.5f + 0.5f, 16f, 4f, FS_SM,
                 new Action<float>(v => { _modBright = (v - 0.5f) * 2f; PreviewColourModify(); }),
-                new Color(0.9f, 0.9f, 0.6f), new Color(0.8f, 0.8f, 0.5f));
+                new Color(0.9f, 0.9f, 0.6f), new Color(0.8f, 0.8f, 0.5f), true, 0.5f);
             y += 22f;
             UGUIShip.CreateSlider(root, PAD, y, w, "Contr", _modContrast * 0.5f + 0.5f, 16f, 4f, FS_SM,
                 new Action<float>(v => { _modContrast = (v - 0.5f) * 2f; PreviewColourModify(); }),
-                new Color(0.7f, 0.7f, 0.7f), new Color(0.6f, 0.6f, 0.6f));
+                new Color(0.7f, 0.7f, 0.7f), new Color(0.6f, 0.6f, 0.6f), true, 0.5f);
             y += 22f;
             UGUIShip.CreateSlider(root, PAD, y, w, "Hue", _modHue / 360f, 16f, 4f, FS_SM,
                 new Action<float>(v => { _modHue = v * 360f; PreviewColourModify(); }),
-                new Color(0.8f, 0.5f, 0.9f), new Color(0.7f, 0.4f, 0.8f));
+                new Color(0.8f, 0.5f, 0.9f), new Color(0.7f, 0.4f, 0.8f), true, 0f);
             y += 22f;
             UGUIShip.CreateSlider(root, PAD, y, w, "Sat", _modSat * 0.5f + 0.5f, 16f, 4f, FS_SM,
                 new Action<float>(v => { _modSat = (v - 0.5f) * 2f; PreviewColourModify(); }),
-                new Color(0.5f, 0.9f, 0.7f), new Color(0.4f, 0.8f, 0.6f));
+                new Color(0.5f, 0.9f, 0.7f), new Color(0.4f, 0.8f, 0.6f), true, 0.5f);
             y += 26f;
         }
 
