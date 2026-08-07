@@ -35,6 +35,13 @@ namespace BetterFG.Network
         public float backingOffX, backingOffY;
         public float backingScale;
         public string nickname;
+
+        public RemoteNametagInfo WithoutCustomName()
+        {
+            var copy = (RemoteNametagInfo)MemberwiseClone();
+            copy.customName = "";
+            return copy;
+        }
     }
 
     public class RemoteSkinEntry

@@ -58,6 +58,7 @@ namespace BetterFG.UI.Tab
         private const string KEY_BACKING_SCALE = "nametag.backing.scale";
         private const string KEY_NICKNAME_ENABLED = "nametag.nickname.enabled";
         private const string KEY_NICKNAME_TEXT = "nametag.nickname.text";
+        private const string KEY_GHOST_NAMETAG = "nametag.ghost.enabled";
 
         // ── Colors ────────────────────────────────────────────────────────────
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
@@ -102,6 +103,8 @@ namespace BetterFG.UI.Tab
         private bool _bold = false;
         private bool _italic = false;
         private string _customName = "";
+        private bool _ghostNametag = false;
+        private Text _ghostNametagBtnLabel;
 
         private enum IconMode { None, Flag, Custom }
         private IconMode _iconMode = IconMode.None;
@@ -431,6 +434,19 @@ namespace BetterFG.UI.Tab
                 new Rect(x + stylestep * 3f, cy, stylew, BTN_H), "Gold RGB",
                 _nameStyle == NameStyle.GoldColored ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() => SetNameStyle(NameStyle.GoldColored)));
+            cy += BTN_H + PAD;
+
+            UGUIShip.CreatePanel(parent, new Rect(x, cy, sw, 1f), new Color(1f, 1f, 1f, 0.06f));
+            cy += 1f + PAD;
+
+            UGUIShip.CreateLabel(parent, new Rect(x, cy, sw, LH), "GHOST", FS_SM, HINT);
+            cy += LH + SH;
+
+            var ghostBtn = UGUIShip.CreateButton(parent,
+                new Rect(x, cy, sw, BTN_H),
+                _ghostNametag ? "Show ghost nametag: ON" : "Show ghost nametag: OFF",
+                BTN_DARK, WHITE, FS_SM, new Action(OnToggleGhostNametag));
+            _ghostNametagBtnLabel = ghostBtn.GetComponentInChildren<Text>();
             cy += BTN_H + PAD;
         }
 
@@ -1331,6 +1347,13 @@ namespace BetterFG.UI.Tab
             RefreshSampleText();
         }
 
+        private void OnToggleGhostNametag()
+        {
+            _ghostNametag = !_ghostNametag;
+            SettingsService.Set(KEY_GHOST_NAMETAG, _ghostNametag ? "true" : "false");
+            if (_ghostNametagBtnLabel != null) _ghostNametagBtnLabel.text = _ghostNametag ? "Show ghost nametag: ON" : "Show ghost nametag: OFF";
+        }
+
         private void OnApply()
         {
             SaveSettings();
@@ -1463,6 +1486,8 @@ namespace BetterFG.UI.Tab
 
             _nicknameEnabled = SettingsService.Get(KEY_NICKNAME_ENABLED, "false") == "true";
             _nicknameText = SettingsService.Get(KEY_NICKNAME_TEXT, "");
+
+            _ghostNametag = SettingsService.Get(KEY_GHOST_NAMETAG, "false") == "true";
         }
 
         private void SaveSettings()

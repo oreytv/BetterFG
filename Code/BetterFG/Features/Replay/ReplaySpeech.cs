@@ -55,6 +55,9 @@ namespace BetterFG.Features.Replay
         SpeechBubbleViewModel _textPrefab;
         Camera _cam;
 
+        public bool PhrasesVisible = true;
+        public Func<uint, bool> PlayerVisible;
+
         public ReplaySpeechPlayer(ReplayRecording rec, Transform root)
         {
             _rec = rec;
@@ -170,6 +173,10 @@ namespace BetterFG.Features.Replay
                 int at = At(speaker, time);
                 if (at != speaker.shown) Swap(speaker, at);
                 if (speaker.shown < 0 || speaker.bubble == null || speaker.bean == null) continue;
+
+                bool visible = PhrasesVisible && (PlayerVisible == null || PlayerVisible(kvp.Key));
+                if (speaker.bubble.activeSelf != visible) speaker.bubble.SetActive(visible);
+                if (!visible) continue;
 
                 var speech = speaker.events[speaker.shown];
                 float age = time - speech.t;

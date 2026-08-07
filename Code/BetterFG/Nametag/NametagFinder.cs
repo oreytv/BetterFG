@@ -177,7 +177,10 @@ namespace BetterFG.Nametag
         internal static class patch_PartyMember_UpdateGraphics
         {
             [HarmonyLib.HarmonyPostfix]
-            public static void Postfix(PartyMenuMemberItem __instance) => ApplyToExpandedMember(__instance._expandedModel);
+            public static void Postfix(PartyMenuMemberItem __instance)
+            {
+                ApplyToExpandedMember(__instance._expandedModel);
+            }
         }
 
         [HarmonyLib.HarmonyPatch(typeof(PartyMenuMemberItem), "Select", new[] { typeof(bool) })]

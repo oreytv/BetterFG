@@ -63,6 +63,19 @@ namespace BetterFG.UI.Windows.Creative
             return null;
         }
 
+        public static LevelEditorPhysicsObjectParameter GetPhysicsParam(LevelEditorPlaceableObject obj)
+        {
+            if (obj == null) return null;
+            var handlers = obj.GetComponentsInChildren<LevelEditorPlaceableParameterHandler>(true);
+            if (handlers == null) return null;
+            for (int i = 0; i < handlers.Length; i++)
+            {
+                var p = handlers[i]?.TryCast<LevelEditorPhysicsObjectParameter>();
+                if (p != null) return p;
+            }
+            return null;
+        }
+
         // only decals/stickers carry this one, so its presence is also how the window decides whether
         // to offer the lighting row at all.
         public static LevelEditorUnlitModeParameter GetUnlitParam(LevelEditorPlaceableObject obj)
@@ -108,6 +121,16 @@ namespace BetterFG.UI.Windows.Creative
                 var unlit = GetUnlitParam(obj);
                 if (unlit != null) into.Unlit = unlit._unlitMode;
             }
+            if (template.PhysicsEnabled.HasValue || template.WeightIndex.HasValue || template.Draggable.HasValue)
+            {
+                var phys = GetPhysicsParam(obj);
+                if (phys != null)
+                {
+                    if (template.PhysicsEnabled.HasValue) into.PhysicsEnabled = phys._isPhysicsEnabled;
+                    if (template.WeightIndex.HasValue) into.WeightIndex = phys._selectedWeightIndex;
+                    if (template.Draggable.HasValue) into.Draggable = phys._isDraggable;
+                }
+            }
         }
 
         // put back whatever colour/surface fields the snap captured.
@@ -146,6 +169,23 @@ namespace BetterFG.UI.Windows.Creative
                 var unlit = GetUnlitParam(obj);
                 if (unlit != null) ApplyUnlit(unlit, snap.Unlit.Value);
             }
+            if (snap.PhysicsEnabled.HasValue || snap.WeightIndex.HasValue || snap.Draggable.HasValue)
+            {
+                var phys = GetPhysicsParam(obj);
+                if (phys != null)
+                {
+                    if (snap.PhysicsEnabled.HasValue) phys.TogglePhysics(snap.PhysicsEnabled.Value, true);
+                    if (snap.WeightIndex.HasValue) ApplyWeight(phys, snap.WeightIndex.Value);
+                    if (snap.Draggable.HasValue) phys.ToggleDraggable(snap.Draggable.Value);
+                }
+            }
+        }
+
+        public static void ApplyWeight(LevelEditorPhysicsObjectParameter phys, int index)
+        {
+            phys._selectedWeightIndex = index;
+            phys.UpdateSelectedWeight(index);
+            phys.UpdatePhysicsParameters();
         }
 
         // same trick as the surface param: write the state fields ourselves and push straight to the

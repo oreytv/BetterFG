@@ -64,6 +64,7 @@
 	<Target Name="KillFallGuysBeforeBuild" BeforeTargets="BeforeBuild" Condition="'$(SkipCopyDll)' != 'true' And '$(KillAndRestartGame)' != 'false'">
 	  <Exec Command="taskkill /F /IM FallGuys_client_game.exe /T" ContinueOnError="true" />
 	  <Exec Command="taskkill /F /IM FallGuys_client.exe /T" ContinueOnError="true" />
+	  <Exec Command="powershell -NoProfile -Command &quot;$sw=[Diagnostics.Stopwatch]::StartNew(); while(($sw.Elapsed.TotalSeconds -lt 15) -and ((Get-Process FallGuys_client_game -ErrorAction SilentlyContinue) -or (Get-Process FallGuys_client -ErrorAction SilentlyContinue))) { Start-Sleep -Milliseconds 200 }&quot;" ContinueOnError="true" />
 	  <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\BetterFG.Installer\close_installer.ps1&quot;" ContinueOnError="true" />
 	</Target>
 

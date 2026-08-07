@@ -312,6 +312,8 @@ namespace BetterFG.UI
             trigger.triggers.Add(exit);
         }
 
+        public static void PlaySelectSound() => AudioService.PlayButtonClick();
+
         public static void WireButtonAudio(GameObject btn, bool skipHoverSound = false)
         {
             var trigger = btn.GetComponent<EventTrigger>() ?? btn.AddComponent<EventTrigger>();

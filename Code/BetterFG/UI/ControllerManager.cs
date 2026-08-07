@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Rewired;
+using BetterFG.Features.Replay;
 using BetterFG.Services;
 using UnityEngine;
 
@@ -28,8 +29,10 @@ namespace BetterFG.UI
 
         private const float DEADZONE = 0.2f;
 
-        private bool _prevRight, _leftHeld;
+        private bool _rightHeld, _leftHeld;
         private float _scrollAccum;
+
+        public static Vector2 Stick { get; private set; }
 
         public static ControllerManager Create()
         {
@@ -41,6 +44,7 @@ namespace BetterFG.UI
 
         void Update()
         {
+            Stick = Vector2.zero;
             if (!ReInput.isReady || ReInput.players.playerCount == 0) return;
 
             var p = ReInput.players.GetPlayer(0);
@@ -56,25 +60,27 @@ namespace BetterFG.UI
             if (toggledUI) BetterFGUIMan.Instance.SetVisible(!BetterFGUIMan.Instance.IsVisible);
             if (toggledWheel) SideWheel.SideWheelManager.Instance?.ToggleFromController();
 
+            bool editorUp = Windows.Creative.BatchEditWindow.AnyOpen || ReplayViewer.Instance != null;
+
             // closing the UI with the pad leaves the OS cursor stranded on screen with no stick to move
             // it. once EVERYTHING is closed (main UI AND wheel), hide+lock the cursor — it comes back when
             // they reopen the UI (SetVisible unlocks it) or hit F1.
             if (toggledUI || toggledWheel)
             {
                 bool anyUp = (BetterFGUIMan.Instance != null && BetterFGUIMan.Instance.IsVisible)
-                          || (SideWheel.SideWheelManager.Instance != null && SideWheel.SideWheelManager.Instance.IsWheelVisible);
+                          || (SideWheel.SideWheelManager.Instance != null && SideWheel.SideWheelManager.Instance.IsWheelVisible)
+                          || editorUp;
                 if (!anyUp) BetterFGUIMan.Instance?.SetCursorFree(false);
             }
 
             // drive the cursor whenever EITHER our main UI or the sidewheel is showing — both put a
             // mouse cursor on screen, so the stick should move it in both.
-            bool uiUp = (BetterFGUIMan.Instance != null && BetterFGUIMan.Instance.IsVisible)
-                     || Windows.Creative.BatchEditWindow.AnyOpen; // our standalone editor window also wants the cursor
+            bool uiUp = (BetterFGUIMan.Instance != null && BetterFGUIMan.Instance.IsVisible) || editorUp;
             bool wheelUp = SideWheel.SideWheelManager.Instance != null && SideWheel.SideWheelManager.Instance.IsWheelVisible;
             if (!uiUp && !wheelUp)
             {
                 if (_leftHeld) { mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero); _leftHeld = false; }
-                _prevRight = false;
+                if (_rightHeld) { mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero); _rightHeld = false; }
                 _scrollAccum = 0f;
                 FGInputLockService.SetControllerLock(false);
                 return;
@@ -100,12 +106,14 @@ namespace BetterFG.UI
             my = Mathf.Clamp(my, -1f, 1f);
             sy = Mathf.Clamp(sy, -1f, 1f);
 
-            if (Mathf.Abs(mx) > DEADZONE || Mathf.Abs(my) > DEADZONE)
+            Stick = new Vector2(Mathf.Abs(mx) > DEADZONE ? mx : 0f, Mathf.Abs(my) > DEADZONE ? my : 0f);
+
+            if (Stick != Vector2.zero && !ReplayViewer.PadFlight)
             {
                 GetCursorPos(out var c);
                 float step = ControllerBindService.CursorSpeed * Time.unscaledDeltaTime;
-                int nx = c.X + (int)Math.Round(mx * step);
-                int ny = c.Y - (int)Math.Round(my * step); // screen Y is inverted vs stick
+                int nx = c.X + (int)Math.Round(Stick.x * step);
+                int ny = c.Y - (int)Math.Round(Stick.y * step);
                 SetCursorPos(nx, ny);
             }
 
@@ -128,9 +136,8 @@ namespace BetterFG.UI
             if (clickNow && !_leftHeld) { mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, IntPtr.Zero); _leftHeld = true; AudioService.PlayControllerClick(); }
             else if (!clickNow && _leftHeld) { mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero); _leftHeld = false; }
 
-            // B/circle = right click (rising edge so a hold is one click)
-            if (rightNow && !_prevRight) { mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, IntPtr.Zero); mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero); }
-            _prevRight = rightNow;
+            if (rightNow && !_rightHeld) { mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, IntPtr.Zero); _rightHeld = true; }
+            else if (!rightNow && _rightHeld) { mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero); _rightHeld = false; }
 
             // we only reach here while our UI/wheel is up, so keep the game's pad input locked the
             // WHOLE time it's open — not just on stick activity. gating on activity left a gap

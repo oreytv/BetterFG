@@ -36,8 +36,18 @@ namespace BetterFG.Features.TimePlacement
         onOpen: () => OnToggled(),
         onClosed: () => OnToggled(),
         onSettingChanged: (id, val) => OnToggled(),
+        onChoiceChanged: (id, val) => OnPortraitsReady(),
         choices: new List<FeatureChoice>
         {
+            new FeatureChoice
+            {
+                id = "showmugshots",
+                label = "Show mugshots",
+                optionIds = new List<string> { "always", "never", "solos", "small" },
+                optionLabels = new List<string> { "Always", "Never", "Only in Solos", "Always, small" },
+                defaultId = "always",
+                hint = "Bean portraits next to each name. Small draws a line-height mugshot at the start of the name and never widens the row.",
+            },
             new FeatureChoice
             {
                 id = "showeliminated",
@@ -59,6 +69,9 @@ namespace BetterFG.Features.TimePlacement
 
         // "always" | "survival" | "never" — how the leaderboard treats eliminated players.
         public static string ShowEliminated => feature.GetChoice("showeliminated");
+
+        static string MugshotMode => feature.GetChoice("showmugshots");
+        static bool MugshotsSmall => MugshotMode == "small";
 
         // in scoring squad rounds, show each player on their own row (live solo points) instead of
         // the squad-aggregated rows. survival rounds get a live toggle via the LE_Zoom_Out nav prompt
@@ -161,6 +174,7 @@ namespace BetterFG.Features.TimePlacement
         static readonly List<GameObject> _panels = new List<GameObject>();
         static GameObject _liveSourcePanel;              // the real PlayingState Panel — entry template source
         static GameObject _srcContainer;                 // the game's source CanvasSquadScoresList we template from
+        static readonly List<GameObject> _disabledGameLists = new List<GameObject>();
         static GameObject _bannersStateClone;            // our BannersState clone — banner patches reparent under this
         static GameObject _cachedTemplate;               // persistent copy of a real entry, kept forever so
                                                          // rounds we enter mid-spectate can still build the list
@@ -202,6 +216,7 @@ namespace BetterFG.Features.TimePlacement
 
         public static void Reset()
         {
+            RestoreGameLists();
             foreach (var c in _containers)
                 if (c != null) UnityEngine.Object.Destroy(c);
             _containers.Clear();
@@ -339,6 +354,8 @@ namespace BetterFG.Features.TimePlacement
             // has to keep running until CaptureEntries pulls a template row out of its live Panel
             // (it gets disabled in CaptureEntries once we have the template). skip our own clones too.
             SuppressGameLists();
+            if (BetterFGUIMan.Instance != null)
+                BetterFGUIMan.Instance.StartCoroutine(SuppressGameListsForFrames().WrapToIl2Cpp());
 
             _entriesCaptured = false;
             _nextPlace = 0;
@@ -391,17 +408,42 @@ namespace BetterFG.Features.TimePlacement
             {
                 if (t == null || t.name != "CanvasSquadScoresList") continue;
                 if (_srcContainer != null && t.gameObject == _srcContainer) continue;
-                if (t.gameObject.activeSelf) { t.gameObject.SetActive(false); disabled++; }
+                if (TryDisableGameList(t.gameObject)) disabled++;
             }
             if (disabled > 0)
                 Plugin.Log.LogInfo($"TimePlacement: disabled {disabled} game CanvasSquadScoresList object(s)");
+        }
+
+        static bool TryDisableGameList(GameObject go)
+        {
+            if (go == null || !go.activeInHierarchy) return false;
+
+            var slvm = go.GetComponentInChildren<SquadScoreListViewModel>(true);
+            if (slvm != null && slvm._entriesViewModels == null) return false;
+
+            if (!_disabledGameLists.Contains(go)) _disabledGameLists.Add(go);
+            go.SetActive(false);
+            return true;
+        }
+
+        static void RestoreGameLists()
+        {
+            int restored = 0;
+            foreach (var go in _disabledGameLists)
+            {
+                if (go == null) continue;
+                go.SetActive(true);
+                restored++;
+            }
+            _disabledGameLists.Clear();
+            if (restored > 0) Plugin.Log.LogInfo($"gave the game back {restored} squad list(s)");
         }
 
         // re-run the suppression for a handful of frames after spectator entry — the game's scoring
         // VM OnEnable that re-shows its list doesn't always land on the same frame as the postfix.
         static IEnumerator SuppressGameListsForFrames()
         {
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 12; i++)
             {
                 yield return null;
                 SuppressGameLists();
@@ -506,7 +548,7 @@ namespace BetterFG.Features.TimePlacement
             Plugin.Log.LogInfo($"TimePlacement: captured {MaxRows} slots across {perPanel.Count} panel(s)");
 
             // we've got the template now — disable the game's source list too so it stops showing.
-            if (_srcContainer != null) { _srcContainer.SetActive(false); _srcContainer = null; }
+            if (_srcContainer != null && TryDisableGameList(_srcContainer)) _srcContainer = null;
         }
 
         // walk a slash-delimited transform path from the root, traversing inactive children too
@@ -562,11 +604,13 @@ namespace BetterFG.Features.TimePlacement
         const float PtsX = 50f;       // points column, right after placement
         const float NamesX = 120f;    // names start after points
         const float BeanH = 30f;
+        const float BeanHSmall = 20f;
         const float BeanGap = 2f;     // spacing between the mugshots on a squad row
         const float RowBgScale = 4.5491f;   // tuned to span the row
         const float GroupBgScale = 1.3f;    // group rows carry mugshots + two name lines, so widen
         const int MaxBeans = 4;       // biggest squad the game runs
-        static float BeanW => BeanH * LeaderboardMugshotScene.Width / LeaderboardMugshotScene.Height;
+        static float MugHeight => MugshotsSmall ? BeanHSmall : BeanH;
+        static float MugWidth => MugHeight * LeaderboardMugshotScene.Width / LeaderboardMugshotScene.Height;
 
         // build three fixed-position labels per row: placement, points, names (one object, can be 2
         // lines). each is anchored to the row's LEFT-CENTER so anchoredPosition.x is identical on
@@ -619,7 +663,7 @@ namespace BetterFG.Features.TimePlacement
                 beanRt.anchorMin = new Vector2(0f, 0.5f);
                 beanRt.anchorMax = new Vector2(0f, 0.5f);
                 beanRt.pivot = new Vector2(0f, 0.5f);
-                beanRt.sizeDelta = new Vector2(BeanW, BeanH);
+                beanRt.sizeDelta = new Vector2(BeanH * LeaderboardMugshotScene.Width / LeaderboardMugshotScene.Height, BeanH);
                 var beanImg = beanGo.AddComponent<RawImage>();
                 beanImg.raycastTarget = false;
                 beanGo.SetActive(false);
@@ -788,8 +832,9 @@ namespace BetterFG.Features.TimePlacement
             Plugin.Log.LogInfo($"TimePlacement: {place}{suffix} -> {name} {time} (id {remotePlayerId})");
         }
 
-        static string Suffix(int place) =>
-            place == 1 ? "st" : place == 2 ? "nd" : place == 3 ? "rd" : "th";
+        internal static string Suffix(int place) =>
+            (place % 100) is >= 11 and <= 13 ? "th"
+            : (place % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
 
         static readonly List<Texture> _rowPortraits = new List<Texture>();
 
@@ -798,21 +843,34 @@ namespace BetterFG.Features.TimePlacement
         // ptsXOffset does the same for the points/time column. playerKeys is one key on the
         // one-player-per-row modes and the whole squad's members on squad rows — their mugshots sit
         // side by side and the names start after the last one
+        static bool ShowMugshotsForRow(List<string> playerKeys)
+        {
+            if (playerKeys == null || playerKeys.Count == 0) return false;
+            switch (MugshotMode)
+            {
+                case "never": return false;
+                case "solos": return !HasSquadData();
+                default: return true;
+            }
+        }
+
         static void SetRow(int index, string pos, string names, string pts, float namesXOffset = 0f, List<string> playerKeys = null, float ptsXOffset = 0f)
         {
             if (index < 0 || index >= _entryPool.Count) return;
 
             _rowPortraits.Clear();
-            if (playerKeys != null)
+            if (ShowMugshotsForRow(playerKeys))
                 for (int i = 0; i < playerKeys.Count && _rowPortraits.Count < MaxBeans; i++)
                 {
                     var tex = BeanPortraits.Get(playerKeys[i]);
                     if (tex != null) _rowPortraits.Add(tex);
                 }
 
+            float mugW = MugWidth, mugH = MugHeight;
             float beanX = NamesX + namesXOffset;
-            float nameX = beanX + (_rowPortraits.Count > 0 ? _rowPortraits.Count * (BeanW + BeanGap) + 4f : 0f);
-            float bgScale = RowBgScale * (playerKeys != null && playerKeys.Count >= 2 ? GroupBgScale : 1f);
+            float nameX = beanX + (_rowPortraits.Count > 0 ? _rowPortraits.Count * (mugW + BeanGap) + 4f : 0f);
+            bool widen = !MugshotsSmall && _rowPortraits.Count >= 2;
+            float bgScale = RowBgScale * (widen ? GroupBgScale : 1f);
             foreach (var entryGo in _entryPool[index])
             {
                 if (entryGo == null) continue;
@@ -847,7 +905,9 @@ namespace BetterFG.Features.TimePlacement
                     bean.gameObject.SetActive(used);
                     if (!used) continue;
                     bean.GetComponent<RawImage>().texture = _rowPortraits[b];
-                    bean.GetComponent<RectTransform>().anchoredPosition = new Vector2(beanX + b * (BeanW + BeanGap), 0f);
+                    var brt = bean.GetComponent<RectTransform>();
+                    brt.sizeDelta = new Vector2(mugW, mugH);
+                    brt.anchoredPosition = new Vector2(beanX + b * (mugW + BeanGap), 0f);
                 }
             }
         }
@@ -1321,9 +1381,12 @@ namespace BetterFG.Features.TimePlacement
         {
             // belt-and-braces: if the spectator state's scoring VM ever re-enables a game squad list,
             // keep ours the only one. cheap no-op when there's nothing to disable.
-            SuppressGameLists();
-            if (BetterFGUIMan.Instance != null)
-                BetterFGUIMan.Instance.StartCoroutine(SuppressGameListsForFrames().WrapToIl2Cpp());
+            if (Enabled && _panels.Count > 0)
+            {
+                SuppressGameLists();
+                if (BetterFGUIMan.Instance != null)
+                    BetterFGUIMan.Instance.StartCoroutine(SuppressGameListsForFrames().WrapToIl2Cpp());
+            }
 
             if (_soloToggleprompt == null) return;
             _soloToggleprompt.Destroy();
@@ -1650,7 +1713,7 @@ namespace BetterFG.Features.TimePlacement
         // qualify highlight is always on (yellow=in, red=out) — no toggle.
         static bool QualStatusOn => true;
         // when on, PB ghost beans (giant remotePlayerID) are NOT filtered out of the leaderboard.
-        static bool IsGhost(uint remotePlayerID) => remotePlayerID >= 100000;
+        static bool IsGhost(uint remotePlayerID) => BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(remotePlayerID);
 
         // owns the list in non-squad, non-scoring rounds (races / survivals) where there's no live
         // score — there it shows finish times. scoring rounds keep their live score leaderboard

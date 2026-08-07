@@ -50,35 +50,46 @@ namespace BetterFG.Utilities
             return def;
         }
 
-        // returns the raw json object string (with braces) for a given key, null if not found
         public static string GetObject(string json, string key)
         {
             string sk = $"\"{key}\":";
-            int ki = json.IndexOf(sk);
-            if (ki == -1) return null;
-            int objStart = json.IndexOf('{', ki + sk.Length);
-            if (objStart == -1) return null;
-            int objEnd = FindMatchingBrace(json, objStart, '{', '}');
-            if (objEnd == -1) return null;
-            return json.Substring(objStart, objEnd - objStart + 1);
+            int idx = 0;
+            while (true)
+            {
+                int ki = json.IndexOf(sk, idx);
+                if (ki == -1) return null;
+                int start = ki + sk.Length;
+                while (start < json.Length && (json[start] == ' ' || json[start] == '\t')) start++;
+                if (start < json.Length && json[start] == '{')
+                {
+                    int objEnd = FindMatchingBrace(json, start, '{', '}');
+                    return objEnd == -1 ? null : json.Substring(start, objEnd - start + 1);
+                }
+                idx = ki + sk.Length;
+            }
         }
 
-        // returns list of raw object strings from a json array under a key
         public static List<string> GetArray(string json, string key)
         {
             var result = new List<string>();
             string sk = $"\"{key}\":";
-            int ki = json.IndexOf(sk);
-            if (ki == -1) return result;
-            int arrStart = json.IndexOf('[', ki + sk.Length);
-            if (arrStart == -1) return result;
-            int arrEnd = FindMatchingBrace(json, arrStart, '[', ']');
-            if (arrEnd == -1) return result;
-            ParseObjectsFromArray(json.Substring(arrStart + 1, arrEnd - arrStart - 1), result);
-            return result;
+            int idx = 0;
+            while (true)
+            {
+                int ki = json.IndexOf(sk, idx);
+                if (ki == -1) return result;
+                int start = ki + sk.Length;
+                while (start < json.Length && (json[start] == ' ' || json[start] == '\t')) start++;
+                if (start < json.Length && json[start] == '[')
+                {
+                    int arrEnd = FindMatchingBrace(json, start, '[', ']');
+                    if (arrEnd != -1) ParseObjectsFromArray(json.Substring(start + 1, arrEnd - start - 1), result);
+                    return result;
+                }
+                idx = ki + sk.Length;
+            }
         }
 
-        // parses root-level array of objects
         public static List<string> GetRootArray(string json)
         {
             var result = new List<string>();

@@ -46,6 +46,7 @@ namespace BetterFG
             BetterFGConfig.Init();
             AudioService.Init();
             MenuMusicService.Init();
+            DiscordPresenceService.Init();
 
             try { TMPro.TMP_Settings.instance.m_warningsDisabled = true; } catch { }
 

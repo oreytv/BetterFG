@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Core;
 using BetterFG.Customization.Player;
+using BetterFG.Nametag;
 using BetterFG.Network;
 using BetterFG.UI;
 using BetterFG.UI.Tab;
@@ -14,6 +15,7 @@ using FG.Common.Fraggle;
 using FGClient;
 using MPG.Utility;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace BetterFG.Features.Replay
 {
@@ -51,11 +53,15 @@ namespace BetterFG.Features.Replay
         public string victoryPose = "";
         public string nickname = "";
         public string nameplate = "";
+        public int fameEarnedBadge;
+        public DateTime fameUpdatedAt;
         public float bfgScale;
         public string bfgCosmetics = "";
         public string bfgColour = "";
         public string bfgPattern = "";
         public string bfgFaceplate = "";
+        public RemoteNametagInfo nametag;
+        public float outTime = -1f;
         public readonly List<RemoteSkinEntry> bfgSkins = new List<RemoteSkinEntry>();
         public readonly List<SkinTexEntry> bfgTextures = new List<SkinTexEntry>();
         public readonly List<ReplayFrame> frames = new List<ReplayFrame>();
@@ -68,6 +74,12 @@ namespace BetterFG.Features.Replay
         public string path = "";
     }
 
+    public class ReplayGhost
+    {
+        public string name = "";
+        public readonly List<ReplayFrame> frames = new List<ReplayFrame>();
+    }
+
     public struct ReplayAudioEvent
     {
         public float t;
@@ -77,6 +89,13 @@ namespace BetterFG.Features.Replay
         public int key;
         public int paramStart;
         public int paramCount;
+    }
+
+    public struct ReplayStarchartEvent
+    {
+        public float t;
+        public int pathStart;
+        public int pathCount;
     }
 
     public struct ReplayAudioParam
@@ -92,6 +111,76 @@ namespace BetterFG.Features.Replay
     public enum ReplayEasingCurve { Linear, Constant, Sine, Quadratic, Cubic, Quartic, Quintic, Exponential, Circular, Back, Elastic, Bounce }
 
     public enum ReplayEasingDirection { In, Out, InOut, OutIn }
+
+    public enum ReplayShakeKind { None, Explosion, Continuous }
+
+    public static class ReplayShake
+    {
+        public const int TierCount = 5;
+        public static readonly string[] TierLabels = { "XS", "S", "M", "L", "XL" };
+
+        static readonly float[] ExplosionRotDeg = { 0.6f, 1.2f, 2.2f, 3.5f, 5.5f };
+        static readonly float[] ExplosionFovDeg = { 1.0f, 2.0f, 3.5f, 5.5f, 8.0f };
+        static readonly float[] ExplosionDuration = { 0.35f, 0.5f, 0.7f, 0.9f, 1.2f };
+        const float ExplosionRotHz = 11f;
+        const float ExplosionFovHz = 8f;
+
+        static readonly float[] ContinuousRotDeg = { 0.15f, 0.35f, 0.7f, 1.3f, 2.2f };
+        static readonly float[] ContinuousFovDeg = { 0.3f, 0.6f, 1.2f, 2.2f, 3.5f };
+        const float ContinuousRotHz = 1.75f;
+        const float ContinuousFovHz = 1.25f;
+
+        static float Noise(float time, float hz, float seed) =>
+            Mathf.PerlinNoise(time * hz + seed, seed * 0.37f) * 2f - 1f;
+
+        public static void Evaluate(ReplayKeyframe a, ReplayKeyframe b, float raw, float time, float noiseTime, out Vector3 rotEuler, out float fov)
+        {
+            rotEuler = Vector3.zero;
+            fov = 0f;
+            if (a == null) return;
+
+            bool blending = b != null && !b.cut;
+
+            if (a.shakeKind == ReplayShakeKind.Explosion)
+                AddExplosion(a, time, noiseTime, ref rotEuler, ref fov);
+            else if (a.shakeKind == ReplayShakeKind.Continuous)
+                AddContinuous(a, noiseTime, blending ? 1f - raw : 1f, ref rotEuler, ref fov);
+
+            if (blending && b.shakeKind == ReplayShakeKind.Continuous)
+                AddContinuous(b, noiseTime, raw, ref rotEuler, ref fov);
+        }
+
+        static void AddExplosion(ReplayKeyframe k, float time, float noiseTime, ref Vector3 rotEuler, ref float fov)
+        {
+            int tier = Mathf.Clamp(k.shakeTier, 0, TierCount - 1);
+            float elapsed = time - k.time;
+            float duration = ExplosionDuration[tier];
+            if (elapsed < 0f || elapsed > duration) return;
+
+            float envelope = 1f - elapsed / duration;
+            envelope *= envelope;
+            float seed = k.time * 12.9898f;
+
+            rotEuler += new Vector3(
+                Noise(noiseTime, ExplosionRotHz, seed + 1f),
+                Noise(noiseTime, ExplosionRotHz, seed + 2f),
+                Noise(noiseTime, ExplosionRotHz, seed + 3f)) * (ExplosionRotDeg[tier] * envelope);
+            fov += Noise(noiseTime, ExplosionFovHz, seed + 4f) * (ExplosionFovDeg[tier] * envelope);
+        }
+
+        static void AddContinuous(ReplayKeyframe k, float noiseTime, float weight, ref Vector3 rotEuler, ref float fov)
+        {
+            if (weight <= 0f) return;
+            int tier = Mathf.Clamp(k.shakeTier, 0, TierCount - 1);
+            float seed = k.time * 12.9898f;
+
+            rotEuler += new Vector3(
+                Noise(noiseTime, ContinuousRotHz, seed + 1f),
+                Noise(noiseTime, ContinuousRotHz, seed + 2f),
+                Noise(noiseTime, ContinuousRotHz, seed + 3f)) * (ContinuousRotDeg[tier] * weight);
+            fov += Noise(noiseTime, ContinuousFovHz, seed + 4f) * (ContinuousFovDeg[tier] * weight);
+        }
+    }
 
     public static class ReplayEase
     {
@@ -165,8 +254,14 @@ namespace BetterFG.Features.Replay
         public int lookAtObject = -1;
         public float speed = 1f;
         public bool cut;
+        public bool cutToNext;
+        public ReplayShakeKind shakeKind = ReplayShakeKind.None;
+        public int shakeTier = 2;
 
         public static readonly float[] Speeds = { 0.1f, 0.25f, 0.5f, 0.75f, 1f, 1.5f, 2f, 3f, 4f };
+
+        public static string ShakeKindLabel(ReplayShakeKind k) =>
+            k == ReplayShakeKind.None ? "None" : k == ReplayShakeKind.Explosion ? "Explosion" : "Continuous";
 
         public static string SpeedLabel(float speed) => speed.ToString("0.##") + "x";
 
@@ -212,6 +307,47 @@ namespace BetterFG.Features.Replay
         }
     }
 
+    public enum ReplayVisibilityMode { All, None, Only }
+
+    public class ReplayVisibilityKeyframe
+    {
+        public float time;
+        public bool showPhrases = true;
+        public ReplayVisibilityMode names = ReplayVisibilityMode.All;
+        public readonly List<uint> nameOnlyPlayers = new List<uint>();
+        public ReplayVisibilityMode players = ReplayVisibilityMode.All;
+        public readonly List<uint> onlyPlayers = new List<uint>();
+        public bool showGhosts = true;
+
+        public static string PlayersLabel(ReplayVisibilityMode m) =>
+            m == ReplayVisibilityMode.All ? "All" : m == ReplayVisibilityMode.None ? "None" : "Only";
+    }
+
+    public class ReplayPostFxKeyframe
+    {
+        public float time;
+        public float exposure;
+        public float contrast;
+        public float saturation;
+        public float temperature;
+        public float tint;
+        public float vignette;
+        public float chromaticAberration;
+        public float bloomIntensity;
+        public float bloomThreshold = 1f;
+        public float sharpenAmount;
+        public float sharpenRadius = 1f;
+
+        public const float ExposureMin = -3f, ExposureMax = 3f, ExposureStep = 0.1f;
+        public const float GradeMin = -100f, GradeMax = 100f, GradeStep = 5f;
+        public const float VignetteMin = 0f, VignetteMax = 1f, VignetteStep = 0.05f;
+        public const float ChromaMin = 0f, ChromaMax = 1f, ChromaStep = 0.05f;
+        public const float BloomIntensityMin = 0f, BloomIntensityMax = 5f, BloomIntensityStep = 0.25f;
+        public const float BloomThresholdMin = 0f, BloomThresholdMax = 2f, BloomThresholdStep = 0.1f;
+        public const float SharpenAmountMin = 0f, SharpenAmountMax = 5f, SharpenAmountStep = 0.25f;
+        public const float SharpenRadiusMin = 0.25f, SharpenRadiusMax = 4f, SharpenRadiusStep = 0.25f;
+    }
+
     public class ReplayRecording
     {
         public int version = SaveReplay.FormatVersion;
@@ -235,8 +371,13 @@ namespace BetterFG.Features.Replay
         public string sourcePath = "";
         public byte[] thumbJpg;
         public readonly List<ReplaySet> sets = new List<ReplaySet>();
+        public readonly List<string> starchartPaths = new List<string>();
+        public readonly List<ReplayStarchartEvent> starchartEvents = new List<ReplayStarchartEvent>();
         public readonly List<ReplayPlayer> players = new List<ReplayPlayer>();
+        public readonly List<ReplayGhost> ghosts = new List<ReplayGhost>();
         public readonly List<ReplayKeyframe> keyframes = new List<ReplayKeyframe>();
+        public readonly List<ReplayVisibilityKeyframe> visibilityKeyframes = new List<ReplayVisibilityKeyframe>();
+        public readonly List<ReplayPostFxKeyframe> postFxKeyframes = new List<ReplayPostFxKeyframe>();
         public readonly List<ReplayFrame> cameraFrames = new List<ReplayFrame>();
         public readonly List<ReplayObject> worldObjects = new List<ReplayObject>();
         public readonly List<string> audioKeys = new List<string>();
@@ -247,6 +388,8 @@ namespace BetterFG.Features.Replay
         public readonly List<ReplaySpeechEvent> speechEvents = new List<ReplaySpeechEvent>();
 
         public void SortKeyframes() => keyframes.Sort((a, b) => a.time.CompareTo(b.time));
+        public void SortVisibilityKeyframes() => visibilityKeyframes.Sort((a, b) => a.time.CompareTo(b.time));
+        public void SortPostFxKeyframes() => postFxKeyframes.Sort((a, b) => a.time.CompareTo(b.time));
     }
 
     internal static class FeatureReplay
@@ -299,8 +442,26 @@ namespace BetterFG.Features.Replay
 
         public static float GameplayTime => _gsv?.GameplayTimeElapsed ?? 0f;
 
+        static void SweepOrphanedViewerObjects()
+        {
+            if (ReplayViewer.Instance != null) return;
+
+            int killed = 0;
+            foreach (var go in Resources.FindObjectsOfTypeAll<GameObject>())
+            {
+                if (go == null || go.transform.parent != null || !go.scene.IsValid()) continue;
+                if (!go.name.StartsWith("BettrFG_Replay", StringComparison.Ordinal)
+                    && !go.name.StartsWith("BettrFG_Ghost_", StringComparison.Ordinal)) continue;
+                UnityEngine.Object.Destroy(go);
+                killed++;
+            }
+            if (killed > 0) Plugin.Log.LogInfo($"swept {killed} orphaned replay objects before this round started");
+        }
+
         public static void OnCleanupLoadingScreens()
         {
+            SweepOrphanedViewerObjects();
+
             ReplayThumbnail.Release(_thumbRt);
             _thumbRt = null;
             if (!AutoRecord) { _live = null; return; }
@@ -354,6 +515,7 @@ namespace BetterFG.Features.Replay
             {
                 foreach (var kvp in cgm._clientPlayerManager._playerIdIndex)
                 {
+                    if (BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(kvp.Key)) continue;
                     var data = kvp.Value;
                     if (data == null) continue;
                     var p = Resolve(kvp.Key);
@@ -416,6 +578,7 @@ namespace BetterFG.Features.Replay
 
                 foreach (var kvp in index)
                 {
+                    if (BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(kvp.Key)) continue;
                     var fgcc = kvp.Value?.fgcc;
                     if (fgcc == null) continue;
 
@@ -510,7 +673,7 @@ namespace BetterFG.Features.Replay
             string playerGeneratedName, int teamId, uint squadId, string partyId,
             CustomisationSelections customisationSelections, bool isLocalPlayer, bool isNPC)
         {
-            if (_live == null) return;
+            if (_live == null || BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(playerId)) return;
 
             var p = Resolve(playerId);
             if (!string.IsNullOrEmpty(playerName)) p.name = playerName;
@@ -523,6 +686,29 @@ namespace BetterFG.Features.Replay
             p.isLocal = isLocalPlayer;
             p.isBot = isNPC;
             ReadCustomisation(p, customisationSelections);
+        }
+
+        public static void OnServerPlayerProgress(GameMessageServerPlayerProgress progressMessage)
+        {
+            if (_live == null || progressMessage == null || progressMessage.isSkipping) return;
+            if (BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(progressMessage.playerId)) return;
+            var p = Resolve(progressMessage.playerId);
+            if (p.outTime < 0f) p.outTime = GameplayTime;
+        }
+
+        public static void BeginGhostSpawn() => ReplayWorldRecorder.PushSuppressSpawns();
+
+        public static void EndGhostSpawn() => ReplayWorldRecorder.PopSuppressSpawns();
+
+        public static void OnGhostSpawned(string name, List<(float t, Vector3 pos, Quaternion rot, int stateHash, float animTime)> frames)
+        {
+            if (_live == null || frames == null || frames.Count == 0) return;
+
+            var ghost = new ReplayGhost { name = name };
+            foreach (var (t, pos, rot, sh, at) in frames)
+                ghost.frames.Add(new ReplayFrame { t = t, pos = pos, rot = rot, stateHash = sh, animTime = at });
+            _live.ghosts.Add(ghost);
+            Plugin.Log.LogInfo($"replay: ghost '{name}' baked in, {ghost.frames.Count} frames");
         }
 
         public static void OnClientGameManagerShutdown()
@@ -563,7 +749,12 @@ namespace BetterFG.Features.Replay
             foreach (var p in rec.players)
             {
                 var profile = RemoteProfileStore.TryGet(p.name);
-                if (profile == null && p.isLocal) profile = RemoteProfileStore.LocalLoadout();
+                if (p.isLocal)
+                {
+                    if (profile == null) profile = RemoteProfileStore.LocalLoadout();
+                    p.nametag = NametagIconApplicator.BuildLocalNametagInfo();
+                }
+                else if (profile != null) p.nametag = profile.nametag;
                 if (profile != null) p.bfgSkins.AddRange(profile.skins);
 
                 if (p.isLocal && app != null)
@@ -581,6 +772,31 @@ namespace BetterFG.Features.Replay
             }
 
             if (dressed > 0) Plugin.Log.LogInfo($"replay kept the BettrFG look for {dressed}/{rec.players.Count} players");
+        }
+
+        public static void CaptureStarchartButtonPress(Levels.Starlink.StarlinkNode node)
+        {
+            if (_live == null || node == null || node.ButtonWalkways == null) return;
+
+            int start = _live.starchartPaths.Count;
+            foreach (var w in node.ButtonWalkways)
+            {
+                if (w == null) continue;
+
+                var scene = w.gameObject.scene;
+                var roots = scene.GetRootGameObjects();
+                var top = w.transform;
+                while (top.parent != null) top = top.parent;
+                int rootIndex = Array.IndexOf(roots, top.gameObject);
+
+                _live.starchartPaths.Add(ReplayWorldPath.Build(w.transform, null, scene.name, rootIndex));
+            }
+
+            int count = _live.starchartPaths.Count - start;
+            if (count == 0) return;
+
+            _live.starchartEvents.Add(new ReplayStarchartEvent { t = GameplayTime, pathStart = start, pathCount = count });
+            Plugin.Log.LogInfo($"starchart button pressed at {GameplayTime:0.0}s, {count} walkway(s) lighting up");
         }
 
         public static FallGuysCharacterController BeanFor(Animator animator)
@@ -782,6 +998,8 @@ namespace BetterFG.Features.Replay
             p.victoryPose = ItemId(sel.VictoryPoseOption);
             p.nameplate = ItemId(sel.NameplateOption);
             p.nickname = ItemId(sel.NicknameOption);
+            p.fameEarnedBadge = sel.FameEarnedBadge;
+            p.fameUpdatedAt = new DateTime(sel.FameUpdatedAt.Ticks);
         }
 
         static string CostumeId(CostumeOption item)

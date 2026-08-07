@@ -25,6 +25,9 @@ namespace BetterFG.Features.Replay
     {
         const string KNOWN_KEY = "replay.known";
         const string FAV_KEY = "replay.favourites";
+        const float FRAME_RATE = 60f;
+
+        static float RoundUpFrame(float t) => Mathf.Ceil(t * FRAME_RATE - 0.0001f) / FRAME_RATE;
 
         static List<string> Known()
         {
@@ -230,6 +233,32 @@ namespace BetterFG.Features.Replay
             }
         }
 
+        static void ReadGhosts(BinaryReader br, ReplayRecording rec)
+        {
+            int count = br.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                var ghost = new ReplayGhost { name = br.ReadString() };
+                ReadFrameList(br, ghost.frames, rec.version);
+                rec.ghosts.Add(ghost);
+            }
+        }
+
+        static void ReadStarchart(BinaryReader br, ReplayRecording rec)
+        {
+            int paths = br.ReadInt32();
+            for (int i = 0; i < paths; i++) rec.starchartPaths.Add(br.ReadString());
+
+            int events = br.ReadInt32();
+            for (int i = 0; i < events; i++)
+                rec.starchartEvents.Add(new ReplayStarchartEvent
+                {
+                    t = br.ReadSingle(),
+                    pathStart = br.ReadInt32(),
+                    pathCount = br.ReadInt32(),
+                });
+        }
+
         static void ReadLevel(BinaryReader br, ReplayRecording rec)
         {
             int packedLength = br.ReadInt32();
@@ -365,31 +394,41 @@ namespace BetterFG.Features.Replay
                 {
                     if (fs.Length >= 8 && br.ReadInt32() == SaveReplay.ContainerMagic)
                     {
-                        int jsonLength = br.ReadInt32();
-                        string containerJson = System.Text.Encoding.UTF8.GetString(br.ReadBytes(jsonLength));
-                        var container = Parse(containerJson);
-
-                        int playerCount = br.ReadInt32();
-                        int packed = 0;
-                        for (int i = 0; i < playerCount; i++)
+                        try
                         {
-                            uint id = br.ReadUInt32();
-                            ReplayPlayer target = null;
-                            for (int j = 0; j < container.players.Count; j++)
-                                if (container.players[j].playerId == id) { target = container.players[j]; break; }
-                            packed += ReadFrameList(br, target?.frames, container.version);
-                        }
-                        ReadFrameList(br, container.cameraFrames, container.version);
-                        if (container.version >= 3) ReadAudio(br, container);
-                        if (container.version >= 4) ReadLevel(br, container);
-                        if (container.version >= 6) ReadWorld(br, container, container.version >= 11);
-                        if (container.version >= 7) ReadTextures(br, container);
-                        if (container.version >= 8) ReadSpeech(br, container);
+                            int jsonLength = br.ReadInt32();
+                            string containerJson = System.Text.Encoding.UTF8.GetString(br.ReadBytes(jsonLength));
+                            var container = Parse(containerJson);
 
-                        container.sourcePath = path;
-                        Remember(path);
-                        Plugin.Log.LogInfo($"loaded replay {Path.GetFileName(path)}: {container.roundName}, {container.players.Count} players, {container.keyframes.Count} keyframes, {packed} frames, {container.audioEvents.Count} sounds, {container.speechEvents.Count} bubbles, {container.worldObjects.Count} world objects");
-                        return container;
+                            int playerCount = br.ReadInt32();
+                            int packed = 0;
+                            for (int i = 0; i < playerCount; i++)
+                            {
+                                uint id = br.ReadUInt32();
+                                ReplayPlayer target = null;
+                                for (int j = 0; j < container.players.Count; j++)
+                                    if (container.players[j].playerId == id) { target = container.players[j]; break; }
+                                packed += ReadFrameList(br, target?.frames, container.version);
+                            }
+                            ReadFrameList(br, container.cameraFrames, container.version);
+                            if (container.version >= 3) ReadAudio(br, container);
+                            if (container.version >= 15) ReadStarchart(br, container);
+                            if (container.version >= 4) ReadLevel(br, container);
+                            if (container.version >= 6) ReadWorld(br, container, container.version >= 11);
+                            if (container.version >= 7) ReadTextures(br, container);
+                            if (container.version >= 8) ReadSpeech(br, container);
+                            if (container.version >= 16) ReadGhosts(br, container);
+
+                            container.sourcePath = path;
+                            Remember(path);
+                            Plugin.Log.LogInfo($"loaded replay {Path.GetFileName(path)}: {container.roundName}, {container.players.Count} players, {container.keyframes.Count} camera keys, {container.visibilityKeyframes.Count} visibility keys, {packed} frames, {container.audioEvents.Count} sounds, {container.speechEvents.Count} bubbles, {container.worldObjects.Count} world objects");
+                            return container;
+                        }
+                        catch (Exception ex)
+                        {
+                            Plugin.Log.LogWarning($"replay {Path.GetFileName(path)} wouldn't parse: {ex.Message} (stopped at byte {fs.Position} of {fs.Length})");
+                            return null;
+                        }
                     }
                 }
 
@@ -426,9 +465,9 @@ namespace BetterFG.Features.Replay
                 isUgc = JsonUtil.GetBool(json, "isUgc"),
                 isFinal = JsonUtil.GetBool(json, "isFinal"),
                 squadSize = (uint)JsonUtil.GetInt(json, "squadSize"),
-                duration = JsonUtil.GetFloat(json, "duration"),
-                trimStart = JsonUtil.GetFloat(json, "trimStart"),
-                trimEnd = JsonUtil.GetFloat(json, "trimEnd"),
+                duration = RoundUpFrame(JsonUtil.GetFloat(json, "duration")),
+                trimStart = RoundUpFrame(JsonUtil.GetFloat(json, "trimStart")),
+                trimEnd = RoundUpFrame(JsonUtil.GetFloat(json, "trimEnd")),
             };
 
             foreach (var entry in JsonUtil.GetArray(json, "sets"))
@@ -443,7 +482,7 @@ namespace BetterFG.Features.Replay
             {
                 var keyframe = new ReplayKeyframe
                 {
-                    time = JsonUtil.GetFloat(entry, "time"),
+                    time = RoundUpFrame(JsonUtil.GetFloat(entry, "time")),
                     cameraType = (ReplayCameraType)JsonUtil.GetInt(entry, "cameraType"),
                     lookAt = (ReplayLookAt)JsonUtil.GetInt(entry, "lookAt"),
                     easingCurve = (ReplayEasingCurve)JsonUtil.GetInt(entry, "easingCurve"),
@@ -457,9 +496,48 @@ namespace BetterFG.Features.Replay
                     lookAtObject = JsonUtil.GetInt(entry, "lookAtObject", -1),
                     speed = JsonUtil.GetFloat(entry, "speed"),
                     cut = JsonUtil.GetInt(entry, "cut") != 0,
+                    cutToNext = JsonUtil.GetInt(entry, "cutToNext") != 0,
+                    shakeKind = (ReplayShakeKind)JsonUtil.GetInt(entry, "shakeKind"),
+                    shakeTier = JsonUtil.GetInt(entry, "shakeTier", 2),
                 };
                 if (keyframe.speed <= 0f) keyframe.speed = 1f;
                 rec.keyframes.Add(keyframe);
+            }
+
+            foreach (var entry in JsonUtil.GetArray(json, "visibilityKeyframes"))
+            {
+                var vis = new ReplayVisibilityKeyframe
+                {
+                    time = RoundUpFrame(JsonUtil.GetFloat(entry, "time")),
+                    showPhrases = JsonUtil.GetBool(entry, "showPhrases"),
+                    names = (ReplayVisibilityMode)JsonUtil.GetInt(entry, "names"),
+                    players = (ReplayVisibilityMode)JsonUtil.GetInt(entry, "playersMode", JsonUtil.GetInt(entry, "players")),
+                    showGhosts = JsonUtil.GetBool(entry, "showGhosts", true),
+                };
+                foreach (string id in JsonUtil.GetValue(entry, "nameOnlyPlayers").Split('|'))
+                    if (uint.TryParse(id, out uint pid)) vis.nameOnlyPlayers.Add(pid);
+                foreach (string id in JsonUtil.GetValue(entry, "onlyPlayers").Split('|'))
+                    if (uint.TryParse(id, out uint pid)) vis.onlyPlayers.Add(pid);
+                rec.visibilityKeyframes.Add(vis);
+            }
+
+            foreach (var entry in JsonUtil.GetArray(json, "postFxKeyframes"))
+            {
+                rec.postFxKeyframes.Add(new ReplayPostFxKeyframe
+                {
+                    time = RoundUpFrame(JsonUtil.GetFloat(entry, "time")),
+                    exposure = JsonUtil.GetFloat(entry, "exposure"),
+                    contrast = JsonUtil.GetFloat(entry, "contrast"),
+                    saturation = JsonUtil.GetFloat(entry, "saturation"),
+                    temperature = JsonUtil.GetFloat(entry, "temperature"),
+                    tint = JsonUtil.GetFloat(entry, "tint"),
+                    vignette = JsonUtil.GetFloat(entry, "vignette"),
+                    chromaticAberration = JsonUtil.GetFloat(entry, "chromaticAberration"),
+                    bloomIntensity = JsonUtil.GetFloat(entry, "bloomIntensity"),
+                    bloomThreshold = JsonUtil.GetFloat(entry, "bloomThreshold", 1f),
+                    sharpenAmount = JsonUtil.GetFloat(entry, "sharpenAmount"),
+                    sharpenRadius = JsonUtil.GetFloat(entry, "sharpenRadius", 1f),
+                });
             }
 
             foreach (var entry in JsonUtil.GetArray(json, "players"))
@@ -485,12 +563,44 @@ namespace BetterFG.Features.Replay
                     victoryPose = JsonUtil.GetValue(entry, "victoryPose"),
                     nickname = JsonUtil.GetValue(entry, "nickname"),
                     nameplate = JsonUtil.GetValue(entry, "nameplate"),
+                    fameEarnedBadge = JsonUtil.GetInt(entry, "fameEarnedBadge"),
+                    fameUpdatedAt = DateTime.TryParse(JsonUtil.GetValue(entry, "fameUpdatedAt"),
+                        System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var fameAt) ? fameAt : default,
                     bfgScale = JsonUtil.GetFloat(entry, "bfgScale"),
+                    outTime = JsonUtil.GetFloat(entry, "outTime", -1f),
                     bfgCosmetics = JsonUtil.GetValue(entry, "bfgCosmetics"),
                     bfgColour = JsonUtil.GetValue(entry, "bfgColour"),
                     bfgPattern = JsonUtil.GetValue(entry, "bfgPattern"),
                     bfgFaceplate = JsonUtil.GetValue(entry, "bfgFaceplate"),
                 };
+
+                if (JsonUtil.GetBool(entry, "hasNametag"))
+                {
+                    player.nametag = new BetterFG.Network.RemoteNametagInfo
+                    {
+                        r = JsonUtil.GetFloat(entry, "ntR"),
+                        g = JsonUtil.GetFloat(entry, "ntG"),
+                        b = JsonUtil.GetFloat(entry, "ntB"),
+                        bold = JsonUtil.GetBool(entry, "ntBold"),
+                        italic = JsonUtil.GetBool(entry, "ntItalic"),
+                        customName = JsonUtil.GetValue(entry, "ntCustomName"),
+                        iconMode = JsonUtil.GetValue(entry, "ntIconMode"),
+                        iconCountry = JsonUtil.GetValue(entry, "ntIconCountry"),
+                        iconPath = JsonUtil.GetValue(entry, "ntIconPath"),
+                        iconScale = JsonUtil.GetFloat(entry, "ntIconScale"),
+                        iconOffX = JsonUtil.GetFloat(entry, "ntIconOffX"),
+                        iconOffY = JsonUtil.GetFloat(entry, "ntIconOffY"),
+                        platformHide = JsonUtil.GetValue(entry, "ntPlatformHide"),
+                        platformCustom = JsonUtil.GetValue(entry, "ntPlatformCustom"),
+                        nameStyle = JsonUtil.GetValue(entry, "ntNameStyle"),
+                        backingEnabled = JsonUtil.GetBool(entry, "ntBackingEnabled"),
+                        backingPath = JsonUtil.GetValue(entry, "ntBackingPath"),
+                        backingOffX = JsonUtil.GetFloat(entry, "ntBackingOffX"),
+                        backingOffY = JsonUtil.GetFloat(entry, "ntBackingOffY"),
+                        backingScale = JsonUtil.GetFloat(entry, "ntBackingScale"),
+                        nickname = JsonUtil.GetValue(entry, "ntNickname"),
+                    };
+                }
 
                 foreach (var skin in JsonUtil.GetArray(entry, "bfgSkins"))
                     player.bfgSkins.Add(new BetterFG.Network.RemoteSkinEntry

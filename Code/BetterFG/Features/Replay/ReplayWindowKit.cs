@@ -18,6 +18,7 @@ namespace BetterFG.Features.Replay
         public static readonly Color HEADER_BG = new Color(0.13f, 0.15f, 0.19f, 1f);
         public static readonly Color BTN_DARK = new Color(0.18f, 0.18f, 0.2f, 1f);
         public static readonly Color BTN_GREEN = new Color(0.22f, 0.42f, 0.26f, 1f);
+        public static readonly Color BTN_RED = new Color(0.45f, 0.18f, 0.18f, 1f);
         public static readonly Color HINT = new Color(1f, 1f, 1f, 0.45f);
         public static readonly Color ROW_EVEN = new Color(1f, 1f, 1f, 0.03f);
         public static readonly Color ROW_ODD = new Color(0f, 0f, 0f, 0f);
@@ -81,6 +82,15 @@ namespace BetterFG.Features.Replay
             rt.SetAsFirstSibling();
         }
 
+        public const float SECTION_H = 26f;
+
+        public static void Section(RectTransform content, float y, float width, string title)
+        {
+            var label = UGUIShip.CreateLabel(content, new Rect(PAD, y + 10f, width - PAD * 2f, 16f), title, UIScale.FS_SM, Color.white);
+            label.fontStyle = FontStyle.Bold;
+            label.transform.localScale = new Vector3(1.15f, 1.15f, 1f);
+        }
+
         public static void Stripe(RectTransform content, float y, float width, int row) =>
             UGUIShip.CreatePanel(content, new Rect(0f, y, width, ROW), row % 2 == 0 ? ROW_EVEN : ROW_ODD, "Row");
 
@@ -112,6 +122,14 @@ namespace BetterFG.Features.Replay
             if (!wrap) return Mathf.Clamp(index, 0, count - 1);
             while (index < 0) index += count;
             return index % count;
+        }
+
+        public static float Step(float v, int dir, float step, float min, float max, bool wrap)
+        {
+            float nv = v + dir * step;
+            float span = max - min;
+            if (!wrap || span <= 0f) return Mathf.Clamp(nv, min, max);
+            return min + Mathf.Repeat(nv - min, span);
         }
     }
 }

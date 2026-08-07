@@ -11,6 +11,9 @@ namespace BetterFG.Utilities
     /// </summary>
     public static class BeanNetworkUtil
     {
+        public const uint FakeBeanIdFloor = 100000u;
+        public static bool IsFakeBean(uint playerId) => playerId >= FakeBeanIdFloor;
+
         public static MPGNetObject TryGetMpgNetObject(GameObject bean)
         {
             if (bean == null) return null;

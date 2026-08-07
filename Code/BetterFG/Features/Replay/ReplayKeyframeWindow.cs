@@ -12,7 +12,7 @@ namespace BetterFG.Features.Replay
         const float ROW = ReplayWindowKit.ROW;
         const float PAD = ReplayWindowKit.PAD;
 
-        static readonly Vector3 TITLE_POS = new Vector3(-153.6963f, 113.9108f, 0f);
+        static readonly Vector3 TITLE_POS = Vector3.zero;
 
         readonly ReplayRecording _rec;
         readonly ReplayKeyframe _kf;
@@ -92,6 +92,7 @@ namespace BetterFG.Features.Replay
             _y = ReplayWindowKit.HEAD + 4f;
             _row = 0;
 
+            Section("Camera");
             Line("Camera", ReplayKeyframe.TypeLabel(_kf.cameraType), () => StepType(-1), () => StepType(1));
 
             if (_kf.cameraType == ReplayCameraType.Fixed)
@@ -99,6 +100,7 @@ namespace BetterFG.Features.Replay
             else if (_kf.cameraType == ReplayCameraType.FixedObject)
                 Line("Attached to", ObjectLabel(_kf.targetObject), () => StepObject(false, -1), () => StepObject(false, 1), () => Pick(false, true));
 
+            Section("Look at");
             Line("Look at", ReplayKeyframe.LookAtLabel(_kf.lookAt), () => StepLookAt(-1), () => StepLookAt(1));
 
             if (_kf.lookAt == ReplayLookAt.Player)
@@ -106,13 +108,21 @@ namespace BetterFG.Features.Replay
             else if (_kf.lookAt == ReplayLookAt.Object)
                 Line("Look target", ObjectLabel(_kf.lookAtObject), () => StepObject(true, -1), () => StepObject(true, 1), () => Pick(true, true));
 
+            Section("Easing");
             Line("Easing", ReplayKeyframe.EasingLabel(_kf.easingCurve), () => StepEasing(-1), () => StepEasing(1));
 
             if (_kf.easingCurve != ReplayEasingCurve.Linear && _kf.easingCurve != ReplayEasingCurve.Constant)
                 Line("Direction", ReplayKeyframe.DirectionLabel(_kf.easingDirection), () => StepDirection(-1), () => StepDirection(1));
 
+            Section("Timing");
             Line("Transition", ReplayKeyframe.CutLabel(_kf.cut), ToggleCut, ToggleCut);
-            Line("Game speed", ReplayKeyframe.SpeedLabel(_kf.speed), () => StepSpeed(-1), () => StepSpeed(1));
+            Line("Game speed", _kf.cutToNext ? "Cut" : ReplayKeyframe.SpeedLabel(_kf.speed), () => StepSpeed(-1), () => StepSpeed(1));
+
+            Section("Shake");
+            Line("Shake", ReplayKeyframe.ShakeKindLabel(_kf.shakeKind), () => StepShakeKind(-1), () => StepShakeKind(1));
+            if (_kf.shakeKind != ReplayShakeKind.None)
+                Line("Intensity", ReplayShake.TierLabels[Mathf.Clamp(_kf.shakeTier, 0, ReplayShake.TierCount - 1)],
+                    () => StepShakeTier(-1), () => StepShakeTier(1));
 
             _y += 4f;
             UGUIShip.CreateButton(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW + 4f), "Edit camera",
@@ -123,6 +133,12 @@ namespace BetterFG.Features.Replay
                 "X deletes", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
 
             _root.sizeDelta = new Vector2(_width, _y + ROW + PAD);
+        }
+
+        void Section(string title)
+        {
+            ReplayWindowKit.Section(_content, _y, _width, title);
+            _y += ReplayWindowKit.SECTION_H;
         }
 
         void Line(string label, string value, Action prev, Action next, Action centre = null)
@@ -254,16 +270,38 @@ namespace BetterFG.Features.Replay
         void StepSpeed(int dir)
         {
             var table = ReplayKeyframe.Speeds;
-            int index = 0;
-            float closest = float.MaxValue;
-            for (int i = 0; i < table.Length; i++)
+            int index;
+            if (_kf.cutToNext) index = 0;
+            else
             {
-                float delta = Mathf.Abs(table[i] - _kf.speed);
-                if (delta < closest) { closest = delta; index = i; }
+                index = 1;
+                float closest = float.MaxValue;
+                for (int i = 0; i < table.Length; i++)
+                {
+                    float delta = Mathf.Abs(table[i] - _kf.speed);
+                    if (delta < closest) { closest = delta; index = i + 1; }
+                }
             }
 
-            _kf.speed = table[ReplayWindowKit.Step(index, dir, table.Length, false)];
+            index = ReplayWindowKit.Step(index, dir, table.Length + 1, true);
+
+            _kf.cutToNext = index <= 0;
+            if (!_kf.cutToNext) _kf.speed = table[index - 1];
+
             MarkPlayer(false, 0);
+            Rebuild();
+        }
+
+        void StepShakeKind(int dir)
+        {
+            _kf.shakeKind = (ReplayShakeKind)ReplayWindowKit.Step((int)_kf.shakeKind, dir, 3, true);
+            MarkPlayer(false, 0);
+            Rebuild();
+        }
+
+        void StepShakeTier(int dir)
+        {
+            _kf.shakeTier = ReplayWindowKit.Step(_kf.shakeTier, dir, ReplayShake.TierCount, true);
             Rebuild();
         }
 

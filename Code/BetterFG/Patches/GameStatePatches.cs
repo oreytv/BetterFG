@@ -56,6 +56,7 @@ namespace BetterFG.Patches.GameStates
 
             // enabled tweaks that react to entering the menu (anti-afk kill, lively fall guys reapply)
             BetterFG.Tweaks.BfgTweak.RaiseMainMenuEntered();
+            BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
 
             BetterFG.UI.Tab.NametagTab.CacheNameAssets();
             BetterFG.UI.BetterFGUIMan.ResolveAsapFont();
@@ -272,7 +273,22 @@ namespace BetterFG.Patches.GameStates
             if (state == PartyService.RemoteMemberLoginState.Left)
                 BetterFG.Customization.Profiles.LobbyProfileService.ClearLobby();
 #endif
+            BetterFG.Services.DiscordPresenceService.Push();
         }
+    }
+
+    [HarmonyPatch(typeof(PartyStateManager), nameof(PartyStateManager.AddOrRemovePlayerFromParty))]
+    internal static class PartyRosterChangePresence
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Services.DiscordPresenceService.Push();
+    }
+
+    [HarmonyPatch(typeof(PartyStateManager), nameof(PartyStateManager.Core_HandlePartyLeft))]
+    internal static class PartyLeftPresence
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Services.DiscordPresenceService.Push();
     }
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.NavigateToView), new[] { typeof(MainMenuViews) })]
@@ -386,6 +402,7 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix()
         {
+            BetterFG.Services.DiscordPresenceService.OnShowSelectorClosed();
             MenuCustomizationApplication.AutoApplyCamFromSettings();
 
             var app = MenuCustomizationApplication.Instance;
@@ -441,6 +458,7 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(Round round)
         {
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnLoadViaShareCodeAndVersion(round);
+            BetterFG.Services.DiscordPresenceService.OnLoadingRound(round);
 
             var desc = round?.RoundDescription?.Text;
             if (string.IsNullOrEmpty(desc))
@@ -553,6 +571,7 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(ShowSelectorShowTileViewModel __instance, ShowSelectorShow showSelectorShow)
         {
             if (__instance == null) return;
+            BetterFG.Services.DiscordPresenceService.OnShowSelectorTileSeen();
             MenuCustomizationApplication.Instance?.ReapplyShowTileFill(__instance.transform);
             BetterFG.Features.Stars.FeatureStars.OnSetIndividualShowData(__instance, showSelectorShow);
             BetterFG.Tweaks.ShowTilePlaysTweak.OnSetShowData(__instance, showSelectorShow);
@@ -711,7 +730,23 @@ namespace BetterFG.Patches.GameStates
             BetterFG.Features.TimePlacement.FeatureTimePlacement.OnServerPlayerProgress(progressMessage);
             BetterFG.Features.Stars.FeatureStars.OnServerPlayerProgress(__instance, progressMessage);
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnServerPlayerProgress(__instance, progressMessage);
+            BetterFG.Features.Replay.FeatureReplay.OnServerPlayerProgress(progressMessage);
+            BetterFG.Services.DiscordPresenceService.OnPlayerProgress(__instance, progressMessage);
         }
+    }
+
+    [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.HandleRequiredQualificationProgressUpdate))]
+    internal static class RequiredQualificationUpdateHub
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Services.DiscordPresenceService.Push();
+    }
+
+    [HarmonyPatch(typeof(LevelEditorCostManager), nameof(LevelEditorCostManager.SetUsedBuildPoints))]
+    internal static class CreativeBudgetPresenceHub
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Services.DiscordPresenceService.Push();
     }
 
     // server-authoritative round result. this is the method that processes the results packet, so
@@ -736,9 +771,17 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix(LoadingScreenViewModel __instance)
         {
-            if (__instance == null || __instance.TryCast<LoadingGameScreenViewModel>() == null) return;
+            if (__instance == null) return;
+            var game = __instance.TryCast<LoadingGameScreenViewModel>();
+            if (game == null) return;
             BetterFG.Tweaks.ChangeSplashScreenTweak.OnLoadingScreenUpdateDisplay();
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnLoadingScreenUpdateDisplay();
+            var ugc = __instance.TryCast<LoadingUGCGameScreenViewModel>();
+            string loadingRound = ugc?._loadingGameScreenDto?.levelInfoDto?.Title;
+            if (string.IsNullOrEmpty(loadingRound)) loadingRound = game._round?.DisplayNameUnindented;
+            if (string.IsNullOrEmpty(loadingRound)) loadingRound = game.RoundNameText;
+
+            BetterFG.Services.DiscordPresenceService.OnLoadingScreen(loadingRound, game.WaitingForPlayers, game._round);
         }
     }
 
@@ -1045,6 +1088,7 @@ namespace BetterFG.Patches.GameStates
                 // server-info label kill in the editor). MenuMusicService is a service, stays explicit.
                 BetterFG.Tweaks.BfgTweak.RaiseStateChanged(newState);
                 BetterFG.Services.MenuMusicService.OnReplaceCurrentState(newState);
+                BetterFG.Services.DiscordPresenceService.OnStateChanged(newState);
 
                 if (newState == null) return;
 
@@ -1366,26 +1410,6 @@ namespace BetterFG.Patches.GameStates
 
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
 
-            var persis = GameObject.Find("UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/PersistentOverlayUI").transform;
-
-            var speccount = GameObject.Find("UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/GameStates").transform.Find("PlayingState").Find("UI_SpectatorCount_Prefab");
-
-            var specRT = speccount.GetComponent<RectTransform>();
-            if (specRT != null)
-            {
-                specRT.anchorMin = new Vector2(1f, 1f);
-                specRT.anchorMax = new Vector2(1f, 1f);
-                specRT.pivot = new Vector2(1f, 1f);
-                var parentRT = specRT.parent as RectTransform;
-                var parentSize = parentRT != null ? parentRT.rect.size : new Vector2(1920f, 1080f);
-                specRT.anchoredPosition = new Vector2(-parentSize.x * 0.18f, -parentSize.y * 0.18f);
-            }
-            var container = speccount.Find("Container");
-            if (container != null)
-                container.localPosition = Vector3.zero;
-
-            persis.Find("PB_UI_FallFeed").localPosition = new Vector3(0f, -66.1997f, 0f);
-
             FeatureTimePlacement.SpawnList();
 
             PlayerUtils.TryFindMatchPlayer();
@@ -1423,6 +1447,32 @@ namespace BetterFG.Patches.GameStates
             // assist, server info, respawn, lively fall guys). each keeps its own logic; this is the
             // single call site. InstantLandingIndicator isn't registered as a tweak so it stays above.
             BetterFG.Tweaks.BfgTweak.RaiseRoundStart();
+            BetterFG.Services.DiscordPresenceService.OnRoundStart();
+
+            var gameStates = GameObject.Find("UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/GameStates");
+            var playing = gameStates != null ? gameStates.transform.Find("PlayingState") : null;
+            var speccount = playing != null ? playing.Find("UI_SpectatorCount_Prefab") : null;
+            if (speccount != null)
+            {
+                var specRT = speccount.GetComponent<RectTransform>();
+                if (specRT != null)
+                {
+                    specRT.anchorMin = new Vector2(1f, 1f);
+                    specRT.anchorMax = new Vector2(1f, 1f);
+                    specRT.pivot = new Vector2(1f, 1f);
+                    var parentRT = specRT.parent as RectTransform;
+                    var parentSize = parentRT != null ? parentRT.rect.size : new Vector2(1920f, 1080f);
+                    specRT.anchoredPosition = new Vector2(-parentSize.x * 0.18f, -parentSize.y * 0.18f);
+                }
+                var container = speccount.Find("Container");
+                if (container != null)
+                    container.localPosition = Vector3.zero;
+            }
+            else Plugin.Log.LogInfo("spectator count prefab not up yet, left it where it was");
+
+            var persis = GameObject.Find("UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/PersistentOverlayUI");
+            var fallfeed = persis != null ? persis.transform.Find("PB_UI_FallFeed") : null;
+            if (fallfeed != null) fallfeed.localPosition = new Vector3(0f, -66.1997f, 0f);
         }
 
 
@@ -1481,6 +1531,8 @@ namespace BetterFG.Patches.GameStates
             var app = MenuCustomizationApplication.Instance;
             if (app != null && __instance != null)
                 app.StartCoroutine(ApplyIndexZeroAfterFrames(__instance, 1).WrapToIl2Cpp());
+
+            BetterFG.Services.DiscordPresenceService.Push();
         }
 
         internal static IEnumerator ApplyIndexZeroAfterFrames(SwitchableView view, int frames)
@@ -1563,6 +1615,7 @@ namespace BetterFG.Patches.GameStates
             BetterFG.Tweaks.SpectatorMusicTweak.ForceSpectatorMix(true);
             BetterFG.Tweaks.BfgTweak.RaiseSpectatorMode();
             FeatureTimePlacement.OnSpectatorMode();
+            BetterFG.Services.DiscordPresenceService.Push();
         }
     }
 

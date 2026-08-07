@@ -80,8 +80,11 @@ namespace BetterFG.UI.Windows
             if (_rootRt != null) _rootRt.localScale = new Vector3(sx, 1f, 1f);
         }
 
+        private static BetterFGWindow _activeWindow;
+
         public void HideWindow()
         {
+            if (_activeWindow == this) _activeWindow = null;
             if (_canvasGroup == null) return;
             _canvasGroup.alpha = 0f;
             _canvasGroup.blocksRaycasts = false;
@@ -92,6 +95,9 @@ namespace BetterFG.UI.Windows
 
         public void ShowWindow()
         {
+            if (_activeWindow != null && _activeWindow != this) _activeWindow.HideWindow();
+            _activeWindow = this;
+
             if (_canvasGroup != null)
             {
                 _canvasGroup.alpha = 1f;
@@ -165,6 +171,11 @@ namespace BetterFG.UI.Windows
         {
             UnityEngine.Object.DontDestroyOnLoad(gameObject);
             Build();
+        }
+
+        void OnDestroy()
+        {
+            if (_activeWindow == this) _activeWindow = null;
         }
 
         void Update() => ManagedUpdate();

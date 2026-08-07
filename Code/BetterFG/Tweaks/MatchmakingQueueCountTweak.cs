@@ -21,6 +21,9 @@ namespace BetterFG.Tweaks
         private static bool _matchmaking;
         private static int _queuedPlayers;
 
+        internal static int ConnectedPlayers { get; private set; }
+        internal static int TotalPlayers { get; private set; }
+
         void Awake() => Instance = this;
 
         public override void EnableTweak() { }
@@ -30,14 +33,28 @@ namespace BetterFG.Tweaks
         {
             _matchmaking = true;
             _queuedPlayers = 0;
+            ConnectedPlayers = 0;
+            TotalPlayers = 0;
             Plugin.Log.LogInfo("MatchmakingQueueCount: matchmaking started");
+            BetterFG.Services.DiscordPresenceService.Push();
         }
 
         internal static void OnMatchmakingEnd()
         {
             _matchmaking = false;
+            ConnectedPlayers = 0;
+            TotalPlayers = 0;
             DestroyLabel();
             Plugin.Log.LogInfo("MatchmakingQueueCount: matchmaking ended");
+            BetterFG.Services.DiscordPresenceService.Push();
+        }
+
+        internal static void OnLobbyFillUpdate(int connected, int total)
+        {
+            ConnectedPlayers = connected;
+            TotalPlayers = total;
+            Plugin.Log.LogInfo($"lobby filling: {connected}/{total}");
+            BetterFG.Services.DiscordPresenceService.Push();
         }
 
         internal static void OnQueuedPlayersUpdate(int count)
@@ -118,17 +135,30 @@ namespace BetterFG.Tweaks
         public static void Postfix(string jsonMessage)
         {
             if (string.IsNullOrEmpty(jsonMessage)) return;
-            if (!jsonMessage.Contains("\"Queued\"")) return;
 
-            var key = "\"queuedPlayers\":";
-            int ki = jsonMessage.IndexOf(key);
-            if (ki < 0) return;
-            int start = ki + key.Length;
-            while (start < jsonMessage.Length && (jsonMessage[start] == ' ' || jsonMessage[start] == '"')) start++;
+            if (jsonMessage.Contains("\"Queued\""))
+            {
+                int queued = ReadInt(jsonMessage, "queuedPlayers");
+                if (queued >= 0) MatchmakingQueueCountTweak.OnQueuedPlayersUpdate(queued);
+            }
+
+            if (jsonMessage.Contains("\"Waiting\""))
+            {
+                int connected = ReadInt(jsonMessage, "connectedPlayers");
+                int total = ReadInt(jsonMessage, "totalPlayers");
+                if (connected >= 0) MatchmakingQueueCountTweak.OnLobbyFillUpdate(connected, total);
+            }
+        }
+
+        private static int ReadInt(string json, string name)
+        {
+            int ki = json.IndexOf("\"" + name + "\":");
+            if (ki < 0) return -1;
+            int start = ki + name.Length + 3;
+            while (start < json.Length && (json[start] == ' ' || json[start] == '"')) start++;
             int end = start;
-            while (end < jsonMessage.Length && char.IsDigit(jsonMessage[end])) end++;
-            if (end > start && int.TryParse(jsonMessage.Substring(start, end - start), out int count))
-                MatchmakingQueueCountTweak.OnQueuedPlayersUpdate(count);
+            while (end < json.Length && char.IsDigit(json[end])) end++;
+            return end > start && int.TryParse(json.Substring(start, end - start), out int v) ? v : -1;
         }
     }
 }

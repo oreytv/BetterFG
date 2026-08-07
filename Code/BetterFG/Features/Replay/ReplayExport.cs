@@ -72,6 +72,12 @@ namespace BetterFG.Features.Replay
             }
             catch (Exception ex) { Plugin.Log.LogWarning($"couldn't tidy the frames in {dir}: {ex.Message}"); }
         }
+
+        public static void DeletePartial(string path)
+        {
+            try { if (File.Exists(path)) File.Delete(path); }
+            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't delete the cancelled export at {path}: {ex.Message}"); }
+        }
     }
 
 
@@ -82,15 +88,13 @@ namespace BetterFG.Features.Replay
         const float ROW = ReplayWindowKit.ROW;
         const float PAD = ReplayWindowKit.PAD;
 
-        static readonly Vector3 TITLE_POS = new Vector3(-145.9872f, 114.3654f, 0f);
+        static readonly Vector3 TITLE_POS = Vector3.zero;
 
         readonly Action _onClose;
         readonly Action _onExport;
         readonly RectTransform _root;
         readonly float _width;
         RectTransform _content;
-        Text _status;
-        string _statusText = "";
 
         ReplayExportWindow(Transform parent, Rect rect, Action onExport, Action onClose)
         {
@@ -115,12 +119,6 @@ namespace BetterFG.Features.Replay
             ReplayExport.Save();
             if (_root != null) UnityEngine.Object.Destroy(_root.gameObject);
             _onClose?.Invoke();
-        }
-
-        public void SetStatus(string text)
-        {
-            _statusText = text ?? "";
-            if (_status != null) _status.text = _statusText;
         }
 
         void Rebuild()
@@ -160,23 +158,20 @@ namespace BetterFG.Features.Replay
                 ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, _onExport);
             UGUIShip.CreateButton(_content, new Rect(PAD * 2f + bw, y, bw, ROW + 4f), "Close",
                 ReplayWindowKit.BTN_DARK, Color.white, UIScale.FS_SM, new Action(Close));
-            y += ROW + 4f + 2f;
+            y += ROW + 4f;
 
-            _status = UGUIShip.CreateLabel(_content, new Rect(PAD, y, _width - PAD * 2f, ROW),
-                _statusText, UIScale.FS_SM - 1, ReplayWindowKit.HINT);
-
-            _root.sizeDelta = new Vector2(_width, y + ROW + PAD);
+            _root.sizeDelta = new Vector2(_width, y + PAD);
         }
 
         void StepHeight(int dir)
         {
-            ReplayExport.HeightIndex = ReplayWindowKit.Step(ReplayExport.HeightIndex, dir, ReplayExport.Heights.Length, false);
+            ReplayExport.HeightIndex = ReplayWindowKit.Step(ReplayExport.HeightIndex, dir, ReplayExport.Heights.Length, true);
             Rebuild();
         }
 
         void StepRate(int dir)
         {
-            ReplayExport.RateIndex = ReplayWindowKit.Step(ReplayExport.RateIndex, dir, ReplayExport.Rates.Length, false);
+            ReplayExport.RateIndex = ReplayWindowKit.Step(ReplayExport.RateIndex, dir, ReplayExport.Rates.Length, true);
             Rebuild();
         }
 
@@ -188,8 +183,115 @@ namespace BetterFG.Features.Replay
 
         void StepBitrate(int dir)
         {
-            ReplayExport.BitrateIndex = ReplayWindowKit.Step(ReplayExport.BitrateIndex, dir, ReplayExport.Bitrates.Length, false);
+            ReplayExport.BitrateIndex = ReplayWindowKit.Step(ReplayExport.BitrateIndex, dir, ReplayExport.Bitrates.Length, true);
             Rebuild();
+        }
+    }
+
+    internal class ReplayExportProgressWindow
+    {
+        public static ReplayExportProgressWindow Instance;
+
+        const float ROW = ReplayWindowKit.ROW;
+        const float PAD = ReplayWindowKit.PAD;
+        const float MARGIN = 16f;
+        const float WIDTH = 260f;
+        const float BAR_H = 10f;
+
+        static readonly Vector3 TITLE_POS = Vector3.zero;
+        static readonly Color BAR_BG = new Color(0f, 0f, 0f, 0.35f);
+
+        readonly Action _onCancel;
+        readonly RectTransform _root;
+        RectTransform _content;
+        Text _status;
+        RectTransform _barFillRt;
+        Button _actionBtn;
+        Text _actionLabel;
+        float _progress;
+        bool _done;
+
+        ReplayExportProgressWindow(Transform parent, Action onCancel)
+        {
+            _onCancel = onCancel;
+            _root = UGUIShip.CreatePanel(parent, new Rect(0f, 0f, WIDTH, 1f), Color.clear, "ReplayExportProgressWindow");
+            _root.anchorMin = new Vector2(1f, 0f);
+            _root.anchorMax = new Vector2(1f, 0f);
+            _root.pivot = new Vector2(1f, 0f);
+            _root.anchoredPosition = new Vector2(-MARGIN, MARGIN);
+            ReplayWindowKit.EditBackdrop(_root);
+            Rebuild();
+        }
+
+        public static ReplayExportProgressWindow Show(Transform parent, Action onCancel)
+        {
+            Instance?.Close();
+            Instance = new ReplayExportProgressWindow(parent, onCancel);
+            return Instance;
+        }
+
+        public void Close()
+        {
+            if (Instance == this) Instance = null;
+            if (_root != null) UnityEngine.Object.Destroy(_root.gameObject);
+        }
+
+        public void SetStatus(string text)
+        {
+            if (_status != null) _status.text = text ?? "";
+        }
+
+        public void SetProgress(float t)
+        {
+            _progress = Mathf.Clamp01(t);
+            if (_barFillRt != null) _barFillRt.sizeDelta = new Vector2((WIDTH - PAD * 2f) * _progress, BAR_H);
+        }
+
+        public void SetDone(string finalStatus)
+        {
+            _done = true;
+            SetStatus(finalStatus);
+            if (_actionBtn != null)
+            {
+                UGUIShip.SetButtonColor(_actionBtn, ReplayWindowKit.BTN_DARK);
+                _actionBtn.interactable = true;
+            }
+            if (_actionLabel != null) _actionLabel.text = "Close";
+        }
+
+        void Rebuild()
+        {
+            _content = ReplayWindowKit.Content(_root);
+            ReplayWindowKit.Title(_content, WIDTH, "Export", TITLE_POS);
+
+            float y = ReplayWindowKit.HEAD + 4f;
+
+            _status = UGUIShip.CreateLabel(_content, new Rect(PAD, y, WIDTH - PAD * 2f, ROW), "",
+                UIScale.FS_SM, ReplayWindowKit.HINT);
+            y += ROW + 2f;
+
+            var barBg = UGUIShip.CreatePanel(_content, new Rect(PAD, y, WIDTH - PAD * 2f, BAR_H), BAR_BG, "BarBg");
+            barBg.GetComponent<Image>().raycastTarget = false;
+
+            _barFillRt = UGUIShip.CreatePanel(_content, new Rect(PAD, y, 0f, BAR_H), ReplayWindowKit.BTN_GREEN, "BarFill");
+            _barFillRt.GetComponent<Image>().raycastTarget = false;
+            y += BAR_H + 8f;
+
+            _actionBtn = UGUIShip.CreateButton(_content, new Rect(PAD, y, WIDTH - PAD * 2f, ROW + 4f), "Cancel",
+                ReplayWindowKit.BTN_RED, Color.white, UIScale.FS_SM, new Action(OnAction));
+            _actionLabel = _actionBtn.GetComponentInChildren<Text>();
+            y += ROW + 4f;
+
+            _root.sizeDelta = new Vector2(WIDTH, y + PAD);
+            SetProgress(_progress);
+        }
+
+        void OnAction()
+        {
+            if (_done) { Close(); return; }
+            _actionBtn.interactable = false;
+            if (_actionLabel != null) _actionLabel.text = "cancelling...";
+            _onCancel?.Invoke();
         }
     }
 }

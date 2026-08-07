@@ -1,12 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using BetterFG.Utilities;
 using FMOD;
 using FMOD.Studio;
 using FMODUnity;
-using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
@@ -14,112 +12,9 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace BetterFG.Features.Replay
 {
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlayCharacterAudio))]
-    internal static class ReplayCharacterAudioPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(AudioEvent2D3DPairSO pair, FallGuysCharacterController characterController, Vector3 pos, AudioParamContainer paramContainer)
-        {
-            if (FeatureReplay.Live == null) return;
-            FeatureReplay.CaptureAudio(pair, characterController, pos, paramContainer);
-        }
-    }
-
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlaySpeechBubbleAudio))]
-    internal static class ReplaySpeechBubbleAudioPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(string audioEvent, FallGuysCharacterController characterController)
-        {
-            if (FeatureReplay.Live == null || characterController == null) return;
-            FeatureReplay.CaptureAudio(audioEvent, characterController, characterController.transform.position);
-        }
-    }
-
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlayOneShot), new Type[] { typeof(string), typeof(Vector3) })]
-    internal static class ReplayObjectAudioPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(string __0, Vector3 __1)
-        {
-            if (FeatureReplay.Live == null) return;
-            FeatureReplay.CaptureAudio(__0, null, __1);
-        }
-    }
-
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlayOneShotAttached), new Type[] { typeof(string), typeof(GameObject) })]
-    internal static class ReplayAttachedAudioPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(string __0, GameObject __1)
-        {
-            if (FeatureReplay.Live == null || __1 == null) return;
-            FeatureReplay.CaptureAudio(__0, null, __1.transform.position);
-        }
-    }
-
-    [HarmonyPatch]
-    internal static class ReplayCreateAudioPatch
-    {
-        [HarmonyTargetMethods]
-        public static IEnumerable<MethodBase> Targets()
-        {
-            foreach (var m in typeof(AudioManager).GetMethods())
-            {
-                if (m.Name != nameof(AudioManager.CreateAudio)) continue;
-                var ps = m.GetParameters();
-                if (ps.Length > 1 && (ps[1].ParameterType == typeof(Vector3) || ps[1].ParameterType == typeof(Transform)))
-                    yield return m;
-            }
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(object[] __args, EventInstanceReference __result)
-        {
-            if (FeatureReplay.Live == null || __args == null || __args.Length < 2) return;
-
-            Vector3 pos;
-            if (__args[1] is Vector3 at) pos = at;
-            else if (__args[1] is Transform tf && tf != null) pos = tf.position;
-            else return;
-
-            FeatureReplay.CaptureHeldAudio(__result, __args[0] as string, pos);
-        }
-    }
-
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.StopAndReleaseAudioEvent))]
-    internal static class ReplayStopAudioPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(ref EventInstanceReference instanceReference)
-        {
-            if (FeatureReplay.Live == null) return;
-            FeatureReplay.CloseHeldAudio(instanceReference);
-        }
-    }
-
-    [HarmonyPatch(typeof(PlayAudioStateBehaviour), nameof(PlayAudioStateBehaviour.OnStateEnter))]
-    internal static class ReplayAnimatorAudioPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(PlayAudioStateBehaviour __instance, Animator animator)
-        {
-            if (FeatureReplay.Live == null || animator == null) return;
-
-            var controller = FeatureReplay.BeanFor(animator);
-            if (controller == null) return;
-
-            var source = __instance.TransformOverride != null ? __instance.TransformOverride : controller.transform;
-            FeatureReplay.CaptureAudio(__instance._audioToPlay, controller, source.position);
-        }
-    }
-
     internal class ReplayAudioPlayer
     {
         const float MAX_STEP = 0.5f;
-        const float FAR_WORLD = 300f;
-        const float NEAR_FRACTION = 0.15f;
-        const float FAR_FRACTION = 0.45f;
 
         struct HeldSound
         {
@@ -134,10 +29,8 @@ namespace BetterFG.Features.Replay
         readonly List<Pose> _earPoses = new List<Pose>();
         int _listeners = 1;
         readonly List<string> _banks = new List<string>();
-        readonly float[] _range;
         readonly EventDescription[] _desc;
         Transform _cam;
-        Vector3 _earPos;
         float _pitch = 1f;
         bool _culledRemotes = true;
         bool _ready;
@@ -148,14 +41,12 @@ namespace BetterFG.Features.Replay
         public ReplayAudioPlayer(ReplayRecording rec)
         {
             _rec = rec;
-            _range = new float[rec.audioKeys.Count];
             _desc = new EventDescription[rec.audioKeys.Count];
         }
 
         public IEnumerator Prepare(Transform cam)
         {
             _cam = cam;
-            _earPos = cam.position;
 
             var banks = new List<string>();
             try
@@ -195,7 +86,7 @@ namespace BetterFG.Features.Replay
             finally
             {
                 ClearMix();
-                MeasureRanges();
+                LoadSamples();
                 _ready = true;
                 Plugin.Log.LogInfo($"replay audio armed: {_rec.audioEvents.Count} sounds over {_rec.audioKeys.Count} events, {_banks.Count} of {banks.Count} banks pulled in by us");
             }
@@ -284,14 +175,13 @@ namespace BetterFG.Features.Replay
         {
             if (!_ready) return;
 
-            _earPos = _cam.position;
             foreach (var ear in _ears)
                 if (ear != null) ear.SetPositionAndRotation(_cam.position, _cam.rotation);
 
             RuntimeManager.StudioSystem.setListenerAttributes(0, RuntimeUtils.To3DAttributes(_cam));
         }
 
-        void MeasureRanges()
+        void LoadSamples()
         {
             for (int i = 0; i < _rec.audioKeys.Count; i++)
             {
@@ -306,14 +196,8 @@ namespace BetterFG.Features.Replay
 
                     _desc[i] = description;
                     description.loadSampleData();
-
-                    description.is3D(out bool spatial);
-                    if (!spatial) continue;
-
-                    description.getMinMaxDistance(out float _, out float max);
-                    _range[i] = max;
                 }
-                catch (Exception ex) { Plugin.Log.LogWarning($"replay audio: couldn't measure '{key}': {ex.Message}"); }
+                catch (Exception ex) { Plugin.Log.LogWarning($"replay audio: couldn't load '{key}': {ex.Message}"); }
             }
 
             RuntimeManager.WaitForAllSampleLoading();
@@ -325,21 +209,6 @@ namespace BetterFG.Features.Replay
                 if (samples != LOADING_STATE.LOADED)
                     Plugin.Log.LogWarning($"{_rec.audioKeys[i]} samples are still {samples} after the wait. that one plays silence");
             }
-        }
-
-        Vector3 Place(Vector3 soundPos, float max)
-        {
-            if (max <= 0f) return soundPos;
-
-            var toSound = soundPos - _earPos;
-            float distance = toSound.magnitude;
-
-            float near = max * NEAR_FRACTION;
-            if (distance <= near) return soundPos;
-
-            float heard = max * FAR_FRACTION;
-            float scaled = near + (distance - near) * (heard - near) / (FAR_WORLD - near);
-            return _earPos + toSound / distance * Mathf.Min(scaled, heard);
         }
 
         // pitching the core master group rather than each instance means sounds already ringing when
@@ -401,7 +270,7 @@ namespace BetterFG.Features.Replay
                 var instance = RuntimeManager.CreateInstance(guid);
                 if (!instance.isValid()) { Blame(sound.key, key, "instance came back invalid"); return; }
 
-                instance.set3DAttributes(RuntimeUtils.To3DAttributes(Place(sound.pos, _range[sound.key])));
+                instance.set3DAttributes(RuntimeUtils.To3DAttributes(sound.pos));
 
                 for (int i = 0; i < sound.paramCount; i++)
                 {

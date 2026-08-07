@@ -5,7 +5,6 @@ using System.Text;
 using FG.Common;
 using FG.Common.Fraggle;
 using FGClient;
-using HarmonyLib;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -194,39 +193,6 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(Levels.Obstacles.COMMON_PrefabSpawnerBase), nameof(Levels.Obstacles.COMMON_PrefabSpawnerBase.OnInstantiateObject))]
-    internal static class ReplaySpawnerPatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(GameObject go)
-        {
-            if (FeatureReplay.Live == null || go == null) return;
-            ReplayWorldRecorder.OnLocalSpawn(go, FeatureReplay.GameplayTime);
-        }
-    }
-
-    [HarmonyPatch(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForUse))]
-    internal static class ReplayPoolGetPatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(GameObject go)
-        {
-            if (FeatureReplay.Live == null || go == null) return;
-            ReplayWorldRecorder.OnLocalSpawn(go, FeatureReplay.GameplayTime);
-        }
-    }
-
-    [HarmonyPatch(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForStorage))]
-    internal static class ReplayPoolReturnPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(GameObject go)
-        {
-            if (FeatureReplay.Live == null || go == null) return;
-            ReplayWorldRecorder.OnLocalDespawn(go, FeatureReplay.GameplayTime);
-        }
-    }
-
     internal static class ReplayWorldDrivers
     {
         public static void ForEachRecordable(GameObject root, Action<Behaviour> act)
@@ -242,6 +208,7 @@ namespace BetterFG.Features.Replay
             foreach (var c in root.GetComponentsInChildren<FG.Common.AI.TrolleyBotController>(true)) if (c != null) act(c);
             foreach (var c in root.GetComponentsInChildren<NPCAI>(true)) if (c != null) act(c);
             foreach (var c in root.GetComponentsInChildren<MPGNetObject>(true)) if (c != null) act(c);
+            foreach (var c in root.GetComponentsInChildren<Levels.ProceduralGeneration.COMMON_RandomSegmentGeneration>(true)) if (c != null) act(c);
         }
     }
 
@@ -303,6 +270,10 @@ namespace BetterFG.Features.Replay
         static float _sweep;
         static float _startTime;
         static bool _budgetBlown;
+        static int _suppressed;
+
+        public static void PushSuppressSpawns() => _suppressed++;
+        public static void PopSuppressSpawns() => _suppressed = Mathf.Max(0, _suppressed - 1);
 
         public static void Begin(ReplayRecording rec, float t)
         {
@@ -448,15 +419,33 @@ namespace BetterFG.Features.Replay
             _subtree = 0;
             Track(tf, anchor, placeable == null ? null : placeable._GUID.ToString(), null,
                 anchor != null ? ReplayWorldPath.Build(tf, anchor, null, 0) : ReplayWorldPath.Build(tf, null, sceneName, rootIndex),
-                tf.name, tf.parent == null);
+                tf.name, tf.parent == null, _startTime);
         }
 
-        static void Track(Transform tf, Transform anchor, string guid, string owner, string path, string name, bool sceneRoot)
+        static Node TrackSpawnedSubtree(Transform tf, string prefabName, float t)
         {
-            if (_nodes.Count >= MAX_NODES || _subtree >= SUBTREE_CAP) return;
+            if (_nodes.Count >= MAX_NODES) return null;
+            if (_seen.Contains(tf.GetInstanceID())) return null;
+
+            ClearIndex();
+            foreach (var c in tf.GetComponentsInChildren<ParticleSystem>(true)) if (c != null) _particleAt.Add(c.transform.GetInstanceID());
+            foreach (var c in tf.GetComponentsInChildren<FallGuysCharacterController>(true)) if (c != null) _beanAt.Add(c.transform.GetInstanceID());
+            foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.COMMON_BlastBall>(true)) if (c != null) _blastAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<LevelEditorDestructibleObjectResponder>(true)) if (c != null) _destAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<Levels.TextureUVImageRenderer>(true)) if (c != null) _uvAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<Animator>(true)) if (c != null) _animAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<LevelEditorPlaceableObject>(true)) if (c != null) _placeableAt[c.transform.GetInstanceID()] = c;
+
+            _subtree = 0;
+            return Track(tf, null, null, null, "spawn:" + tf.GetInstanceID(), tf.name, true, t, prefabName);
+        }
+
+        static Node Track(Transform tf, Transform anchor, string guid, string owner, string path, string name, bool sceneRoot, float t, string forcedPrefab = null)
+        {
+            if (_nodes.Count >= MAX_NODES || _subtree >= SUBTREE_CAP) return null;
             int id = tf.GetInstanceID();
-            if (!_seen.Add(id)) return;
-            if (_particleAt.Contains(id) || _beanAt.Contains(id)) return;
+            if (!_seen.Add(id)) return null;
+            if (_particleAt.Contains(id) || _beanAt.Contains(id)) return null;
 
             if (_placeableAt.TryGetValue(id, out var placeable))
             {
@@ -472,10 +461,11 @@ namespace BetterFG.Features.Replay
                 data.owner = owner ?? "";
             }
 
-            bool spawned = anchor == null && sceneRoot && ReplayWorldPath.IsPoolInstance(name);
+            bool spawned = forcedPrefab != null || (anchor == null && sceneRoot && ReplayWorldPath.IsPoolInstance(name));
             if (spawned)
             {
-                data.prefab = ReplayWorldPath.BaseName(name);
+                data.prefab = forcedPrefab ?? ReplayWorldPath.BaseName(name);
+                if (forcedPrefab != null) data.spawnTime = t;
                 _pooled++;
                 anchor = tf;
                 owner = data.path;
@@ -487,7 +477,7 @@ namespace BetterFG.Features.Replay
             _blastAt.TryGetValue(id, out var blast);
             _destAt.TryGetValue(id, out var dest);
             _uvAt.TryGetValue(id, out var uv);
-            Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, spawned, _startTime);
+            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, spawned, t);
             _subtree++;
 
             string sep = path.Length > 0 ? "/" : "";
@@ -496,8 +486,10 @@ namespace BetterFG.Features.Replay
             {
                 var child = tf.GetChild(i);
                 string childName = child.name;
-                Track(child, anchor, guid, owner, path + sep + i + ":" + ReplayWorldPath.Clean(childName), childName, false);
+                Track(child, anchor, guid, owner, path + sep + i + ":" + ReplayWorldPath.Clean(childName), childName, false, t);
             }
+
+            return node;
         }
 
         static Node Add(ReplayObject data, Transform tf, Animator anim, Levels.Obstacles.COMMON_BlastBall blast,
@@ -583,21 +575,25 @@ namespace BetterFG.Features.Replay
             return ReplayTileUV.Pack(offset.x, offset.y);
         }
 
+        static bool IsBettrFGOwned(Transform tf)
+        {
+            for (var t = tf; t != null; t = t.parent)
+                if (t.name.StartsWith("BetterFG_") || t.name.StartsWith("BettrFG_")) return true;
+            return false;
+        }
+
         public static void OnLocalSpawn(GameObject go, float t)
         {
             if (_rec == null || _budgetBlown || go == null || _nodes.Count >= MAX_NODES) return;
+            if (_suppressed > 0 || IsBettrFGOwned(go.transform)) return;
 
             var tf = go.transform;
             int id = tf.GetInstanceID();
 
             OnLocalDespawn(go, t);
-            _seen.Add(id);
 
-            var data = new ReplayObject { prefab = ReplayWorldPath.BaseName(go.name), spawnTime = t };
-            _liveLocal[id] = Add(data, tf, tf.GetComponentInChildren<Animator>(true),
-                tf.GetComponent<Levels.Obstacles.COMMON_BlastBall>(), tf.GetComponent<LevelEditorDestructibleObjectResponder>(),
-                tf.GetComponent<Levels.TextureUVImageRenderer>(), true, t);
-            _pooled++;
+            var node = TrackSpawnedSubtree(tf, ReplayWorldPath.BaseName(go.name), t);
+            if (node != null) _liveLocal[id] = node;
         }
 
         public static void OnLocalDespawn(GameObject go, float t)
@@ -636,10 +632,8 @@ namespace BetterFG.Features.Replay
                 var tf = go.transform;
                 if (_seen.Contains(tf.GetInstanceID())) continue;
 
-                var data = new ReplayObject { prefab = ReplayWorldPath.BaseName(go.name), spawnTime = t };
-                _spawnedByNet[id] = Add(data, tf, tf.GetComponentInChildren<Animator>(true),
-                    tf.GetComponent<Levels.Obstacles.COMMON_BlastBall>(), tf.GetComponent<LevelEditorDestructibleObjectResponder>(),
-                    tf.GetComponent<Levels.TextureUVImageRenderer>(), true, t);
+                var node = TrackSpawnedSubtree(tf, ReplayWorldPath.BaseName(go.name), t);
+                if (node != null) _spawnedByNet[id] = node;
             }
 
             foreach (var kvp in _spawnedByNet)
@@ -1286,6 +1280,82 @@ namespace BetterFG.Features.Replay
             _prefabs.Clear();
 
             Plugin.Log.LogInfo($"world handed back: {bodies} rigidbodies unpinned, {drivers} scripts switched back on, {animators} animators running again, {released} prefab handles released");
+        }
+    }
+
+    internal class ReplayStarchartPlayer
+    {
+        readonly ReplayRecording _rec;
+        readonly List<Scene> _scenes;
+        readonly List<Levels.Starlink.StarlinkMapWalkway> _lit = new List<Levels.Starlink.StarlinkMapWalkway>();
+        int _cursor;
+
+        public ReplayStarchartPlayer(ReplayRecording rec, List<Scene> scenes)
+        {
+            _rec = rec;
+            _scenes = scenes;
+        }
+
+        public void Seek(float time)
+        {
+            var events = _rec.starchartEvents;
+            int i = 0;
+            while (i < events.Count && events[i].t <= time) i++;
+            _cursor = i;
+            Sync(i);
+        }
+
+        public void Advance(float from, float to)
+        {
+            var events = _rec.starchartEvents;
+            if (events.Count == 0) return;
+            if (to < from) { Seek(to); return; }
+
+            while (_cursor < events.Count && events[_cursor].t <= to)
+            {
+                Light(events[_cursor]);
+                _cursor++;
+            }
+        }
+
+        void Sync(int eventCount)
+        {
+            var wanted = new List<Levels.Starlink.StarlinkMapWalkway>();
+            for (int e = 0; e < eventCount; e++) Collect(_rec.starchartEvents[e], wanted);
+
+            foreach (var w in _lit)
+                if (w != null && !wanted.Contains(w)) w.HideWalkway();
+            foreach (var w in wanted)
+                if (w != null && !_lit.Contains(w)) w.LightUpWalkway();
+
+            _lit.Clear();
+            _lit.AddRange(wanted);
+        }
+
+        void Light(ReplayStarchartEvent ev)
+        {
+            for (int i = 0; i < ev.pathCount; i++)
+            {
+                var w = Resolve(_rec.starchartPaths[ev.pathStart + i]);
+                if (w == null || _lit.Contains(w)) continue;
+                w.LightUpWalkway();
+                _lit.Add(w);
+            }
+        }
+
+        void Collect(ReplayStarchartEvent ev, List<Levels.Starlink.StarlinkMapWalkway> into)
+        {
+            for (int i = 0; i < ev.pathCount; i++)
+            {
+                var w = Resolve(_rec.starchartPaths[ev.pathStart + i]);
+                if (w != null) into.Add(w);
+            }
+        }
+
+        Levels.Starlink.StarlinkMapWalkway Resolve(string path)
+        {
+            var tf = ReplayWorldPath.Resolve(path, "", _scenes);
+            return tf != null ? tf.GetComponent<Levels.Starlink.StarlinkMapWalkway>() : null;
         }
     }
 }

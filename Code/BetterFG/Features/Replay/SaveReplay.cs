@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 14;
+        public const int FormatVersion = 16;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 
@@ -50,10 +50,22 @@ namespace BetterFG.Features.Replay
                 }
                 WriteFrameList(bw, rec.cameraFrames);
                 WriteAudio(bw, rec);
+                WriteStarchart(bw, rec);
                 WriteLevel(bw, rec);
                 WriteWorld(bw, rec);
                 WriteTextures(bw, rec);
                 WriteSpeech(bw, rec);
+                WriteGhosts(bw, rec);
+            }
+        }
+
+        static void WriteGhosts(BinaryWriter bw, ReplayRecording rec)
+        {
+            bw.Write(rec.ghosts.Count);
+            foreach (var ghost in rec.ghosts)
+            {
+                bw.Write(ghost.name);
+                WriteFrameList(bw, ghost.frames);
             }
         }
 
@@ -183,6 +195,20 @@ namespace BetterFG.Features.Replay
             }
         }
 
+        static void WriteStarchart(BinaryWriter bw, ReplayRecording rec)
+        {
+            bw.Write(rec.starchartPaths.Count);
+            foreach (var path in rec.starchartPaths) bw.Write(path);
+
+            bw.Write(rec.starchartEvents.Count);
+            foreach (var e in rec.starchartEvents)
+            {
+                bw.Write(e.t);
+                bw.Write(e.pathStart);
+                bw.Write(e.pathCount);
+            }
+        }
+
         public static string ReplayDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BettrFG", "Replays");
 
@@ -283,6 +309,48 @@ namespace BetterFG.Features.Replay
                 Num(sb, "lookAtObject", k.lookAtObject);
                 Float(sb, "speed", k.speed);
                 Num(sb, "cut", k.cut ? 1 : 0);
+                Num(sb, "cutToNext", k.cutToNext ? 1 : 0);
+                Num(sb, "shakeKind", (int)k.shakeKind);
+                Num(sb, "shakeTier", k.shakeTier);
+                sb.Append('}');
+            }
+            sb.Append(']');
+
+            sb.Append(",\"visibilityKeyframes\":[");
+            for (int i = 0; i < rec.visibilityKeyframes.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var v = rec.visibilityKeyframes[i];
+                sb.Append('{');
+                Float(sb, "time", v.time, true);
+                Bool(sb, "showPhrases", v.showPhrases);
+                Num(sb, "names", (int)v.names);
+                Str(sb, "nameOnlyPlayers", string.Join("|", v.nameOnlyPlayers));
+                Num(sb, "playersMode", (int)v.players);
+                Str(sb, "onlyPlayers", string.Join("|", v.onlyPlayers));
+                Bool(sb, "showGhosts", v.showGhosts);
+                sb.Append('}');
+            }
+            sb.Append(']');
+
+            sb.Append(",\"postFxKeyframes\":[");
+            for (int i = 0; i < rec.postFxKeyframes.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var fx = rec.postFxKeyframes[i];
+                sb.Append('{');
+                Float(sb, "time", fx.time, true);
+                Float(sb, "exposure", fx.exposure);
+                Float(sb, "contrast", fx.contrast);
+                Float(sb, "saturation", fx.saturation);
+                Float(sb, "temperature", fx.temperature);
+                Float(sb, "tint", fx.tint);
+                Float(sb, "vignette", fx.vignette);
+                Float(sb, "chromaticAberration", fx.chromaticAberration);
+                Float(sb, "bloomIntensity", fx.bloomIntensity);
+                Float(sb, "bloomThreshold", fx.bloomThreshold);
+                Float(sb, "sharpenAmount", fx.sharpenAmount);
+                Float(sb, "sharpenRadius", fx.sharpenRadius);
                 sb.Append('}');
             }
             sb.Append(']');
@@ -312,11 +380,40 @@ namespace BetterFG.Features.Replay
                 Str(sb, "victoryPose", p.victoryPose);
                 Str(sb, "nickname", p.nickname);
                 Str(sb, "nameplate", p.nameplate);
+                Num(sb, "fameEarnedBadge", p.fameEarnedBadge);
+                Str(sb, "fameUpdatedAt", p.fameUpdatedAt.ToString("o"));
                 Float(sb, "bfgScale", p.bfgScale);
+                Float(sb, "outTime", p.outTime);
                 Str(sb, "bfgCosmetics", p.bfgCosmetics);
                 Str(sb, "bfgColour", p.bfgColour);
                 Str(sb, "bfgPattern", p.bfgPattern);
                 Str(sb, "bfgFaceplate", p.bfgFaceplate);
+                Bool(sb, "hasNametag", p.nametag != null);
+                if (p.nametag != null)
+                {
+                    var nt = p.nametag;
+                    Float(sb, "ntR", nt.r);
+                    Float(sb, "ntG", nt.g);
+                    Float(sb, "ntB", nt.b);
+                    Bool(sb, "ntBold", nt.bold);
+                    Bool(sb, "ntItalic", nt.italic);
+                    Str(sb, "ntCustomName", nt.customName);
+                    Str(sb, "ntIconMode", nt.iconMode);
+                    Str(sb, "ntIconCountry", nt.iconCountry);
+                    Str(sb, "ntIconPath", nt.iconPath);
+                    Float(sb, "ntIconScale", nt.iconScale);
+                    Float(sb, "ntIconOffX", nt.iconOffX);
+                    Float(sb, "ntIconOffY", nt.iconOffY);
+                    Str(sb, "ntPlatformHide", nt.platformHide);
+                    Str(sb, "ntPlatformCustom", nt.platformCustom);
+                    Str(sb, "ntNameStyle", nt.nameStyle);
+                    Bool(sb, "ntBackingEnabled", nt.backingEnabled);
+                    Str(sb, "ntBackingPath", nt.backingPath);
+                    Float(sb, "ntBackingOffX", nt.backingOffX);
+                    Float(sb, "ntBackingOffY", nt.backingOffY);
+                    Float(sb, "ntBackingScale", nt.backingScale);
+                    Str(sb, "ntNickname", nt.nickname);
+                }
 
                 sb.Append(",\"bfgSkins\":[");
                 for (int s = 0; s < p.bfgSkins.Count; s++)

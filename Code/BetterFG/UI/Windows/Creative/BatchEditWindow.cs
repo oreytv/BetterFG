@@ -47,7 +47,7 @@ namespace BetterFG.UI.Windows.Creative
         private static readonly Color HINT_COL = new Color(1f, 1f, 1f, 0.55f);
         private static readonly Color OK_COL = new Color(0.55f, 0.85f, 0.55f, 1f);
 
-        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material" };
+        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics" };
         // built-ins first, then whatever external DLLs registered (usually none). rebuilt each open so a
         // plugin that registers after the window's first build still shows up next time it opens.
         private string[] Subtabs()
@@ -92,6 +92,8 @@ namespace BetterFG.UI.Windows.Creative
         // the last release, pushed when the button is released.
         private BatchEditHistory.BatchEntry _scaleEntry;
         private CanvasGroup _scaleRowsGroup; // fades/blocks the X/Y/Z rows when FromSelected has no pivot
+
+        private int _weightIndex;
 
         private Text _countLabel;
         private Text _statusLabel;
@@ -212,6 +214,7 @@ namespace BetterFG.UI.Windows.Creative
                 case 0: BuildRecolour(contentRoot, w, ref y); break;
                 case 1: BuildScale(contentRoot, w, ref y); break;
                 case 2: BuildMaterial(contentRoot, w, ref y); break;
+                case 3: BuildPhysics(contentRoot, w, ref y); break;
                 default: BuildExtra(contentRoot, w, ref y); break;
             }
 
@@ -476,6 +479,49 @@ namespace BetterFG.UI.Windows.Creative
                 new Action(() => Status(BatchMaterial.SetLighting(true), "lit")));
             UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "UNLIT", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchMaterial.SetLighting(false), "unlit")));
+        }
+
+
+        private void BuildPhysics(RectTransform root, float w, ref float y)
+        {
+            if (!BatchPhysics.AnyPhysics())
+            {
+                MakeLabel(root, new Rect(PAD, y, w, 16f), "nothing selected can do physics", FS_SM, HINT_COL);
+                return;
+            }
+
+            float half = (w - 6f) * 0.5f;
+
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "physics:", FS_SM, HINT_COL);
+            y += 22f;
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ON", BTN_APPLY, WHITE, FS_BODY,
+                new Action(() => Status(BatchPhysics.SetPhysicsEnabled(true), "physics on")));
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "OFF", BTN_STEP, WHITE, FS_BODY,
+                new Action(() => Status(BatchPhysics.SetPhysicsEnabled(false), "physics off")));
+            y += 32f;
+
+            var weights = BatchPhysics.WeightNames();
+            if (weights.Length > 0)
+            {
+                _weightIndex = Mathf.Clamp(_weightIndex, 0, weights.Length - 1);
+                MakeLabel(root, new Rect(PAD, y, 44f, 22f), "weight", FS_SM, HINT_COL);
+                var weightField = UGUIShip.CreateIncrement(root, new Rect(PAD + 46f, y, w - 46f, 22f), 0, weights.Length - 1,
+                    () => _weightIndex, v => _weightIndex = v, wrap: true, fontSize: FS_SM,
+                    fmt: i => weights[Mathf.Clamp(i, 0, weights.Length - 1)],
+                    onChange: i => Status(BatchPhysics.SetWeight(i), "set " + weights[Mathf.Clamp(i, 0, weights.Length - 1)] + " on"));
+                weightField.contentType = InputField.ContentType.Standard;
+                weightField.readOnly = true;
+                UGUIShip.SetInputText(weightField, weights[_weightIndex], false);
+                y += 30f;
+            }
+
+            if (!BatchPhysics.AnyDraggable()) return;
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "grabbable:", FS_SM, HINT_COL);
+            y += 22f;
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ON", BTN_APPLY, WHITE, FS_BODY,
+                new Action(() => Status(BatchPhysics.SetDraggable(true), "grabbable")));
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "OFF", BTN_STEP, WHITE, FS_BODY,
+                new Action(() => Status(BatchPhysics.SetDraggable(false), "not grabbable")));
         }
 
         // ── registered extra subtab ──────────────────────────────────────────

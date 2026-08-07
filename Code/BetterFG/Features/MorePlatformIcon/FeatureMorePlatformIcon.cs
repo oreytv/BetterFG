@@ -19,7 +19,7 @@ namespace BetterFG.Features.MorePlatformIcon
         public static readonly BfgFeature feature = new BfgFeature("moreplatformicon", "More platform icons", true, new List<FeatureSetting>
         {
             new FeatureSetting { id = "privatelobby", label = "Private lobby player list", defaultOn = true },
-        }, onClosed: NametagIconApplicator.RestoreKnownPlatformIcons);
+        }, onOpen: NametagIconApplicator.ApplyKnownPlatformIcons, onClosed: NametagIconApplicator.RestoreKnownPlatformIcons);
 
         const string Res = "BetterFG.assets.ui.feature.moreplatformicon.featuremoreplatformicon_platformicons.png";
         const string ResOutline = "BetterFG.assets.ui.feature.moreplatformicon.featuremoreplatformicon_platformicons_outline.png";

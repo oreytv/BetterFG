@@ -649,6 +649,8 @@ namespace BetterFG.Features.QualificationTime
         static bool? _isRaceRoundCache = null;
         static string _roundIdCache = null;
         static string _roundNameCache = null;
+
+        internal static string CachedRoundName => _roundNameCache;
         static bool _forceTreatAsPb;
         static float _forcedPrevPb;
 
@@ -1238,11 +1240,13 @@ namespace BetterFG.Features.QualificationTime
                 if (frames == null || frames.Count == 0) continue;
 
                 string ghostName = playerName + " (PB - " + ShowLabel(type) + ")";
+                BetterFG.Features.Replay.FeatureReplay.BeginGhostSpawn();
                 var ghost = SpawnBeanUtils.SpawnBean(ghostName, new NPCCustomization("", "", null, null, -1));
                 Plugin.Log.LogInfo($"Ghost: SpawnBean result={ghost != null} [{type}]");
-                if (ghost == null) continue;
+                if (ghost == null) { BetterFG.Features.Replay.FeatureReplay.EndGhostSpawn(); continue; }
 
                 var ghostGo = ghost.gameObject;
+                ghostGo.name = "BettrFG_Ghost_" + ghostName;
 
                 if (ghost._rigidbody != null)
                 {
@@ -1257,9 +1261,10 @@ namespace BetterFG.Features.QualificationTime
                 var ghostAnim = FindBeanAnimator(ghostGo);
                 UnityEngine.Object.Destroy(ghost);
 
-                BetterFGUIMan.Instance.StartCoroutine(ApplyGhostSkinThenMatCoroutine(ghostGo, gen).WrapToIl2Cpp());
+                BetterFGUIMan.Instance.StartCoroutine(GhostDressCoroutine(ghostGo, gen).WrapToIl2Cpp());
                 RegisterGhostNametag(ghostName);
                 _ghostGos.Add(ghostGo);
+                BetterFG.Features.Replay.FeatureReplay.OnGhostSpawned(ghostName, frames);
                 // snapshot the ghost's PB NOW — if the local player beats it this run, PBStore gets
                 // overwritten with the faster new time before the ghost finishes, and reading it at
                 // fallfeed time would stamp the ghost with our new PB instead of its own.
@@ -1272,6 +1277,7 @@ namespace BetterFG.Features.QualificationTime
         static void RegisterGhostNametag(string ghostName)
         {
             if (SettingsService.Get("nametag.enabled", "false") != "true") return;
+            if (SettingsService.Get("nametag.ghost.enabled", "false") != "true") return;
 
             var ci = System.Globalization.CultureInfo.InvariantCulture;
             float F(string k, float d) => float.TryParse(SettingsService.Get(k, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : d;
@@ -1292,6 +1298,12 @@ namespace BetterFG.Features.QualificationTime
                 },
             };
             BetterFG.Network.RemoteProfileStore.Register(profile, ghostName);
+        }
+
+        static IEnumerator GhostDressCoroutine(GameObject ghostGo, int gen)
+        {
+            yield return ApplyGhostSkinThenMatCoroutine(ghostGo, gen);
+            BetterFG.Features.Replay.FeatureReplay.EndGhostSpawn();
         }
 
         static IEnumerator ApplyGhostSkinThenMatCoroutine(GameObject ghostGo, int gen)
@@ -1772,30 +1784,23 @@ namespace BetterFG.Features.QualificationTime
         public class Patch_RoundLoaderSplashCache
         {
             [HarmonyPostfix]
-            public static void Postfix(object[] __args)
+            public static void Postfix(RoundLoader __instance)
             {
-                string roundId = null;
-                string roundName = null;
-                if (__args != null)
-                {
-                    foreach (var arg in __args)
-                    {
-                        var round = arg as Round;
-                        if (round == null) continue;
-                        roundId = round.Id;
-                        roundName = round.DisplayNameUnindented;
-                        break;
-                    }
-                }
+                var round = __instance.Round;
+                string roundName = round?.DisplayNameUnindented;
 
-                if (!string.IsNullOrEmpty(roundId))
+                if (!string.IsNullOrEmpty(round?.Id))
                 {
-                    _roundIdCache = PBStore.CanonicalRoundId(roundId);
+                    _roundIdCache = PBStore.CanonicalRoundId(round.Id);
                     _roundNameCache = roundName;
                 }
 
+                Plugin.Log.LogInfo($"loading screen up for {roundName ?? "a round the loader won't name"}, id {_roundIdCache ?? "none"}");
+
                 BetterFGUIMan.Instance.StartCoroutine(SplashCache.TryCacheSplashForCurrentRound(_roundIdCache, roundName).WrapToIl2Cpp());
                 OnLoadingScreenUpdateDisplay();
+                BetterFG.Services.DiscordPresenceService.OnLoadingRound(round);
+                BetterFG.Services.DiscordPresenceService.Push();
             }
         }
 

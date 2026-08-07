@@ -242,6 +242,11 @@ namespace BetterFG.UI.Windows
                 }
             });
 
+            BuildHeader(parent, "DISCORD");
+            BuildToggleRow(parent, "Rich presence", ROW_ODD,
+                () => DiscordPresenceService.Enabled,
+                v => DiscordPresenceService.SetEnabled(v));
+
             BuildHeader(parent, "BUG REPORT");
             BuildActionRow(parent, "Make safe log copies", ROW_ODD,
                 () => BugReportService.Export(true), "Make");

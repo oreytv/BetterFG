@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Customization.Player;
+using BetterFG.Nametag;
+using BetterFG.Network;
 using BetterFG.Services;
 using BetterFG.UI;
 using BetterFG.UI.Tab;
@@ -26,11 +28,13 @@ using UnityEngine.UI;
 
 namespace BetterFG.Features.Replay
 {
-    public class ReplayViewer : MonoBehaviour
+    public partial class ReplayViewer : MonoBehaviour
     {
         public ReplayViewer(IntPtr ptr) : base(ptr) { }
 
         public static ReplayViewer Instance;
+
+        public static bool PadFlight => Instance != null && Instance._worldHeld && Input.GetMouseButton(0);
 
         const float MARGIN = 16f;
         const float WIN_W = 320f;
@@ -38,6 +42,7 @@ namespace BetterFG.Features.Replay
         const float ROW = 22f;
         const float PAD = 8f;
         const float HEADER_H = ROW + 6f;
+        const float PLAYPAUSE_SIZE = 20f;
         const float LANE_NAME_W = 62f;
         const float TICKS_Y = PAD + HEADER_H;
         // the edge markers get their own band above the scrub strip, so grabbing one can never be
@@ -48,12 +53,27 @@ namespace BetterFG.Features.Replay
         const float SCRUB_H = 12f;
         const float LANE_H = 24f;
         const float LANE_GAP = 2f;
-        const int LANE_COUNT = 2;
+        const int LANE_COUNT = 3;
         const float LANES_Y = SCRUB_Y + SCRUB_H + 3f;
+        const float VIS_LANE_Y = LANES_Y;
+        const float FX_LANE_Y = LANES_Y + (LANE_COUNT - 2) * (LANE_H + LANE_GAP);
         const float CAM_LANE_Y = LANES_Y + (LANE_COUNT - 1) * (LANE_H + LANE_GAP);
         const float LANES_H = CAM_LANE_Y + LANE_H - LANES_Y;
         const float KEYROW_Y = CAM_LANE_Y + (LANE_H - KEY_H) * 0.5f;
-        const float TIMELINE_H = CAM_LANE_Y + LANE_H + 6f;
+        const float VIS_KEYROW_Y = VIS_LANE_Y + (LANE_H - KEY_H) * 0.5f;
+        const float FX_KEYROW_Y = FX_LANE_Y + (LANE_H - KEY_H) * 0.5f;
+        const float VIS_SPLIT_Y = VIS_LANE_Y + LANE_H + LANE_GAP * 0.5f;
+        const float FX_SPLIT_Y = FX_LANE_Y + LANE_H + LANE_GAP * 0.5f;
+        const float NAME_LABEL_HEIGHT = 2.35f;
+        const float NAME_LABEL_SCALE = 0.18f;
+        const float NAME_FADE_START = 30f;
+        const float NAME_FADE_END = 50f;
+        const float LANES_BOTTOM = CAM_LANE_Y + LANE_H + 6f;
+        const float ZOOMBAR_GAP = 10f;
+        const float ZOOMBAR_H = 10f;
+        const float ZOOMBAR_Y = LANES_BOTTOM + ZOOMBAR_GAP;
+        const float ZOOMBAR_MARGIN_B = 6f;
+        const float TIMELINE_H = ZOOMBAR_Y + ZOOMBAR_H + ZOOMBAR_MARGIN_B;
         const float CONTROLS_H = ROW + 8f;
         const float TIMELINE_Y = MARGIN + CONTROLS_H + 8f;
         const float MIN_VIEW_SPAN = 0.5f;
@@ -62,11 +82,21 @@ namespace BetterFG.Features.Replay
         const float SPEED_MAX = 90f;
         const float FOV_MIN = 15f;
         const float FOV_MAX = 120f;
-        const int TICKS = 8;
+        const float RULER_TARGET_TICKS = 7f;
+        static readonly float[] RULER_STEPS =
+            { 0.1f, 0.2f, 0.5f, 1f, 2f, 5f, 10f, 15f, 30f, 60f, 120f, 300f, 600f, 900f, 1800f, 3600f };
+        const int MINOR_DIVISIONS = 5;
+        const float MINOR_TICK_H = SCRUB_H * 0.5f;
+        static readonly Color TICK_MINOR = new Color(1f, 1f, 1f, 0.1f);
         const float MENU_W = 168f;
         const float DRAG_DEADZONE = 5f;
         const float DUP_GAP = 0.5f;
         const float DOUBLE_CLICK = 0.35f;
+        const float FRAME_RATE = 60f;
+        const float FRAME_TIME = 1f / FRAME_RATE;
+        const float FRAME_HOLD_THRESHOLD = 0.5f;
+        const float FRAME_HOLD_REPEAT = 0.05f;
+        const float SNAP_BTN_GAP = 6f;
 
         static readonly Color PANEL_BG = new Color(0.06f, 0.07f, 0.09f, 0.92f);
         static readonly Color HEADER_BG = new Color(0.13f, 0.15f, 0.19f, 1f);
@@ -79,6 +109,7 @@ namespace BetterFG.Features.Replay
         static readonly Color KEY_SELECTED = new Color(1f, 0.82f, 0.25f, 1f);
         static readonly Color KEY_EDITING = new Color(0.38f, 0.85f, 0.45f, 1f);
         static readonly Color KEY_OUTLINE = new Color(0.04f, 0.05f, 0.07f, 1f);
+        static readonly Color KEY_CUT_OUTLINE = new Color(1f, 0.3f, 0.15f, 1f);
         static readonly Color MENU_BG = new Color(0.1f, 0.11f, 0.14f, 0.97f);
         static readonly Vector3 TITLE_POS = new Vector3(3.5219f, 9.2927f, 0f);
 
@@ -94,6 +125,14 @@ namespace BetterFG.Features.Replay
         static Sprite _edgeFill;
         static Sprite _edgeOutline;
         static Sprite _timelineBg;
+        static Sprite _playFillSprite;
+        static Sprite _playOutlineSprite;
+        static Sprite _pauseFillSprite;
+        static Sprite _pauseOutlineSprite;
+        static Sprite _snapFillSprite;
+        static Sprite _snapOutlineSprite;
+        static Sprite _unsnapFillSprite;
+        static Sprite _unsnapOutlineSprite;
 
         // 1200x500 art: the slab's top edge runs y 229..235 and its bottom sits at 496, with the camera
         // cluster parked at x 856..1199, y 13..219 — flush to the right edge. sliced with the camera as
@@ -142,7 +181,9 @@ namespace BetterFG.Features.Replay
         ReplayRecording _rec;
         ReplayAudioPlayer _audio;
         ReplayWorldPlayer _world;
+        ReplayStarchartPlayer _starchart;
         ReplaySpeechPlayer _speech;
+        ReplayPostFx _postFx;
         Camera _cam;
         Canvas _canvas;
         class Track
@@ -154,6 +195,8 @@ namespace BetterFG.Features.Replay
             public Transform armLeft;
             public Transform armRight;
             public int cursor;
+            public GameObject nameLabel;
+            public bool isGhost;
         }
 
         readonly List<GameObject> _beans = new List<GameObject>();
@@ -186,6 +229,7 @@ namespace BetterFG.Features.Replay
         bool _menuMusicWasPlaying;
 
         float _time;
+        float _shakeTime;
         bool _paused = true;
         float _yaw;
         float _pitch;
@@ -196,7 +240,19 @@ namespace BetterFG.Features.Replay
         Text _clock;
         Text _info;
         Text _playLabel;
+        Image _playPauseFill;
+        Image _playPauseOutline;
+        Image _snapFill;
+        Image _snapOutline;
+        bool _snapToKeyframes = true;
+        bool _snapGuideActive;
+        bool _timelineFocused;
+        float _leftArrowHeldAt = -1f;
+        float _leftArrowRepeatAt;
+        float _rightArrowHeldAt = -1f;
+        float _rightArrowRepeatAt;
         Button _deleteBtn;
+        RectTransform _controlsRt;
         Button _restoreBtn;
         Button _doneBtn;
         bool _minimized;
@@ -205,31 +261,50 @@ namespace BetterFG.Features.Replay
         bool _pickObjects;
         bool _pickWasFree;
         bool _pickLookTarget;
+        bool _pickForNames;
+        bool _pickVisibleOnly;
         ReplayKeyframe _pickKeyframe;
+        ReplayVisibilityKeyframe _pickVisKeyframe;
         List<int> _pickAllowed;
         int _pickHover = -1;
         uint _pickHoverPlayer;
         Text _pickHint;
+        Text _camEditHint;
         ReplayKeyframe _editKeyframe;
         readonly List<GameObject> _hiddenUi = new List<GameObject>();
         bool _exporting;
+        bool _exportCancelled;
         string _exportWav;
         float _exportAudioLead;
         readonly List<Text> _rulerLabels = new List<Text>();
+        readonly List<RectTransform> _rulerTicks = new List<RectTransform>();
+        readonly List<RectTransform> _minorTicks = new List<RectTransform>();
+        RectTransform _rulerRoot;
         RectTransform _windowRt;
         RectTransform _marker;
         RectTransform _inMarker;
         RectTransform _outMarker;
         RectTransform _dimLeft;
         RectTransform _dimRight;
+        RectTransform _cutOverlayRoot;
+        readonly List<RectTransform> _cutOverlays = new List<RectTransform>();
         Image _playheadImg;
         Image _inFill;
         Image _outFill;
         bool _draggingIn;
         bool _draggingOut;
+        RectTransform _zoomFillRt;
+        bool _draggingZoomLeft;
+        bool _draggingZoomRight;
+        bool _draggingZoomPan;
+        float _dragZoomPanGrabX;
+        float _dragZoomPanStartViewStart;
+        bool _hoverZoomEdge;
         RectTransform _timelineRt;
         RectTransform _contextMenu;
         RectTransform _keyTicks;
+        RectTransform _visTicks;
+        RectTransform _fxTicks;
         readonly List<ReplayKeyframe> _selected = new List<ReplayKeyframe>();
         readonly List<float> _dragStartTimes = new List<float>();
         ReplayKeyframe _dragKeyframe;
@@ -238,7 +313,30 @@ namespace BetterFG.Features.Replay
         bool _dragMoved;
         ReplayKeyframe _clickedKeyframe;
         float _clickedAt;
+        readonly List<ReplayVisibilityKeyframe> _selectedVis = new List<ReplayVisibilityKeyframe>();
+        readonly List<float> _dragStartTimesVis = new List<float>();
+        ReplayVisibilityKeyframe _dragVisKeyframe;
+        float _dragGrabTimeVis;
+        float _dragGrabMouseXVis;
+        bool _dragMovedVis;
+        bool _marqueeingVis;
+        Vector2 _marqueeAnchorVis;
+        RectTransform _marqueeRtVis;
+        readonly List<ReplayVisibilityKeyframe> _marqueeBaseVis = new List<ReplayVisibilityKeyframe>();
+        readonly List<ReplayPostFxKeyframe> _selectedFx = new List<ReplayPostFxKeyframe>();
+        readonly List<float> _dragStartTimesFx = new List<float>();
+        ReplayPostFxKeyframe _dragFxKeyframe;
+        float _dragGrabTimeFx;
+        float _dragGrabMouseXFx;
+        bool _dragMovedFx;
+        bool _marqueeingFx;
+        Vector2 _marqueeAnchorFx;
+        RectTransform _marqueeRtFx;
+        readonly List<ReplayPostFxKeyframe> _marqueeBaseFx = new List<ReplayPostFxKeyframe>();
+        static GameObject _nametagPrefab;
         bool _freeLook;
+        bool _worldHeld;
+        bool _worldTap;
         bool _scrubbing;
         bool _marqueeing;
         Vector2 _marqueeAnchor;
@@ -258,6 +356,8 @@ namespace BetterFG.Features.Replay
             var viewer = go.AddComponent<ReplayViewer>();
             Instance = viewer;
             viewer._rec = rec;
+            DiscordPresenceService.OnReplayViewerOpened();
+            viewer.PushReplayPresence();
             viewer.StartCoroutine(viewer.OpenRoutine().WrapToIl2Cpp());
         }
 
@@ -272,11 +372,13 @@ namespace BetterFG.Features.Replay
             yield return StartCoroutine(LoadLevel().WrapToIl2Cpp());
             yield return null;
             ApplySets();
+            DisableControllerLeftovers();
             yield return StartCoroutine(LoadBeanPrefab().WrapToIl2Cpp());
 
             Build();
 
             _world = new ReplayWorldPlayer(_rec, _loadedScenes);
+            _starchart = new ReplayStarchartPlayer(_rec, _loadedScenes);
             yield return StartCoroutine(_world.Prepare().WrapToIl2Cpp());
 
             SpawnBeans();
@@ -305,16 +407,22 @@ namespace BetterFG.Features.Replay
         {
             _swapping = true;
             ReplayKeyframeWindow.Instance?.Close();
+            ReplayVisibilityKeyframeWindow.Instance?.Close();
+            ReplayPostFxKeyframeWindow.Instance?.Close();
             CloseContextMenu();
             _audio.Release();
             _world?.Release();
             _world = null;
             _speech?.Release();
             _speech = null;
+            _postFx?.Release();
+            _postFx = null;
 
             foreach (var bean in _beans)
                 if (bean != null) Destroy(bean);
             _beans.Clear();
+            foreach (var track in _tracks)
+                if (track.nameLabel != null) Destroy(track.nameLabel);
             _tracks.Clear();
 
             if (_tookCamera && FromLoadedLevel(_cam.gameObject))
@@ -333,17 +441,27 @@ namespace BetterFG.Features.Replay
 
             _rec = rec;
             _time = 0f;
+            _shakeTime = 0f;
             _paused = true;
             _freeLook = false;
+            _snapToKeyframes = true;
             _selected.Clear();
             _dragKeyframe = null;
+            _selectedVis.Clear();
+            _dragVisKeyframe = null;
+            _selectedFx.Clear();
+            _dragFxKeyframe = null;
             _scrubbing = false;
             EndMarquee();
+            EndMarqueeVis();
+            EndMarqueeFx();
             _audio = new ReplayAudioPlayer(_rec);
+            PushReplayPresence();
 
             yield return StartCoroutine(LoadLevel().WrapToIl2Cpp());
             yield return null;
             ApplySets();
+            DisableControllerLeftovers();
             if (_beanPrefab == null) yield return StartCoroutine(LoadBeanPrefab().WrapToIl2Cpp());
 
             MatchScene();
@@ -352,6 +470,7 @@ namespace BetterFG.Features.Replay
             KillNavigation();
 
             _world = new ReplayWorldPlayer(_rec, _loadedScenes);
+            _starchart = new ReplayStarchartPlayer(_rec, _loadedScenes);
             yield return StartCoroutine(_world.Prepare().WrapToIl2Cpp());
 
             SpawnBeans();
@@ -492,6 +611,22 @@ namespace BetterFG.Features.Replay
             MenuMusicService.SetGameMenuMusicPaused(true);
         }
 
+        // creative levels leave their editor-only controller rigs in the scene (camera controllers,
+        // gizmo helpers etc) — they never show in a live round because the game itself hides them,
+        // but the replay viewer loads the level directly and skips whatever does that
+        void DisableControllerLeftovers()
+        {
+            foreach (var scene in _loadedScenes)
+            {
+                if (!scene.IsValid() || !scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root == null || !root.activeSelf || !root.name.Contains("Controller_")) continue;
+                    root.SetActive(false);
+                }
+            }
+        }
+
         void ShowGame()
         {
             foreach (var go in _hidden)
@@ -581,8 +716,98 @@ namespace BetterFG.Features.Replay
                 speakers[p.playerId] = bean.transform;
             }
 
+            SpawnGhostBeans();
+
             _speech = new ReplaySpeechPlayer(_rec, transform);
             _speech.Prepare(speakers);
+
+            _postFx = new ReplayPostFx(_rec, transform);
+        }
+
+        void SpawnGhostBeans()
+        {
+            if (_rec.ghosts.Count == 0) return;
+
+            ReplayPlayer localP = null;
+            foreach (var p in _rec.players) if (p.isLocal) { localP = p; break; }
+            if (localP == null && _rec.players.Count > 0) localP = _rec.players[0];
+            if (localP == null) return;
+
+            for (int i = 0; i < _rec.ghosts.Count; i++)
+            {
+                var ghost = _rec.ghosts[i];
+                if (ghost.frames.Count == 0) continue;
+
+                var synthetic = new ReplayPlayer
+                {
+                    playerId = 0x80000000u + (uint)i,
+                    name = ghost.name,
+                    colour = localP.colour,
+                    pattern = localP.pattern,
+                    costumeTop = localP.costumeTop,
+                    costumeBottom = localP.costumeBottom,
+                    costumeFull = localP.costumeFull,
+                    faceplate = localP.faceplate,
+                    bfgScale = localP.bfgScale,
+                    bfgCosmetics = localP.bfgCosmetics,
+                    bfgColour = localP.bfgColour,
+                    bfgPattern = localP.bfgPattern,
+                    bfgFaceplate = localP.bfgFaceplate,
+                    nametag = localP.nametag?.WithoutCustomName(),
+                    platformId = localP.platformId,
+                    fameEarnedBadge = localP.fameEarnedBadge,
+                    fameUpdatedAt = localP.fameUpdatedAt,
+                    outTime = ghost.frames[ghost.frames.Count - 1].t,
+                };
+                synthetic.bfgSkins.AddRange(localP.bfgSkins);
+                synthetic.bfgTextures.AddRange(localP.bfgTextures);
+                synthetic.frames.AddRange(ghost.frames);
+
+                var bean = MakeBean(ghost.name, synthetic);
+                if (bean == null) continue;
+
+                bean.transform.position = ghost.frames[0].pos;
+                bean.SetActive(true);
+                StartCoroutine(DressGhostBean(bean, synthetic).WrapToIl2Cpp());
+
+                var rag = bean.GetComponentInChildren<FG.Common.Character.RagdollController>(true);
+                var track = new Track
+                {
+                    player = synthetic,
+                    bean = bean,
+                    anim = BeanAnimationUtil.FindAnimator(bean),
+                    upperBody = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.UpperBody)?.CachedTransform,
+                    armLeft = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.ArmLeft)?.CachedTransform,
+                    armRight = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.ArmRight)?.CachedTransform,
+                    isGhost = true,
+                };
+                if (track.anim != null) track.anim.speed = 0f;
+                if (rag != null) rag.enabled = false;
+
+                _beans.Add(bean);
+                _tracks.Add(track);
+            }
+        }
+
+        IEnumerator DressGhostBean(GameObject bean, ReplayPlayer p)
+        {
+            yield return DressBean(bean, p);
+            if (bean == null) yield break;
+
+            var mat = BetterFG.Core.AssetManager.GhostMaterial;
+            if (mat == null) yield break;
+            foreach (var smr in bean.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mats = smr.sharedMaterials;
+                for (int m = 0; m < mats.Length; m++) mats[m] = mat;
+                smr.sharedMaterials = mats;
+            }
+            foreach (var mr in bean.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var mats = mr.sharedMaterials;
+                for (int m = 0; m < mats.Length; m++) mats[m] = mat;
+                mr.sharedMaterials = mats;
+            }
         }
 
         IEnumerator DressBean(GameObject bean, ReplayPlayer p)
@@ -608,8 +833,19 @@ namespace BetterFG.Features.Replay
 
             if (bean == null) yield break;
 
-            if (replacesBean) SkinApplicationService.ApplyEntriesToBean(p.bfgTextures, bean);
-            else ApplyLook(bean, p, new Action(() => SkinApplicationService.ApplyEntriesToBean(p.bfgTextures, bean)));
+            if (replacesBean)
+            {
+                SkinApplicationService.ApplyEntriesToBean(p.bfgTextures, bean);
+                yield break;
+            }
+
+            bool done = false;
+            ApplyLook(bean, p, new Action(() =>
+            {
+                SkinApplicationService.ApplyEntriesToBean(p.bfgTextures, bean);
+                done = true;
+            }));
+            while (!done) yield return null;
         }
 
         static void ApplyLook(GameObject bean, ReplayPlayer p, Action onDone)
@@ -698,9 +934,161 @@ namespace BetterFG.Features.Replay
             }
 
             if (!_freeLook) EvaluateKeyframeCamera();
+            ApplyVisibility();
             _speech?.Apply(_time, _cam);
+            _postFx?.Apply(_time, _cam);
             UpdateHighlight();
             UpdateCameraGizmo();
+        }
+
+        ReplayVisibilityKeyframe VisibilityAt(float time)
+        {
+            ReplayVisibilityKeyframe best = null;
+            var list = _rec.visibilityKeyframes;
+            for (int i = 0; i < list.Count; i++)
+                if (list[i].time <= time && (best == null || list[i].time > best.time)) best = list[i];
+            return best;
+        }
+
+        ReplayPostFxKeyframe PostFxAt(float time)
+        {
+            ReplayPostFxKeyframe best = null;
+            var list = _rec.postFxKeyframes;
+            for (int i = 0; i < list.Count; i++)
+                if (list[i].time <= time && (best == null || list[i].time > best.time)) best = list[i];
+            return best;
+        }
+
+        static bool VisibleIn(ReplayVisibilityMode mode, List<uint> only, uint playerId) =>
+            mode == ReplayVisibilityMode.All ? true
+            : mode == ReplayVisibilityMode.None ? false
+            : only.Contains(playerId);
+
+        void ApplyVisibility()
+        {
+            var kf = VisibilityAt(_time);
+            bool showPhrases = kf == null || kf.showPhrases;
+            var mode = kf?.players ?? ReplayVisibilityMode.All;
+            var nameMode = kf?.names ?? ReplayVisibilityMode.All;
+
+            if (_speech != null)
+            {
+                _speech.PhrasesVisible = showPhrases;
+                _speech.PlayerVisible = kf == null ? null : (Func<uint, bool>)(id => VisibleIn(mode, kf.onlyPlayers, id));
+            }
+
+            for (int i = 0; i < _tracks.Count; i++)
+            {
+                var track = _tracks[i];
+                if (track.bean == null) continue;
+
+                bool shown = track.isGhost ? (kf == null || kf.showGhosts) : (kf == null || VisibleIn(mode, kf.onlyPlayers, track.player.playerId));
+                if (shown && track.player.outTime >= 0f && _time >= track.player.outTime) shown = false;
+                if (shown && track.isGhost && track.player.frames.Count > 0 && _time < track.player.frames[0].t) shown = false;
+                if (track.bean.activeSelf != shown) track.bean.SetActive(shown);
+
+                bool nameShown = kf == null || VisibleIn(nameMode, kf.nameOnlyPlayers, track.player.playerId);
+                UpdateNameLabel(track, shown && nameShown);
+            }
+        }
+
+        void UpdateNameLabel(Track track, bool show)
+        {
+            if (!show)
+            {
+                if (track.nameLabel != null && track.nameLabel.activeSelf) track.nameLabel.SetActive(false);
+                return;
+            }
+
+            if (track.nameLabel == null) BuildNameLabel(track);
+            if (track.nameLabel == null) return;
+
+            var pos = track.bean.transform.position + Vector3.up * NAME_LABEL_HEIGHT;
+            float dist = Vector3.Distance(pos, _cam.transform.position);
+            float fade = 1f - Mathf.InverseLerp(NAME_FADE_START, NAME_FADE_END, dist);
+
+            if (fade <= 0f)
+            {
+                if (track.nameLabel.activeSelf) track.nameLabel.SetActive(false);
+                return;
+            }
+
+            if (!track.nameLabel.activeSelf) track.nameLabel.SetActive(true);
+            track.nameLabel.transform.SetPositionAndRotation(pos, _cam.transform.rotation);
+            track.nameLabel.transform.localScale = Vector3.one * (dist * NAME_LABEL_SCALE);
+            ApplyNameFade(track.nameLabel, fade);
+        }
+
+        static void ApplyNameFade(GameObject nameLabel, float fade)
+        {
+            var disp = nameLabel.GetComponent<PlayerInfoDisplayGameObject>();
+            if (disp == null) return;
+
+            if (disp._text != null) disp._text.alpha = fade;
+            if (disp._arrowRenderer != null)
+            {
+                var c = disp._arrowRenderer.color;
+                c.a = fade;
+                disp._arrowRenderer.color = c;
+            }
+            if (disp._platformIconRenderer != null)
+            {
+                var c = disp._platformIconRenderer.color;
+                c.a = fade;
+                disp._platformIconRenderer.color = c;
+            }
+            NametagIconApplicator.SetIconAlphaForDisplay(disp, fade);
+        }
+
+        void BuildNameLabel(Track track)
+        {
+            var prefab = FindNametagPrefab();
+            if (prefab == null) return;
+
+            var clone = Instantiate(prefab);
+            clone.name = "BettrFG_ReplayNametag_" + track.player.playerId;
+            clone.transform.SetParent(transform, false);
+            clone.SetActive(true);
+            track.nameLabel = clone;
+
+            var disp = clone.GetComponent<PlayerInfoDisplayGameObject>();
+            if (disp == null || disp._text == null) return;
+
+            string cleaned = FallGuysLib.Players.PlayerUtils.CleanPlayerName(track.player.name);
+            string fallback = string.IsNullOrEmpty(cleaned) ? ("Player " + track.player.playerId) : cleaned;
+
+            if (track.player.nametag != null)
+                NametagIconApplicator.ApplyRemoteToNameplate(disp._text, fallback, track.player.nametag);
+            else
+            {
+                disp.SetText(fallback);
+                disp._text.color = Color.white;
+            }
+
+            bool platformHidden = track.player.nametag != null && track.player.nametag.platformHide == "true";
+            string platformCustom = track.player.nametag?.platformCustom ?? "";
+            if (platformHidden || !string.IsNullOrEmpty(platformCustom))
+                NametagIconApplicator.ApplyPlatformIcon(clone, platformHidden, platformCustom);
+            else
+            {
+                disp.SetPlatformIcon(track.player.platformId);
+                NametagIconApplicator.ApplyPlatformIconByName(disp, track.player.platformId);
+            }
+            disp.SetNameVisualsDependingOnFame(track.player.isLocal, track.player.fameEarnedBadge,
+                new Il2CppSystem.DateTime(track.player.fameUpdatedAt.Ticks));
+        }
+
+        static GameObject FindNametagPrefab()
+        {
+            if (_nametagPrefab != null) return _nametagPrefab;
+            foreach (var go in Resources.FindObjectsOfTypeAll<GameObject>())
+            {
+                if (go == null || go.name != "NetworkedPlayerTagSprite") continue;
+                _nametagPrefab = go;
+                break;
+            }
+            if (_nametagPrefab == null) Plugin.Log.LogWarning("replay: no NetworkedPlayerTagSprite prefab around, names won't show");
+            return _nametagPrefab;
         }
 
         GameObject MakeBean(string label, ReplayPlayer p)
@@ -740,6 +1128,7 @@ namespace BetterFG.Features.Replay
         void Build()
         {
             SetupCamera();
+            PositionCameraOnPlayer();
             MatchScene();
 
             if (EventSystem.current == null)
@@ -771,10 +1160,17 @@ namespace BetterFG.Features.Replay
 
             CloseContextMenu();
             EndMarquee();
+            EndMarqueeVis();
+            EndMarqueeFx();
             _scrubbing = false;
             _draggingIn = false;
             _draggingOut = false;
+            _draggingZoomLeft = false;
+            _draggingZoomRight = false;
+            _draggingZoomPan = false;
             _dragKeyframe = null;
+            _dragVisKeyframe = null;
+            _dragFxKeyframe = null;
 
             Destroy(_timelineRt.gameObject);
             BuildTimeline();
@@ -788,7 +1184,7 @@ namespace BetterFG.Features.Replay
 
         void BuildControls()
         {
-            const float rowW = 168f;
+            const float rowW = 80f;
             var row = UGUIShip.CreatePanel(_canvas.transform, new Rect(0f, 0f, rowW, CONTROLS_H), Color.clear, "ReplayControls");
             row.anchorMin = new Vector2(0f, 0f);
             row.anchorMax = new Vector2(0f, 0f);
@@ -796,10 +1192,17 @@ namespace BetterFG.Features.Replay
             row.anchoredPosition = new Vector2(MARGIN, MARGIN);
             row.sizeDelta = new Vector2(rowW, CONTROLS_H);
             row.GetComponent<Image>().raycastTarget = false;
+            _controlsRt = row;
 
-            UGUIShip.CreateButton(row, new Rect(0f, 0f, 80f, CONTROLS_H), "PLAY", BTN_GREEN, Color.white, UIScale.FS_SM, new Action(TogglePause));
-            _deleteBtn = UGUIShip.CreateButton(row, new Rect(88f, 0f, 80f, CONTROLS_H), "DELETE", BTN_RED, Color.white, UIScale.FS_SM, new Action(DeleteSelected));
+            _deleteBtn = UGUIShip.CreateButton(row, new Rect(0f, 0f, rowW, CONTROLS_H), "DELETE", BTN_RED, Color.white, UIScale.FS_SM, new Action(DeleteSelected));
             _deleteBtn.gameObject.SetActive(false);
+        }
+
+        void SetReplayUiVisible(bool visible)
+        {
+            _windowRt.gameObject.SetActive(visible && !_minimized);
+            _timelineRt.gameObject.SetActive(visible);
+            _controlsRt.gameObject.SetActive(visible);
         }
 
         void KillNavigation()
@@ -832,270 +1235,8 @@ namespace BetterFG.Features.Replay
             _fallbackLight.transform.rotation = Quaternion.Euler(48f, 32f, 0f);
         }
 
-        void SetupCamera()
-        {
-            var existing = CameraUtils.GetMainCamera();
-            if (existing != null)
-            {
-                TakeOverCamera(existing);
-                return;
-            }
-
-            Plugin.Log.LogWarning("level had no main camera, falling back to a bare one");
-            MakeBareCamera(new Vector3(0f, 8f, -18f), Quaternion.identity, 60f);
-            _pitch = 12f;
-            ApplyPostProcessing();
-        }
-
-        void MakeBareCamera(Vector3 pos, Quaternion rot, float fov)
-        {
-            var camGo = new GameObject("BettrFG_ReplayCam");
-            camGo.transform.SetParent(transform, false);
-            camGo.transform.SetPositionAndRotation(pos, rot);
-            _cam = camGo.AddComponent<Camera>();
-            _cam.clearFlags = _sceneLoaded ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
-            _cam.backgroundColor = new Color(0.08f, 0.09f, 0.12f);
-            _cam.nearClipPlane = 0.05f;
-            _cam.farClipPlane = 4000f;
-            _cam.cullingMask = ~0;
-            _cam.fieldOfView = fov;
-            SeedLook();
-        }
-
-        void TakeOverCamera(Camera cam)
-        {
-            _cam = cam;
-            foreach (var brain in _cam.GetComponentsInChildren<CinemachineBrain>(true))
-            {
-                if (!brain.enabled) continue;
-                brain.enabled = false;
-                _brains.Add(brain);
-            }
-
-            var t = _cam.transform;
-            _camParent = t.parent;
-            _camLocalPos = t.localPosition;
-            _camLocalRot = t.localRotation;
-            _camFov = _cam.fieldOfView;
-            _tookCamera = true;
-
-            t.SetParent(null, true);
-            SeedLook();
-            Plugin.Log.LogInfo($"freecam took over {_cam.gameObject.name}, its post-processing comes along");
-        }
-
-        void SeedLook()
-        {
-            var euler = _cam.transform.eulerAngles;
-            _yaw = euler.y;
-            _pitch = euler.x > 180f ? euler.x - 360f : euler.x;
-        }
-
-        bool FromLoadedLevel(GameObject go)
-        {
-            var scene = go.scene;
-            foreach (var loaded in _loadedScenes)
-                if (loaded == scene) return true;
-            return false;
-        }
-
-        void AdoptLevelCamera()
-        {
-            if (FromLoadedLevel(_cam.gameObject)) return;
-
-            var level = CameraUtils.GetMainCamera();
-            if (level == null || level == _cam || !FromLoadedLevel(level.gameObject))
-            {
-                ApplyPostProcessing();
-                return;
-            }
-
-            var pos = _cam.transform.position;
-            var rot = _cam.transform.rotation;
-            float fov = _cam.fieldOfView;
-
-            if (_tookCamera) RestoreCamera();
-            else Destroy(_cam.gameObject);
-
-            TakeOverCamera(level);
-            _cam.transform.SetPositionAndRotation(pos, rot);
-            _cam.fieldOfView = fov;
-            SeedLook();
-        }
-
-        void ApplyPostProcessing()
-        {
-            PostProcessLayer template = null;
-            foreach (var layer in Resources.FindObjectsOfTypeAll<PostProcessLayer>())
-            {
-                if (layer == null || layer.m_Resources == null || layer.gameObject == _cam.gameObject) continue;
-                if (template == null) template = layer;
-                if (layer.GetComponent<Camera>() == null) continue;
-                if (FromLoadedLevel(layer.gameObject)) { template = layer; break; }
-                if (layer.gameObject.scene.IsValid()) template = layer;
-            }
-            if (template == null)
-            {
-                Plugin.Log.LogWarning("nothing to copy post-processing from, replay cam renders raw");
-                return;
-            }
-
-            int mask = template.volumeLayer.value;
-            if (mask == 0) mask = ~0;
-
-            _cam.allowHDR = true;
-
-            var ppl = _cam.GetComponent<PostProcessLayer>();
-            if (ppl == null) ppl = _cam.gameObject.AddComponent<PostProcessLayer>();
-            ppl.enabled = false;
-            ppl.Init(template.m_Resources);
-            ppl.volumeLayer = mask;
-            ppl.volumeTrigger = _cam.transform;
-            ppl.antialiasingMode = template.antialiasingMode;
-            ppl.stopNaNPropagation = template.stopNaNPropagation;
-            ppl.enabled = true;
-
-            int volumes = Resources.FindObjectsOfTypeAll<PostProcessVolume>().Length;
-            Plugin.Log.LogInfo($"post-processing off {template.gameObject.name} (scene '{template.gameObject.scene.name}'), volumeLayer {mask}, AA {template.antialiasingMode}, {volumes} volumes around");
-        }
-
-        void BuildWindow()
-        {
-            var win = UGUIShip.CreatePanel(_canvas.transform, new Rect(MARGIN, MARGIN, WIN_W, WIN_H), Color.clear, "ReplayWindow");
-            _windowRt = win;
-            ReplayWindowKit.MainBackdrop(win);
-            ReplayWindowKit.Title(win, WIN_W, "BettrFG Replay", TITLE_POS);
-            UGUIShip.CreateButton(win, new Rect(WIN_W - 30f, 3f, 26f, 20f), "<<", BTN_DARK, Color.white, UIScale.FS_SM, new Action(Minimize));
-
-            _restoreBtn = UGUIShip.CreateButton(_canvas.transform, new Rect(2f, 2f, 34f, 20f), ">>",
-                BTN_DARK, Color.white, UIScale.FS_SM, new Action(Restore));
-            _restoreBtn.gameObject.SetActive(false);
-
-            _doneBtn = UGUIShip.CreateButton(_canvas.transform, new Rect(2f, 2f, 62f, 20f), "DONE",
-                BTN_GREEN, Color.white, UIScale.FS_SM, new Action(EndCameraEdit));
-            _doneBtn.gameObject.SetActive(false);
-
-            float y = 26f + PAD;
-            _info = UGUIShip.CreateLabel(win, new Rect(PAD, y, WIN_W - PAD * 2f, ROW * 4f), "", UIScale.FS_SM, HINT, TextAnchor.UpperLeft);
-            y += ROW * 4f + 2f;
-
-            var nameField = UGUIShip.CreateInputField(win, new Rect(PAD, y, WIN_W - PAD * 2f, ROW),
-                "replay name...", new Color(0f, 0f, 0f, 0.55f), Color.white, UIScale.FS_SM);
-            nameField.text = ReplayName();
-            nameField.onEndEdit.AddListener(new Action<string>(OnNameChanged));
-            y += ROW + PAD;
-
-            float bw = (WIN_W - PAD * 5f) / 4f;
-            UGUIShip.CreateButton(win, new Rect(PAD, y, bw, ROW + 4f), "Save", BTN_DARK, Color.white, UIScale.FS_SM, new Action(SaveAs));
-            UGUIShip.CreateButton(win, new Rect(PAD * 2f + bw, y, bw, ROW + 4f), "Load", BTN_DARK, Color.white, UIScale.FS_SM, new Action(LoadFrom));
-            UGUIShip.CreateButton(win, new Rect(PAD * 3f + bw * 2f, y, bw, ROW + 4f), "Export", BTN_DARK, Color.white, UIScale.FS_SM, new Action(OpenExportWindow));
-            UGUIShip.CreateButton(win, new Rect(PAD * 4f + bw * 3f, y, bw, ROW + 4f), "Exit", BTN_RED, Color.white, UIScale.FS_SM, new Action(Exit));
-            y += ROW + 4f + PAD;
-
-            UGUIShip.CreateSlider(win, PAD, y, WIN_W - PAD * 2f, "", Mathf.InverseLerp(SPEED_MIN, SPEED_MAX, _speed), ROW, PAD, UIScale.FS_SM,
-                new Action<float>(OnSpeedChanged), null, null, false, Mathf.InverseLerp(SPEED_MIN, SPEED_MAX, 14f));
-        }
-
-        void BuildTimeline()
-        {
-            float w = UIScaleService.CurrentRef.x - MARGIN * 2f;
-            var bar = UGUIShip.CreatePanel(_canvas.transform, new Rect(0f, 0f, w, TIMELINE_H), Color.clear, "ReplayTimeline");
-            _timelineRt = bar;
-            bar.anchorMin = new Vector2(0f, 0f);
-            bar.anchorMax = new Vector2(0f, 0f);
-            bar.pivot = new Vector2(0f, 0f);
-            bar.anchoredPosition = new Vector2(MARGIN, TIMELINE_Y);
-            bar.sizeDelta = new Vector2(w, TIMELINE_H);
-            BuildTimelineBackdrop(bar, w);
-
-            _playLabel = UGUIShip.CreateLabel(bar, new Rect(PAD, PAD, 200f, HEADER_H), "", UIScale.FS_SM, HINT);
-            _clock = UGUIShip.CreateLabel(bar, new Rect(w - 190f - PAD, PAD, 190f, HEADER_H), "", UIScale.FS, Color.white, TextAnchor.MiddleRight);
-
-            _trackLeft = PAD + LANE_NAME_W;
-            float trackW = w - _trackLeft - PAD;
-            _trackWidth = trackW;
-            _viewStart = 0f;
-            _viewSpan = _rec.duration;
-            NormaliseTrim();
-
-            // the striped strip is the scrub band: it sits exactly where the playhead's grab handle
-            // is, and everything below it is lanes.
-            var scrub = UGUIShip.CreatePanel(bar, new Rect(_trackLeft, SCRUB_Y, trackW, SCRUB_H), new Color(1f, 1f, 1f, 0.12f), "ScrubBand");
-            if (_stripeSprite == null) _stripeSprite = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.stripe.png", 400f);
-            var scrubImg = scrub.GetComponent<Image>();
-            scrubImg.sprite = _stripeSprite;
-            scrubImg.type = Image.Type.Tiled;
-            scrubImg.raycastTarget = false;
-
-            _rulerLabels.Clear();
-            for (int i = 0; i <= TICKS; i++)
-            {
-                float f = i / (float)TICKS;
-                float x = _trackLeft + trackW * f;
-                UGUIShip.CreatePanel(bar, new Rect(x, SCRUB_Y, 1f, SCRUB_H), TICK, "Tick");
-                _rulerLabels.Add(UGUIShip.CreateLabel(bar, new Rect(x - 28f, TICKS_Y, 56f, 14f),
-                    "", UIScale.FS_SM - 2, TICK, TextAnchor.MiddleCenter));
-            }
-            RefreshRuler();
-
-            for (int i = 0; i < LANE_COUNT; i++)
-            {
-                float y = LANES_Y + i * (LANE_H + LANE_GAP);
-                UGUIShip.CreatePanel(bar, new Rect(_trackLeft, y, trackW, LANE_H), LANE_BG, "Lane").GetComponent<Image>().raycastTarget = false;
-
-                bool camera = i == LANE_COUNT - 1;
-                UGUIShip.CreateLabel(bar, new Rect(PAD, y, LANE_NAME_W - 6f, LANE_H),
-                    camera ? "Camera" : "", UIScale.FS_SM - 1, camera ? HINT : TICK, TextAnchor.MiddleRight);
-            }
-
-            _dimLeft = UGUIShip.CreatePanel(bar, new Rect(_trackLeft, LANES_Y, 0f, LANES_H), OUTSIDE_DIM, "OutsideLeft");
-            _dimLeft.GetComponent<Image>().raycastTarget = false;
-            _dimRight = UGUIShip.CreatePanel(bar, new Rect(_trackLeft, LANES_Y, 0f, LANES_H), OUTSIDE_DIM, "OutsideRight");
-            _dimRight.GetComponent<Image>().raycastTarget = false;
-
-            var ticksGo = new GameObject("KeyframeTicks");
-            _keyTicks = ticksGo.AddComponent<RectTransform>();
-            _keyTicks.SetParent(bar, false);
-            UGUIShip.SetPixelRect(_keyTicks, new Rect(0f, 0f, w, TIMELINE_H));
-
-            if (_playheadFill == null)
-            {
-                _playheadFill = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.playhead_fill.png");
-                _playheadOutline = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.playhead_outline.png");
-                _edgeFill = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.edgemarker_fill.png");
-                _edgeOutline = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.edgemarker_outline.png");
-            }
-
-            _inMarker = BuildMarker(bar, "TrimIn", EDGE_W, EDGE_H, _edgeOutline, _edgeFill, out _inFill);
-            _outMarker = BuildMarker(bar, "TrimOut", EDGE_W, EDGE_H, _edgeOutline, _edgeFill, out _outFill);
-            _outMarker.localScale = new Vector3(-1f, 1f, 1f);
-
-            _marker = BuildMarker(bar, "Playhead", PH_W, PH_H, _playheadOutline, _playheadFill, out _playheadImg);
-        }
-
         // the slab covers the bar and the camera hangs above its top edge, so the image is taller than
         // the timeline by exactly the sliced top border
-        void BuildTimelineBackdrop(RectTransform bar, float w)
-        {
-            if (_timelineBg == null)
-            {
-                var tex = EmbeddedResourceandUnity.LoadTexture("BetterFG.assets.ui.replay.timeline.png");
-                if (tex == null) return;
-
-                _timelineBg = Sprite.Create(tex, new Rect(0f, 0f, tex.width, tex.height), Vector2.zero,
-                    100f / BG_SCALE, 0, SpriteMeshType.FullRect,
-                    new Vector4(BG_BORDER_L, BG_BORDER_B, BG_BORDER_R, BG_BORDER_T));
-                _timelineBg.hideFlags = HideFlags.HideAndDontSave;
-            }
-
-            var rt = UGUIShip.CreatePanel(bar, new Rect(0f, -BG_OVERHANG, w, TIMELINE_H + BG_OVERHANG), Color.white, "Backdrop");
-            var img = rt.GetComponent<Image>();
-            img.sprite = _timelineBg;
-            img.type = Image.Type.Sliced;
-            img.pixelsPerUnitMultiplier = BG_PPU_MULT;
-            img.raycastTarget = false;
-            rt.SetAsFirstSibling();
-        }
 
         RectTransform BuildMarker(RectTransform parent, string name, float w, float h, Sprite outline, Sprite fill, out Image fillImg)
         {
@@ -1120,115 +1261,39 @@ namespace BetterFG.Features.Replay
 
         float FractionToTime(float f) => _viewStart + f * ViewSpan;
 
-        void RefreshRuler()
+        RectTransform BuildRulerTick(out Text label)
         {
-            for (int i = 0; i < _rulerLabels.Count; i++)
-                _rulerLabels[i].text = Stamp(FractionToTime(i / (float)TICKS));
+            var root = UGUIShip.CreatePanel(_rulerRoot, new Rect(0f, 0f, 1f, 1f), Color.clear, "RulerTick");
+            root.GetComponent<Image>().raycastTarget = false;
+            UGUIShip.CreatePanel(root, new Rect(0f, SCRUB_Y, 1f, SCRUB_H), TICK, "Line").GetComponent<Image>().raycastTarget = false;
+            label = UGUIShip.CreateLabel(root, new Rect(-28f, TICKS_Y, 56f, 14f), "", UIScale.FS_SM - 2, TICK, TextAnchor.MiddleCenter);
+            return root;
         }
 
-        void ZoomTimeline(float notches, float pivot)
+        RectTransform BuildMinorTick()
         {
-            float duration = Mathf.Max(_rec.duration, MIN_VIEW_SPAN);
-            float anchor = Mathf.Clamp01(TimeToFraction(pivot));
-            _viewSpan = Mathf.Clamp(ViewSpan * Mathf.Pow(0.82f, notches), MIN_VIEW_SPAN, duration);
-            _viewStart = Mathf.Clamp(pivot - anchor * _viewSpan, 0f, duration - _viewSpan);
-            RefreshRuler();
-        }
-
-        void PanTimeline(float notches)
-        {
-            float duration = Mathf.Max(_rec.duration, MIN_VIEW_SPAN);
-            if (ViewSpan >= duration) return;
-            _viewStart = Mathf.Clamp(_viewStart - notches * ViewSpan * 0.15f, 0f, duration - ViewSpan);
-            RefreshRuler();
-        }
-
-        void FollowPlayhead()
-        {
-            if (ViewSpan >= _rec.duration) return;
-            if (_time >= _viewStart && _time <= _viewStart + ViewSpan) return;
-            _viewStart = Mathf.Clamp(_time - ViewSpan * 0.5f, 0f, _rec.duration - ViewSpan);
-            RefreshRuler();
-        }
-
-        void RefreshKeyframeTicks()
-        {
-            if (_keyTicks.childCount != _rec.keyframes.Count)
-            {
-                for (int i = _keyTicks.childCount - 1; i >= 0; i--)
-                    DestroyImmediate(_keyTicks.GetChild(i).gameObject);
-
-                for (int i = 0; i < _rec.keyframes.Count; i++)
-                    BuildKeyframeTick();
-            }
-
-            var editing = ReplayKeyframeWindow.Instance?.Keyframe;
-            var hovered = HoveredKeyframe();
-            for (int i = 0; i < _rec.keyframes.Count && i < _keyTicks.childCount; i++)
-            {
-                var k = _rec.keyframes[i];
-                float f = TimeToFraction(k.time);
-
-                var rt = _keyTicks.GetChild(i).GetComponent<RectTransform>();
-                bool onScreen = f >= -0.01f && f <= 1.01f;
-                if (rt.gameObject.activeSelf != onScreen) rt.gameObject.SetActive(onScreen);
-                if (!onScreen) continue;
-
-                rt.anchoredPosition = new Vector2(_trackLeft + _trackWidth * f - KEY_W * 0.5f, -KEYROW_Y);
-
-                var fill = rt.GetChild(0).GetComponent<Image>();
-                fill.color = k == hovered ? Color.white
-                    : k == editing ? KEY_EDITING
-                    : _selected.Contains(k) ? KEY_SELECTED
-                    : KEY_IDLE;
-            }
-        }
-
-        void BuildKeyframeTick()
-        {
-            if (_fillSprite == null)
-            {
-                _fillSprite = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.marker_fill.png");
-                _outlineSprite = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.marker_outline.png");
-            }
-
-            var tick = UGUIShip.CreatePanel(_keyTicks, new Rect(0f, KEYROW_Y, KEY_W, KEY_H), Color.clear, "Keyframe");
+            var tick = UGUIShip.CreatePanel(_rulerRoot, new Rect(0f, SCRUB_Y, 1f, MINOR_TICK_H), TICK_MINOR, "MinorTick");
             tick.GetComponent<Image>().raycastTarget = false;
-
-            var fill = UGUIShip.CreatePanel(tick, new Rect(0f, 0f, KEY_W, KEY_H), KEY_IDLE, "Fill");
-            var fillImg = fill.GetComponent<Image>();
-            fillImg.sprite = _fillSprite;
-            fillImg.raycastTarget = false;
-
-            var outline = UGUIShip.CreatePanel(tick, new Rect(0f, 0f, KEY_W, KEY_H), KEY_OUTLINE, "Outline");
-            var outlineImg = outline.GetComponent<Image>();
-            outlineImg.sprite = _outlineSprite;
-            outlineImg.raycastTarget = false;
+            return tick;
         }
 
-        void NormaliseTrim()
+        static bool OnStep(float t, float step) => Mathf.Abs(t / step - Mathf.Round(t / step)) < 0.001f;
+
+        float ZoomEdgeLeftX() => _trackLeft + _trackWidth * Mathf.Clamp01(_viewStart / Mathf.Max(_rec.duration, 0.001f));
+
+        float ZoomEdgeRightX() => _trackLeft + _trackWidth * Mathf.Clamp01((_viewStart + ViewSpan) / Mathf.Max(_rec.duration, 0.001f));
+
+        RectTransform BuildCutOverlay()
         {
-            if (_rec.trimEnd <= 0f || _rec.trimEnd > _rec.duration) _rec.trimEnd = _rec.duration;
-            _rec.trimStart = Mathf.Clamp(_rec.trimStart, 0f, Mathf.Max(0f, _rec.trimEnd - MIN_TRIM));
+            var rt = UGUIShip.CreatePanel(_cutOverlayRoot, new Rect(0f, LANES_Y, 0f, LANES_H), new Color(0f, 0f, 0f, 0.4f), "CutOverlay");
+            var img = rt.GetComponent<Image>();
+            img.sprite = _stripeSprite;
+            img.type = Image.Type.Tiled;
+            img.raycastTarget = false;
+            return rt;
         }
 
         float TrackX(float time) => _trackLeft + _trackWidth * Mathf.Clamp01(TimeToFraction(time));
-
-        void PositionMarker()
-        {
-            _marker.anchoredPosition = new Vector2(TrackX(_time) - PH_W * PH_STEM, -SCRUB_Y);
-            _playheadImg.color = _scrubbing || NearMarker(_time, false) ? Color.white : PLAYHEAD_YELLOW;
-
-            float inX = TrackX(_rec.trimStart);
-            float outX = TrackX(_rec.trimEnd);
-            _inMarker.anchoredPosition = new Vector2(inX - EDGE_W * EDGE_STEM, -EDGE_Y);
-            _outMarker.anchoredPosition = new Vector2(outX + EDGE_W * EDGE_STEM, -EDGE_Y);
-            _inFill.color = _draggingIn || NearMarker(_rec.trimStart, true) ? Color.white : EDGE_BLUE;
-            _outFill.color = _draggingOut || NearMarker(_rec.trimEnd, true) ? Color.white : EDGE_BLUE;
-
-            UGUIShip.SetPixelRect(_dimLeft, new Rect(_trackLeft, LANES_Y, inX - _trackLeft, LANES_H));
-            UGUIShip.SetPixelRect(_dimRight, new Rect(outX, LANES_Y, _trackLeft + _trackWidth - outX, LANES_H));
-        }
 
         // hovering a marker's own band near its stem is what makes it grabbable, so that's what turns
         // it white
@@ -1238,16 +1303,52 @@ namespace BetterFG.Features.Replay
             if (_dragKeyframe != null) return _dragKeyframe;
 
             var cursor = TimelineCursor();
-            if (!OverTimeline(cursor) || !OverKeyRow(cursor)) return null;
+            if (!OverTimeline(cursor) || !OverCameraRow(cursor)) return null;
             return KeyframeNear(TimeAt(cursor.x));
         }
 
-        bool NearMarker(float time, bool edgeBand)
+        ReplayVisibilityKeyframe HoveredVisKeyframe()
         {
-            if (_canvas == null) return false;
+            if (_canvas == null) return _dragVisKeyframe;
+            if (_dragVisKeyframe != null) return _dragVisKeyframe;
+
             var cursor = TimelineCursor();
-            if (edgeBand ? !OverEdgeBand(cursor) : !OverScrub(cursor)) return false;
-            return Mathf.Abs(cursor.x - TrackX(time)) <= GRAB_PX;
+            if (!OverTimeline(cursor) || !OverVisRow(cursor)) return null;
+            return VisKeyframeNear(TimeAt(cursor.x));
+        }
+
+        ReplayPostFxKeyframe HoveredFxKeyframe()
+        {
+            if (_canvas == null) return _dragFxKeyframe;
+            if (_dragFxKeyframe != null) return _dragFxKeyframe;
+
+            var cursor = TimelineCursor();
+            if (!OverTimeline(cursor) || !OverFxRow(cursor)) return null;
+            return FxKeyframeNear(TimeAt(cursor.x));
+        }
+
+        void HandleFrameStepKeys()
+        {
+            StepOnHold(KeyCode.LeftArrow, -1f, ref _leftArrowHeldAt, ref _leftArrowRepeatAt);
+            StepOnHold(KeyCode.RightArrow, 1f, ref _rightArrowHeldAt, ref _rightArrowRepeatAt);
+        }
+
+        void StepOnHold(KeyCode key, float dir, ref float heldAt, ref float repeatAt)
+        {
+            if (Input.GetKeyDown(key))
+            {
+                heldAt = Time.unscaledTime;
+                repeatAt = heldAt + FRAME_HOLD_THRESHOLD;
+                StepFrame(dir);
+                return;
+            }
+            if (!Input.GetKey(key)) { heldAt = -1f; return; }
+            if (heldAt < 0f) return;
+
+            float now = Time.unscaledTime;
+            if (now < repeatAt) return;
+            repeatAt = now + FRAME_HOLD_REPEAT;
+            StepFrame(dir);
         }
 
         void OnSpeedChanged(float f) => _speed = Mathf.Lerp(SPEED_MIN, SPEED_MAX, f);
@@ -1259,26 +1360,103 @@ namespace BetterFG.Features.Replay
             _paused = !_paused;
             if (!_paused) _freeLook = false;
             _audio.Seek(_time);
+            _starchart.Seek(_time);
             SyncUi();
         }
 
         void SeekTo(float time)
         {
-            _time = Mathf.Clamp(time, _rec.trimStart, _rec.trimEnd);
+            float framed = SnapFrame(time);
+            if (ShiftHeld()) framed = MagnetSnap(framed, null, null, null, out _);
+            _time = SnapOutOfCut(Mathf.Clamp(framed, _rec.trimStart, _rec.trimEnd));
             _paused = true;
             _freeLook = false;
             _audio.Seek(_time);
+            _starchart.Seek(_time);
+            FollowPlayhead();
             ApplyTime();
             SyncUi();
         }
 
+        void StepFrame(float dir) => SeekTo(_time + dir * FRAME_TIME);
+
+        float SnapOutOfCut(float time)
+        {
+            for (int i = 0; i < _rec.keyframes.Count; i++)
+            {
+                var k = _rec.keyframes[i];
+                if (!k.cutToNext) continue;
+
+                float end = i + 1 < _rec.keyframes.Count ? _rec.keyframes[i + 1].time : _rec.duration;
+                if (time <= k.time || time >= end) continue;
+
+                return time - k.time <= end - time ? k.time : end;
+            }
+            return time;
+        }
+
+        static float SnapFrame(float t) => Mathf.Round(t * FRAME_RATE) / FRAME_RATE;
+
+        // trim handles always magnet onto nearby keyframes when the toggle is on, same as dragging
+        // a keyframe does — the playhead itself only gets that via a held shift (see SeekTo)
+        float SnapEdge(float raw)
+        {
+            float framed = SnapFrame(raw);
+            return _snapToKeyframes ? MagnetSnap(framed, null, null, null, out _) : framed;
+        }
+
+        // magnet snap always lands on the 60fps grid already, since every keyframe time on the
+        // record is itself grid-aligned — nothing here needs to re-quantize its result
+        float MagnetSnap(float framed, List<ReplayKeyframe> excludeCam, List<ReplayVisibilityKeyframe> excludeVis, List<ReplayPostFxKeyframe> excludeFx, out bool snapped)
+        {
+            float tol = _trackWidth > 0f ? (KEY_W * 0.75f / _trackWidth) * ViewSpan : 0f;
+            float best = framed;
+            float bestDelta = tol;
+            snapped = false;
+
+            foreach (var k in _rec.keyframes)
+            {
+                if (excludeCam != null && excludeCam.Contains(k)) continue;
+                float d = Mathf.Abs(k.time - framed);
+                if (d < bestDelta) { bestDelta = d; best = k.time; snapped = true; }
+            }
+            foreach (var k in _rec.visibilityKeyframes)
+            {
+                if (excludeVis != null && excludeVis.Contains(k)) continue;
+                float d = Mathf.Abs(k.time - framed);
+                if (d < bestDelta) { bestDelta = d; best = k.time; snapped = true; }
+            }
+            foreach (var k in _rec.postFxKeyframes)
+            {
+                if (excludeFx != null && excludeFx.Contains(k)) continue;
+                float d = Mathf.Abs(k.time - framed);
+                if (d < bestDelta) { bestDelta = d; best = k.time; snapped = true; }
+            }
+            return best;
+        }
+
+        bool AdvanceTime(float delta)
+        {
+            _time += delta;
+            if (KeyframeSpan(out var ka, out var kb, out _) && ka != null && ka.cutToNext && kb != null && _time < kb.time)
+            {
+                _time = kb.time;
+                return true;
+            }
+            return false;
+        }
+
         void SyncUi()
         {
-            FollowPlayhead();
             PositionMarker();
             RefreshKeyframeTicks();
+            RefreshVisibilityTicks();
+            RefreshPostFxTicks();
+            RefreshCutOverlays();
             _clock.text = Stamp(_time) + "  /  " + Stamp(_rec.trimEnd);
             _playLabel.text = _paused ? "paused" : "playing";
+            RefreshPlayPauseIcon();
+            RefreshSnapIcon();
             if (_deleteBtn.gameObject.activeSelf != _selected.Count > 0)
                 _deleteBtn.gameObject.SetActive(_selected.Count > 0);
             _info.text =
@@ -1311,21 +1489,37 @@ namespace BetterFG.Features.Replay
                 return;
             }
 
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                if (_editingCam) EndCameraEdit();
+                else if (ReplayKeyframeWindow.Instance != null || ReplayVisibilityKeyframeWindow.Instance != null) Deselect();
+            }
+
+            if (Input.GetMouseButtonDown(0) && !PointerOverUi()) { _worldHeld = true; _worldTap = true; }
+            if (_worldHeld && ControllerManager.Stick != Vector2.zero) _worldTap = false;
+            bool worldTap = false;
+            if (Input.GetMouseButtonUp(0)) { worldTap = _worldHeld && _worldTap; _worldHeld = false; }
+
             if (_editingCam)
             {
                 HandleLook();
                 HandleMove();
                 HandleFov();
                 if (_freeLook) CaptureIntoKeyframe(_editKeyframe);
-                if (Input.GetMouseButtonDown(0) && !PointerOverUi()) EndCameraEdit();
+                if (worldTap) EndCameraEdit();
             }
             else if (!HandleTimelineMouse() && _dragKeyframe == null)
             {
-                if (Input.GetMouseButtonDown(0) && !PointerOverUi()) Deselect();
-                HandleLook();
-                HandleMove();
-                HandleFov();
+                if (!OverTimeline(TimelineCursor()))
+                {
+                    if (worldTap) Deselect();
+                    HandleLook();
+                    HandleMove();
+                    HandleFov();
+                }
             }
+
+            if (!_editingCam && _hoverZoomEdge) BetterFG.Utilities.Win32CursorUtil.SetSizeWe();
 
             var es = EventSystem.current;
             var selected = es?.currentSelectedGameObject;
@@ -1336,6 +1530,7 @@ namespace BetterFG.Features.Replay
             {
                 if (Input.GetKeyDown(KeyCode.Space)) TogglePause();
                 if (Input.GetKeyDown(KeyCode.X)) DeleteSelected();
+                if (_timelineFocused) HandleFrameStepKeys();
             }
 
             _audio.Tick();
@@ -1344,14 +1539,19 @@ namespace BetterFG.Features.Replay
             {
                 float from = _time;
                 float speed = PlaybackSpeed();
-                _time += Time.unscaledDeltaTime * speed;
+                _shakeTime += Time.unscaledDeltaTime;
+                bool cutJump = AdvanceTime(Time.unscaledDeltaTime * speed);
+
                 if (_time >= _rec.trimEnd)
                 {
                     _time = _rec.trimEnd;
                     _paused = true;
                 }
+
                 _audio.SetSpeed(speed);
-                _audio.Advance(from, _time);
+                if (cutJump) { _audio.Seek(_time); _starchart.Seek(_time); }
+                else { _audio.Advance(from, _time); _starchart.Advance(from, _time); }
+                FollowPlayhead();
             }
             else _audio.SetSpeed(1f);
 
@@ -1363,120 +1563,6 @@ namespace BetterFG.Features.Replay
         {
             if (_exiting || _world == null) return;
             _world.Apply(_time);
-        }
-
-        void HandleLook()
-        {
-            if (Input.GetMouseButtonDown(1))
-            {
-                CloseContextMenu();
-                if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
-                _looking = true;
-                _lastMouse = Input.mousePosition;
-                SeedLook();
-            }
-            if (Input.GetMouseButtonUp(1)) _looking = false;
-            if (!_looking) return;
-
-            Vector3 now = Input.mousePosition;
-            Vector3 delta = now - _lastMouse;
-            _lastMouse = now;
-
-            if (delta.sqrMagnitude > 0f) _freeLook = true;
-            _yaw += delta.x * 0.18f;
-            _pitch = Mathf.Clamp(_pitch - delta.y * 0.18f, -89f, 89f);
-            _cam.transform.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
-        }
-
-        void HandleMove()
-        {
-            if (TypingInField()) return;
-
-            var dir = Vector3.zero;
-            if (Input.GetKey(KeyCode.W)) dir += Vector3.forward;
-            if (Input.GetKey(KeyCode.S)) dir -= Vector3.forward;
-            if (Input.GetKey(KeyCode.D)) dir += Vector3.right;
-            if (Input.GetKey(KeyCode.A)) dir -= Vector3.right;
-            if (Input.GetKey(KeyCode.E)) dir += Vector3.up;
-            if (Input.GetKey(KeyCode.Q)) dir -= Vector3.up;
-            if (dir == Vector3.zero) return;
-
-            _freeLook = true;
-            float mul = ShiftHeld() ? 3.5f : 1f;
-            var t = _cam.transform;
-            var world = t.rotation * new Vector3(dir.x, 0f, dir.z) + Vector3.up * dir.y;
-            t.position += world.normalized * _speed * mul * Time.unscaledDeltaTime;
-        }
-
-        void ShowContextMenu()
-        {
-            OpenMenu(_time, 1);
-            MenuItem(0, "Add camera keyframe", new Action(AddKeyframeHere));
-        }
-
-        void ShowKeyframeMenu(ReplayKeyframe k)
-        {
-            OpenMenu(k.time, 2);
-            MenuItem(0, "Duplicate", new Action(() => { CloseContextMenu(); Duplicate(k); }));
-            MenuItem(1, _selected.Count > 1 ? "Delete " + _selected.Count + " keyframes" : "Delete",
-                new Action(DeleteSelected));
-        }
-
-        void OpenMenu(float atTime, int rows)
-        {
-            CloseContextMenu();
-
-            float h = rows * (ROW + 4f) + 4f;
-            float f = _rec.duration > 0f ? Mathf.Clamp01(atTime / _rec.duration) : 0f;
-            float x = Mathf.Min(_trackLeft + _trackWidth * f + 8f, _trackLeft + _trackWidth - MENU_W);
-            _contextMenu = UGUIShip.CreatePanel(_timelineRt, new Rect(x, -h - 6f, MENU_W, h),
-                MENU_BG, "KeyframeMenu");
-        }
-
-        void MenuItem(int row, string label, Action onClick)
-        {
-            var btn = UGUIShip.CreateButton(_contextMenu, new Rect(4f, 4f + row * (ROW + 4f), MENU_W - 8f, ROW),
-                label, BTN_DARK, Color.white, UIScale.FS_SM, onClick);
-            var nav = btn.navigation;
-            nav.mode = Navigation.Mode.None;
-            btn.navigation = nav;
-        }
-
-        void CloseContextMenu()
-        {
-            if (_contextMenu == null) return;
-            Destroy(_contextMenu.gameObject);
-            _contextMenu = null;
-        }
-
-        void Duplicate(ReplayKeyframe k)
-        {
-            var copy = Clone(k);
-            copy.time = Mathf.Min(k.time + DUP_GAP, _rec.duration);
-            _rec.keyframes.Add(copy);
-            _rec.SortKeyframes();
-            SelectOnly(copy);
-            Plugin.Log.LogInfo($"copied the {Stamp(k.time)} keyframe over to {Stamp(copy.time)}");
-            SyncUi();
-        }
-
-        void DeleteSelected()
-        {
-            CloseContextMenu();
-            if (_selected.Count == 0) return;
-
-            int gone = 0;
-            foreach (var k in _selected)
-                if (_rec.keyframes.Remove(k)) gone++;
-            _selected.Clear();
-            _dragKeyframe = null;
-
-            var window = ReplayKeyframeWindow.Instance;
-            if (window != null && !_rec.keyframes.Contains(window.Keyframe)) window.Close();
-
-            Plugin.Log.LogInfo($"deleted {gone}, {_rec.keyframes.Count} keyframes left");
-            ApplyTime();
-            SyncUi();
         }
 
         static ReplayKeyframe Clone(ReplayKeyframe k) => new ReplayKeyframe
@@ -1495,471 +1581,43 @@ namespace BetterFG.Features.Replay
             lookAtObject = k.lookAtObject,
             speed = k.speed,
             cut = k.cut,
+            cutToNext = k.cutToNext,
+            shakeKind = k.shakeKind,
+            shakeTier = k.shakeTier,
         };
 
-        void AddKeyframeHere()
+        static ReplayPostFxKeyframe CloneFx(ReplayPostFxKeyframe k) => new ReplayPostFxKeyframe
         {
-            CloseContextMenu();
-
-            ReplayKeyframe kf;
-            if (KeyframeSpan(out var neighbour, out _, out _)) kf = Clone(neighbour);
-            else
-            {
-                kf = new ReplayKeyframe();
-                if (_rec.players.Count > 0)
-                {
-                    kf.targetPlayerId = _rec.players[0].playerId;
-                    kf.lookAtPlayerId = _rec.players[0].playerId;
-                }
-            }
-
-            kf.time = _time;
-            CaptureIntoKeyframe(kf);
-
-            _rec.keyframes.Add(kf);
-            _rec.SortKeyframes();
-            SelectOnly(kf);
-            _freeLook = false;
-            Plugin.Log.LogInfo($"keyframe at {Stamp(kf.time)}, {_rec.keyframes.Count} on this replay now");
-
-            OpenKeyframeWindow(kf);
-        }
+            time = k.time,
+            exposure = k.exposure,
+            contrast = k.contrast,
+            saturation = k.saturation,
+            temperature = k.temperature,
+            tint = k.tint,
+            vignette = k.vignette,
+            chromaticAberration = k.chromaticAberration,
+            bloomIntensity = k.bloomIntensity,
+            bloomThreshold = k.bloomThreshold,
+            sharpenAmount = k.sharpenAmount,
+            sharpenRadius = k.sharpenRadius,
+        };
 
         // flying the camera only writes to a keyframe inside this mode, so opening the editor and
         // nudging the view can't quietly rewrite the shot
-        public void BeginCameraEdit(ReplayKeyframe kf)
-        {
-            _editKeyframe = kf;
-            _editingCam = true;
-            _freeLook = false;
-            ClearPlayerHighlight();
-            SeekTo(kf.time);
-
-            _hiddenUi.Clear();
-            for (int i = 0; i < _canvas.transform.childCount; i++)
-            {
-                var child = _canvas.transform.GetChild(i).gameObject;
-                if (child == _doneBtn.gameObject || !child.activeSelf) continue;
-                child.SetActive(false);
-                _hiddenUi.Add(child);
-            }
-            _doneBtn.gameObject.SetActive(true);
-        }
-
-        public void BeginTargetPick(ReplayKeyframe kf, bool lookTarget, bool objects, List<int> allowed)
-        {
-            _pickKeyframe = kf;
-            _pickLookTarget = lookTarget;
-            _pickObjects = objects;
-            _pickAllowed = allowed;
-            _pickHover = -1;
-            _pickHoverPlayer = 0;
-            _picking = true;
-            _pickWasFree = _freeLook;
-
-            _hiddenUi.Clear();
-            for (int i = 0; i < _canvas.transform.childCount; i++)
-            {
-                var child = _canvas.transform.GetChild(i).gameObject;
-                if (!child.activeSelf) continue;
-                child.SetActive(false);
-                _hiddenUi.Add(child);
-            }
-
-            _pickHint = UGUIShip.CreateLabel(_canvas.transform, new Rect(0f, 12f, Screen.width, 26f),
-                objects ? "click the object you want  ·  right click cancels" : "click the player you want  ·  right click cancels",
-                UIScale.FS, Color.white, TextAnchor.MiddleCenter);
-        }
-
-        void UpdateTargetPick()
-        {
-            var mouse = (Vector2)Input.mousePosition;
-            float best = 140f * 140f;
-            int bestObject = -1;
-            uint bestPlayer = 0;
-
-            if (_pickObjects)
-            {
-                for (int i = 0; i < _pickAllowed.Count; i++)
-                {
-                    var tf = _rec.worldObjects[_pickAllowed[i]].live;
-                    if (tf == null) continue;
-
-                    var screen = _cam.WorldToScreenPoint(tf.position);
-                    if (screen.z <= 0f) continue;
-
-                    float d = ((Vector2)screen - mouse).sqrMagnitude;
-                    if (d >= best) continue;
-                    best = d;
-                    bestObject = _pickAllowed[i];
-                }
-            }
-            else
-            {
-                for (int i = 0; i < _tracks.Count; i++)
-                {
-                    if (_tracks[i].bean == null) continue;
-
-                    var screen = _cam.WorldToScreenPoint(_tracks[i].bean.transform.position);
-                    if (screen.z <= 0f) continue;
-
-                    float d = ((Vector2)screen - mouse).sqrMagnitude;
-                    if (d >= best) continue;
-                    best = d;
-                    bestPlayer = _tracks[i].player.playerId;
-                }
-            }
-
-            if (bestObject != _pickHover || bestPlayer != _pickHoverPlayer)
-            {
-                _pickHover = bestObject;
-                _pickHoverPlayer = bestPlayer;
-
-                if (_pickObjects && bestObject >= 0) HighlightObject(bestObject);
-                else if (!_pickObjects && bestPlayer != 0) HighlightPlayer(bestPlayer);
-                else ClearPlayerHighlight();
-            }
-            else UpdateHighlight();
-
-            if (Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Escape)) { EndTargetPick(); return; }
-            if (!Input.GetMouseButtonDown(0)) return;
-
-            if (_pickObjects && _pickHover >= 0)
-            {
-                if (_pickLookTarget) { _pickKeyframe.lookAt = ReplayLookAt.Object; _pickKeyframe.lookAtObject = _pickHover; }
-                else
-                {
-                    var world = KeyframePosition(_pickKeyframe);
-                    _pickKeyframe.cameraType = ReplayCameraType.FixedObject;
-                    _pickKeyframe.targetObject = _pickHover;
-                    _pickKeyframe.position = world - TargetPositionAt(_pickHover, 0, _pickKeyframe.time);
-                }
-            }
-            else if (!_pickObjects && _pickHoverPlayer != 0)
-            {
-                if (_pickLookTarget) { _pickKeyframe.lookAt = ReplayLookAt.Player; _pickKeyframe.lookAtPlayerId = _pickHoverPlayer; }
-                else
-                {
-                    var world = KeyframePosition(_pickKeyframe);
-                    _pickKeyframe.cameraType = ReplayCameraType.Fixed;
-                    _pickKeyframe.targetPlayerId = _pickHoverPlayer;
-                    _pickKeyframe.position = world - PlayerPositionAt(_pickHoverPlayer, _pickKeyframe.time);
-                }
-            }
-            EndTargetPick();
-        }
-
-        void EndTargetPick()
-        {
-            _picking = false;
-            ClearPlayerHighlight();
-
-            if (_pickHint != null) Destroy(_pickHint.gameObject);
-            _pickHint = null;
-
-            foreach (var go in _hiddenUi)
-                if (go != null) go.SetActive(true);
-            _hiddenUi.Clear();
-
-            var kf = _pickKeyframe;
-            _pickKeyframe = null;
-            _pickAllowed = null;
-
-            if (kf != null) OpenKeyframeWindow(kf);
-
-            _freeLook = _pickWasFree;
-            ApplyTime();
-            SyncUi();
-        }
-
-        void EndCameraEdit()
-        {
-            _editingCam = false;
-            _freeLook = false;
-            _doneBtn.gameObject.SetActive(false);
-
-            foreach (var go in _hiddenUi)
-                if (go != null) go.SetActive(true);
-            _hiddenUi.Clear();
-
-            Plugin.Log.LogInfo($"shot set on the {Stamp(_editKeyframe.time)} keyframe");
-            _editKeyframe = null;
-            ApplyTime();
-            SyncUi();
-        }
-
-        void OpenKeyframeWindow(ReplayKeyframe kf)
-        {
-            _freeLook = false;
-            ReplayKeyframeWindow.Show(_canvas.transform, new Rect(MARGIN, MARGIN, WIN_W, WIN_H), _rec, kf,
-                new Action(OnKeyframeWindowClosed));
-            _windowRt.gameObject.SetActive(false);
-        }
-
-        void Minimize()
-        {
-            _minimized = true;
-            _windowRt.gameObject.SetActive(false);
-            _restoreBtn.gameObject.SetActive(true);
-        }
-
-        void Restore()
-        {
-            _minimized = false;
-            _restoreBtn.gameObject.SetActive(false);
-            _windowRt.gameObject.SetActive(true);
-        }
-
-        void OnKeyframeWindowClosed()
-        {
-            _windowRt.gameObject.SetActive(!_minimized);
-            _rec.SortKeyframes();
-            for (int i = _selected.Count - 1; i >= 0; i--)
-                if (!_rec.keyframes.Contains(_selected[i])) _selected.RemoveAt(i);
-            _freeLook = false;
-            ApplyTime();
-            SyncUi();
-        }
-
-        void CaptureIntoKeyframe(ReplayKeyframe kf)
-        {
-            var pos = _cam.transform.position;
-            kf.rotation = _cam.transform.rotation;
-            kf.position = kf.cameraType == ReplayCameraType.Fixed || kf.cameraType == ReplayCameraType.FixedObject
-                ? pos - TargetPositionAt(kf.targetObject, kf.targetPlayerId, kf.time)
-                : pos;
-            kf.fov = _cam.fieldOfView;
-        }
-
-        static void SampleFrames(List<ReplayFrame> frames, float time, out Vector3 pos, out Quaternion rot)
-        {
-            pos = Vector3.zero;
-            rot = Quaternion.identity;
-            if (frames == null || frames.Count == 0) return;
-
-            int i = 0;
-            while (i + 1 < frames.Count && frames[i + 1].t <= time) i++;
-            if (i + 1 < frames.Count)
-            {
-                float den = frames[i + 1].t - frames[i].t;
-                float f = den > 0f ? Mathf.Clamp01((time - frames[i].t) / den) : 0f;
-                pos = Vector3.Lerp(frames[i].pos, frames[i + 1].pos, f);
-                rot = Quaternion.Slerp(frames[i].rot, frames[i + 1].rot, f);
-                return;
-            }
-            pos = frames[i].pos;
-            rot = frames[i].rot;
-        }
 
         // picking a player in the keyframe window is blind otherwise — there's no telling which of 30
         // beans "Attached to" just landed on. the marker only shows while a player parameter is the
         // thing being touched.
-        public void HighlightObject(int index)
-        {
-            _highlightObject = index;
-            _highlightPlayer = 0;
-            _highlightOn = true;
-
-            if (_highlight == null) BuildHighlight();
-            if (_highlight != null) _highlight.SetActive(true);
-            UpdateHighlight();
-        }
-
-        public void HighlightPlayer(uint playerId)
-        {
-            _highlightPlayer = playerId;
-            _highlightObject = -1;
-            _highlightOn = true;
-
-            if (_highlight == null) BuildHighlight();
-            if (_highlight != null) _highlight.SetActive(true);
-            UpdateHighlight();
-        }
-
-        public void ClearPlayerHighlight()
-        {
-            _highlightOn = false;
-            if (_highlight != null) _highlight.SetActive(false);
-        }
-
-        void BuildHighlight()
-        {
-            var mat = AdditiveMaterial();
-            if (mat == null)
-            {
-                Plugin.Log.LogWarning("nothing to draw the player marker with, skipping it");
-                return;
-            }
-
-            if (_highlightTex == null)
-                _highlightTex = EmbeddedResourceandUnity.LoadTexture("BetterFG.assets.ui.replay.highlight_player.png");
-
-            mat.mainTexture = _highlightTex;
-            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", _highlightTex);
-            if (mat.HasProperty("_Color")) mat.color = Color.white;
-            if (mat.HasProperty("_TintColor")) mat.SetColor("_TintColor", Color.white);
-            if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
-            if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
-            if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
-            mat.renderQueue = 3100;
-
-            _highlight = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            _highlight.name = "BettrFG_ReplayPlayerMarker";
-            _highlight.transform.SetParent(transform, false);
-            _highlight.transform.localScale = new Vector3(HIGHLIGHT_SIZE, HIGHLIGHT_SIZE, 1f);
-            Destroy(_highlight.GetComponent<Collider>());
-
-            var renderer = _highlight.GetComponent<Renderer>();
-            renderer.material = mat;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-        }
 
         // the built-in additive shaders are stripped out of the game's build (Shader.Find only ever
         // came back with Sprites/Default, which is why the marker read as flat alpha), so if they
         // aren't there, borrow the blend setup off a material the game itself draws additively.
-        static Material AdditiveMaterial()
-        {
-            foreach (var name in new[] { "Particles/Additive", "Legacy Shaders/Particles/Additive", "Mobile/Particles/Additive" })
-            {
-                var shader = Shader.Find(name);
-                if (shader == null) continue;
-                Plugin.Log.LogInfo($"player marker on {name}");
-                return new Material(shader);
-            }
-
-            // has to actually draw a textured surface: the engine's own hidden shaders blend additively
-            // and render nothing at all, which is how the marker ended up invisible.
-            Material best = null;
-            int bestScore = 0;
-            foreach (var candidate in Resources.FindObjectsOfTypeAll<Material>())
-            {
-                if (candidate == null || candidate.shader == null) continue;
-
-                string shaderName = candidate.shader.name;
-                if (string.IsNullOrEmpty(shaderName) || shaderName.StartsWith("Hidden/")) continue;
-                if (!candidate.HasProperty("_MainTex")) continue;
-                if (!candidate.HasProperty("_SrcBlend") || !candidate.HasProperty("_DstBlend")) continue;
-                if ((int)candidate.GetFloat("_DstBlend") != (int)UnityEngine.Rendering.BlendMode.One) continue;
-
-                int src = (int)candidate.GetFloat("_SrcBlend");
-                if (src != (int)UnityEngine.Rendering.BlendMode.SrcAlpha && src != (int)UnityEngine.Rendering.BlendMode.One) continue;
-
-                string lower = shaderName.ToLowerInvariant();
-                int score = 1;
-                if (lower.Contains("particle")) score += 4;
-                if (lower.Contains("additive")) score += 4;
-                if (lower.Contains("unlit")) score += 2;
-                if (lower.Contains("vfx") || lower.Contains("glow") || lower.Contains("sprite")) score += 2;
-
-                if (score <= bestScore) continue;
-                bestScore = score;
-                best = candidate;
-                if (bestScore >= 8) break;
-            }
-
-            if (best != null)
-            {
-                Plugin.Log.LogInfo($"player marker borrowing {best.name} ({best.shader.name}) for its additive blend");
-                return new Material(best);
-            }
-
-            var sprites = Shader.Find("Sprites/Default");
-            if (sprites == null) return null;
-
-            Plugin.Log.LogWarning("no additive material anywhere in the build, the player marker falls back to alpha blending");
-            return new Material(sprites);
-        }
 
         // the shot the keyframes describe is invisible from the free cam, so mark it on the replay
         // canvas: the camera icon sits where that camera projects to, and the two lines are its
         // frustum edges projected the same way, so they widen with the keyframed fov.
-        void UpdateCameraGizmo()
-        {
-            if (!_freeLook || _exporting || _editingCam || !PreviewPose(out var pos, out var rot, out float fov))
-            {
-                ShowGizmo(false);
-                return;
-            }
-
-            float half = (fov > 0f ? fov : _cam.fieldOfView) * 0.5f * Mathf.Deg2Rad;
-            var reach = rot * Vector3.forward * Mathf.Cos(half) * GIZMO_REACH;
-            var spread = rot * Vector3.right * Mathf.Sin(half) * GIZMO_REACH;
-
-            if (!CanvasPoint(pos, out var origin))
-            {
-                ShowGizmo(false);
-                return;
-            }
-
-            if (_gizmoRoot == null) BuildGizmo();
-            ShowGizmo(true);
-
-            _gizmoIcon.anchoredPosition = new Vector2(origin.x, -origin.y);
-
-            if (CanvasPoint(pos - spread + reach, out var left)) StretchLine(_gizmoLineL, origin, left);
-            else _gizmoLineL.gameObject.SetActive(false);
-
-            if (CanvasPoint(pos + spread + reach, out var right)) StretchLine(_gizmoLineR, origin, right);
-            else _gizmoLineR.gameObject.SetActive(false);
-        }
 
         // canvas pixels, x right and y down from the top left, the same space SetPixelRect lays out in
-        bool CanvasPoint(Vector3 world, out Vector2 point)
-        {
-            var screen = _cam.WorldToScreenPoint(world);
-            float sf = _canvas.scaleFactor > 0f ? _canvas.scaleFactor : 1f;
-            point = new Vector2(screen.x / sf, (Screen.height - screen.y) / sf);
-            return screen.z > 0f;
-        }
-
-        static void StretchLine(RectTransform line, Vector2 from, Vector2 to)
-        {
-            if (!line.gameObject.activeSelf) line.gameObject.SetActive(true);
-
-            var delta = to - from;
-            line.anchoredPosition = new Vector2(from.x, -from.y);
-            line.sizeDelta = new Vector2(delta.magnitude, GIZMO_LINE_W);
-            line.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(-delta.y, delta.x) * Mathf.Rad2Deg);
-        }
-
-        void ShowGizmo(bool show)
-        {
-            if (_gizmoRoot == null || _gizmoRoot.gameObject.activeSelf == show) return;
-            _gizmoRoot.gameObject.SetActive(show);
-        }
-
-        void BuildGizmo()
-        {
-            var rootGo = new GameObject("CameraGizmo");
-            _gizmoRoot = rootGo.AddComponent<RectTransform>();
-            _gizmoRoot.SetParent(_canvas.transform, false);
-            _gizmoRoot.anchorMin = _gizmoRoot.anchorMax = new Vector2(0f, 1f);
-            _gizmoRoot.pivot = new Vector2(0f, 1f);
-            _gizmoRoot.anchoredPosition = Vector2.zero;
-            _gizmoRoot.sizeDelta = Vector2.zero;
-            _gizmoRoot.SetAsFirstSibling();
-
-            _gizmoLineL = BuildGizmoLine();
-            _gizmoLineR = BuildGizmoLine();
-
-            if (_gizmoSprite == null)
-                _gizmoSprite = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.camera_gizmo.png");
-
-            var iconGo = new GameObject("Icon");
-            _gizmoIcon = iconGo.AddComponent<RectTransform>();
-            _gizmoIcon.SetParent(_gizmoRoot, false);
-            _gizmoIcon.anchorMin = _gizmoIcon.anchorMax = new Vector2(0f, 1f);
-            _gizmoIcon.pivot = new Vector2(0.5f, 0.5f);
-            _gizmoIcon.sizeDelta = new Vector2(GIZMO_ICON, GIZMO_ICON);
-
-            var img = iconGo.AddComponent<Image>();
-            img.sprite = _gizmoSprite;
-            img.color = GIZMO_TINT;
-            img.preserveAspect = true;
-            img.raycastTarget = false;
-        }
 
         RectTransform BuildGizmoLine()
         {
@@ -1973,49 +1631,6 @@ namespace BetterFG.Features.Replay
             img.color = GIZMO_LINE_TINT;
             img.raycastTarget = false;
             return rt;
-        }
-
-        void UpdateHighlight()
-        {
-            if (!_highlightOn || _highlight == null) return;
-
-            var pos = TargetPositionAt(_highlightObject, _highlightPlayer, _time) + Vector3.up * HIGHLIGHT_HEIGHT;
-            _highlight.transform.position = pos;
-            _highlight.transform.rotation = Quaternion.LookRotation(pos - _cam.transform.position, Vector3.up);
-        }
-
-        public Vector3 TargetPositionAt(int objectIndex, uint playerId, float time)
-        {
-            if (objectIndex >= 0 && objectIndex < _rec.worldObjects.Count)
-            {
-                var tf = _rec.worldObjects[objectIndex].live;
-                if (tf != null) return tf.position;
-            }
-            return PlayerPositionAt(playerId, time);
-        }
-
-        public Vector3 PlayerPositionAt(uint playerId, float time)
-        {
-            for (int i = 0; i < _tracks.Count; i++)
-            {
-                if (_tracks[i].player.playerId != playerId) continue;
-                if (_tracks[i].bean != null) return _tracks[i].bean.transform.position;
-                SampleFrames(_tracks[i].player.frames, time, out var p, out _);
-                return p;
-            }
-            return Vector3.zero;
-        }
-
-        public Vector3 KeyframePosition(ReplayKeyframe k)
-        {
-            if (k.cameraType == ReplayCameraType.Gameplay)
-            {
-                SampleFrames(_rec.cameraFrames, _time, out var camPos, out _);
-                return camPos;
-            }
-            if (k.cameraType == ReplayCameraType.Fixed || k.cameraType == ReplayCameraType.FixedObject)
-                return TargetPositionAt(k.targetObject, k.targetPlayerId, _time) + k.position;
-            return k.position;
         }
 
         Quaternion KeyframeRotation(ReplayKeyframe k, Vector3 camPos)
@@ -2033,62 +1648,8 @@ namespace BetterFG.Features.Replay
             return k.rotation;
         }
 
-        bool KeyframeSpan(out ReplayKeyframe a, out ReplayKeyframe b, out float raw)
-        {
-            a = null;
-            b = null;
-            raw = 0f;
-
-            var keys = _rec.keyframes;
-            if (keys.Count == 0) return false;
-
-            int i = 0;
-            while (i + 1 < keys.Count && keys[i + 1].time <= _time) i++;
-
-            a = keys[i];
-            b = i + 1 < keys.Count ? keys[i + 1] : null;
-            if (b == null || b.cut) return true;
-
-            float den = b.time - a.time;
-            raw = den > 0f ? Mathf.Clamp01((_time - a.time) / den) : 0f;
-            return true;
-        }
-
-        float PlaybackSpeed()
-        {
-            if (!KeyframeSpan(out var a, out var b, out float raw)) return 1f;
-            return b == null ? a.speed : Mathf.Lerp(a.speed, b.speed, raw);
-        }
-
         // the shot the keyframes describe at the current time, whether or not the view camera is the
         // thing showing it — the free-cam gizmo draws the same pose.
-        bool PreviewPose(out Vector3 pos, out Quaternion rot, out float fov)
-        {
-            pos = Vector3.zero;
-            rot = Quaternion.identity;
-            fov = 0f;
-
-            if (!KeyframeSpan(out var a, out var b, out float raw)) return false;
-            float f = ReplayEase.Apply(a.easingCurve, a.easingDirection, raw);
-
-            pos = KeyframePosition(a);
-            if (b != null) pos = Vector3.Lerp(pos, KeyframePosition(b), f);
-
-            rot = KeyframeRotation(a, pos);
-            if (b != null) rot = Quaternion.Slerp(rot, KeyframeRotation(b, pos), f);
-
-            if (a.fov > 0f) fov = b != null && b.fov > 0f ? Mathf.Lerp(a.fov, b.fov, f) : a.fov;
-            return true;
-        }
-
-        void EvaluateKeyframeCamera()
-        {
-            if (!PreviewPose(out var pos, out var rot, out float fov)) return;
-
-            _cam.transform.position = pos;
-            _cam.transform.rotation = rot;
-            if (fov > 0f) _cam.fieldOfView = fov;
-        }
 
         Vector2 TimelineCursor()
         {
@@ -2107,7 +1668,15 @@ namespace BetterFG.Features.Replay
 
         static bool OverScrub(Vector2 cursor) => cursor.y >= SCRUB_Y && cursor.y < LANES_Y - 1f;
 
-        static bool OverKeyRow(Vector2 cursor) => cursor.y >= LANES_Y - 1f && cursor.y <= TIMELINE_H;
+        static bool OverKeyRow(Vector2 cursor) => cursor.y >= LANES_Y - 1f && cursor.y <= LANES_BOTTOM;
+
+        static bool OverVisRow(Vector2 cursor) => cursor.y >= LANES_Y - 1f && cursor.y < VIS_SPLIT_Y;
+
+        static bool OverFxRow(Vector2 cursor) => cursor.y >= VIS_SPLIT_Y && cursor.y < FX_SPLIT_Y;
+
+        static bool OverCameraRow(Vector2 cursor) => cursor.y >= FX_SPLIT_Y && cursor.y <= LANES_BOTTOM;
+
+        static bool OverZoomBar(Vector2 cursor) => cursor.y >= LANES_BOTTOM && cursor.y <= ZOOMBAR_Y + ZOOMBAR_H + 2f;
 
         float TimeAt(float x) =>
             FractionToTime(Mathf.Clamp01(_trackWidth > 0f ? (x - _trackLeft) / _trackWidth : 0f));
@@ -2127,268 +1696,39 @@ namespace BetterFG.Features.Replay
             return best;
         }
 
-        bool HandleTimelineMouse()
+        ReplayVisibilityKeyframe VisKeyframeNear(float time)
         {
-            if (_dragKeyframe == null && _contextMenu != null
-                && RectTransformUtility.RectangleContainsScreenPoint(_contextMenu, Input.mousePosition, null))
-                return true;
+            if (_trackWidth <= 0f || _rec.duration <= 0f) return null;
+            float tolerance = (KEY_W * 0.75f / _trackWidth) * ViewSpan;
 
-            var cursor = TimelineCursor();
-            float time = TimeAt(cursor.x);
-
-            if (_dragKeyframe != null)
+            ReplayVisibilityKeyframe best = null;
+            float bestDelta = float.MaxValue;
+            foreach (var k in _rec.visibilityKeyframes)
             {
-                if (Input.GetMouseButton(0))
-                {
-                    if (!_dragMoved && Mathf.Abs(Input.mousePosition.x - _dragGrabMouseX) < DRAG_DEADZONE) return true;
-                    _dragMoved = true;
-                    _clickedKeyframe = null;
-                    MoveSelection(time - _dragGrabTime);
-                }
-                else
-                {
-                    if (_dragMoved)
-                        Plugin.Log.LogInfo(_selected.Count > 1
-                            ? $"shifted {_selected.Count} keyframes, the one you grabbed sits at {Stamp(_dragKeyframe.time)} now"
-                            : $"moved a keyframe to {Stamp(_dragKeyframe.time)}");
-                    _dragKeyframe = null;
-                    _dragMoved = false;
-                }
-                return true;
+                float delta = Mathf.Abs(k.time - time);
+                if (delta <= tolerance && delta < bestDelta) { bestDelta = delta; best = k; }
             }
-
-            if (_draggingIn || _draggingOut)
-            {
-                if (Input.GetMouseButton(0)) DragTrim(time);
-                else
-                {
-                    Plugin.Log.LogInfo($"composition is {Stamp(_rec.trimStart)} to {Stamp(_rec.trimEnd)} now");
-                    _draggingIn = _draggingOut = false;
-                }
-                return true;
-            }
-
-            if (_scrubbing)
-            {
-                if (Input.GetMouseButton(0)) SeekTo(time);
-                else _scrubbing = false;
-                return true;
-            }
-
-            if (_marqueeing)
-            {
-                if (Input.GetMouseButton(0)) DragMarquee(cursor);
-                else EndMarquee();
-                return true;
-            }
-
-            if (!OverTimeline(cursor)) return false;
-
-            float scroll = Input.mouseScrollDelta.y;
-            if (Mathf.Abs(scroll) > 0.01f && !ShiftHeld())
-            {
-                if (CtrlHeld()) ZoomTimeline(scroll, time);
-                else PanTimeline(scroll);
-                SyncUi();
-                return true;
-            }
-
-            if (OverEdgeBand(cursor))
-            {
-                if (!Input.GetMouseButtonDown(0)) return true;
-
-                CloseContextMenu();
-                Deselect();
-
-                float inGap = Mathf.Abs(cursor.x - TrackX(_rec.trimStart));
-                float outGap = Mathf.Abs(cursor.x - TrackX(_rec.trimEnd));
-                if (inGap <= GRAB_PX && inGap <= outGap) _draggingIn = true;
-                else if (outGap <= GRAB_PX) _draggingOut = true;
-                return true;
-            }
-
-            if (OverScrub(cursor))
-            {
-                if (Input.GetMouseButtonDown(0))
-                {
-                    CloseContextMenu();
-                    Deselect();
-                    _scrubbing = true;
-                    SeekTo(time);
-                    return true;
-                }
-                if (Input.GetMouseButtonDown(1))
-                {
-                    CloseContextMenu();
-                    Deselect();
-                    SeekTo(time);
-                    ShowContextMenu();
-                    return true;
-                }
-                return false;
-            }
-
-            if (!OverKeyRow(cursor)) return false;
-
-            if (Input.GetMouseButtonDown(0))
-            {
-                CloseContextMenu();
-                var k = KeyframeNear(time);
-                if (k == null)
-                {
-                    BeginMarquee(cursor);
-                    return true;
-                }
-
-                if (ShiftHeld())
-                {
-                    if (_selected.Contains(k)) { _selected.Remove(k); return true; }
-                    _selected.Add(k);
-                }
-                else
-                {
-                    if (k == _clickedKeyframe && Time.realtimeSinceStartup - _clickedAt <= DOUBLE_CLICK)
-                    {
-                        _clickedKeyframe = null;
-                        SelectOnly(k);
-                        SeekTo(k.time);
-                        OpenKeyframeWindow(k);
-                        BeginCameraEdit(k);
-                        return true;
-                    }
-
-                    _clickedKeyframe = k;
-                    _clickedAt = Time.realtimeSinceStartup;
-
-                    if (_selected.Count <= 1)
-                    {
-                        SelectOnly(k);
-                        SeekTo(k.time);
-                        OpenKeyframeWindow(k);
-                    }
-                }
-
-                _dragKeyframe = k;
-                _dragGrabTime = time;
-                _dragGrabMouseX = Input.mousePosition.x;
-                _dragMoved = false;
-                _dragStartTimes.Clear();
-                foreach (var sel in _selected) _dragStartTimes.Add(sel.time);
-                return true;
-            }
-
-            if (Input.GetMouseButtonDown(1))
-            {
-                CloseContextMenu();
-                var k = KeyframeNear(time);
-                if (k != null)
-                {
-                    if (!_selected.Contains(k)) SelectOnly(k);
-                    ShowKeyframeMenu(k);
-                }
-                else
-                {
-                    SeekTo(time);
-                    ShowContextMenu();
-                }
-                return true;
-            }
-
-            return false;
+            return best;
         }
 
-        void Deselect()
+        ReplayPostFxKeyframe FxKeyframeNear(float time)
         {
-            _selected.Clear();
-            ReplayKeyframeWindow.Instance?.Close();
-        }
+            if (_trackWidth <= 0f || _rec.duration <= 0f) return null;
+            float tolerance = (KEY_W * 0.75f / _trackWidth) * ViewSpan;
 
-        void BeginMarquee(Vector2 cursor)
-        {
-            _marqueeing = true;
-            _marqueeAnchor = cursor;
-            _marqueeBase.Clear();
-            if (ShiftHeld()) _marqueeBase.AddRange(_selected);
-            else Deselect();
-            _selected.Clear();
-            _selected.AddRange(_marqueeBase);
-
-            _marqueeRt = UGUIShip.CreatePanel(_timelineRt, new Rect(cursor.x, cursor.y, 0f, 0f),
-                new Color(1f, 0.83f, 0.25f, 0.16f), "Marquee");
-            _marqueeRt.GetComponent<Image>().raycastTarget = false;
-        }
-
-        void DragMarquee(Vector2 cursor)
-        {
-            float left = Mathf.Min(_marqueeAnchor.x, cursor.x);
-            float right = Mathf.Max(_marqueeAnchor.x, cursor.x);
-            float top = Mathf.Min(_marqueeAnchor.y, cursor.y);
-            float bottom = Mathf.Max(_marqueeAnchor.y, cursor.y);
-            UGUIShip.SetPixelRect(_marqueeRt, new Rect(left, top, right - left, bottom - top));
-
-            float from = TimeAt(left);
-            float to = TimeAt(right);
-
-            _selected.Clear();
-            _selected.AddRange(_marqueeBase);
-            foreach (var k in _rec.keyframes)
-                if (k.time >= from && k.time <= to && !_selected.Contains(k)) _selected.Add(k);
-        }
-
-        void EndMarquee()
-        {
-            _marqueeing = false;
-            if (_marqueeRt != null) Destroy(_marqueeRt.gameObject);
-            _marqueeRt = null;
-            if (_selected.Count > 0) Plugin.Log.LogInfo($"{_selected.Count} keyframes in the box");
+            ReplayPostFxKeyframe best = null;
+            float bestDelta = float.MaxValue;
+            foreach (var k in _rec.postFxKeyframes)
+            {
+                float delta = Mathf.Abs(k.time - time);
+                if (delta <= tolerance && delta < bestDelta) { bestDelta = delta; best = k; }
+            }
+            return best;
         }
 
         static bool CtrlHeld() => Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
 
-        void DragTrim(float time)
-        {
-            if (_draggingIn) _rec.trimStart = Mathf.Clamp(time, 0f, _rec.trimEnd - MIN_TRIM);
-            else _rec.trimEnd = Mathf.Clamp(time, _rec.trimStart + MIN_TRIM, _rec.duration);
-            _time = Mathf.Clamp(_time, _rec.trimStart, _rec.trimEnd);
-        }
-
         static bool ShiftHeld() => Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-
-        void SelectOnly(ReplayKeyframe k)
-        {
-            _selected.Clear();
-            _selected.Add(k);
-        }
-
-        void MoveSelection(float delta)
-        {
-            float earliest = float.MaxValue;
-            float latest = float.MinValue;
-            foreach (float start in _dragStartTimes)
-            {
-                if (start < earliest) earliest = start;
-                if (start > latest) latest = start;
-            }
-            delta = Mathf.Clamp(delta, -earliest, _rec.duration - latest);
-
-            for (int i = 0; i < _selected.Count && i < _dragStartTimes.Count; i++)
-                _selected[i].time = _dragStartTimes[i] + delta;
-            _rec.SortKeyframes();
-
-            if (_selected.Count > 1) return;
-            _time = _dragKeyframe.time;
-            _freeLook = false;
-        }
-
-        void HandleFov()
-        {
-            float scroll = Input.mouseScrollDelta.y;
-            if (Mathf.Abs(scroll) < 0.01f) return;
-            if (!ShiftHeld()) return;
-
-            _cam.fieldOfView = Mathf.Clamp(_cam.fieldOfView - scroll * 2.5f, FOV_MIN, FOV_MAX);
-            _freeLook = true;
-        }
 
         static bool TypingInField()
         {
@@ -2399,20 +1739,6 @@ namespace BetterFG.Features.Replay
         static bool PointerOverUi() =>
             EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 
-        void SaveAs()
-        {
-            System.IO.Directory.CreateDirectory(SaveReplay.ReplayDir);
-            string suggested = System.IO.Path.Combine(SaveReplay.ReplayDir, SafeName());
-            WinDialogs.SaveFile("Save replay", "bfgreplay", suggested, new Action<string>(path =>
-            {
-                if (string.IsNullOrEmpty(path)) return;
-                SaveReplay.WriteTo(_rec, path);
-                _rec.sourcePath = path;
-                ReplayThumbnail.Capture(_cam, path);
-                Plugin.Log.LogInfo($"replay written out to {path}");
-            }));
-        }
-
         string ReplayName()
         {
             if (!string.IsNullOrEmpty(_rec.name)) return _rec.name;
@@ -2420,148 +1746,13 @@ namespace BetterFG.Features.Replay
             return string.IsNullOrEmpty(_rec.roundId) ? "replay" : _rec.roundId;
         }
 
-        void OnNameChanged(string value)
-        {
-            _rec.name = (value ?? "").Trim();
-            SyncUi();
-        }
-
         string SafeName() => string.Concat(ReplayName().Split(System.IO.Path.GetInvalidFileNameChars()));
 
-        void OpenExportWindow()
-        {
-            ReplayKeyframeWindow.Instance?.Close();
-            ReplayExportWindow.Show(_canvas.transform, new Rect(MARGIN, MARGIN, WIN_W, WIN_H),
-                new Action(StartExport), new Action(OnExportWindowClosed));
-            _windowRt.gameObject.SetActive(false);
-        }
-
         void OnExportWindowClosed() => _windowRt.gameObject.SetActive(!_minimized);
-
-        void StartExport()
-        {
-            if (_exporting) return;
-            StartCoroutine(ExportRoutine().WrapToIl2Cpp());
-        }
 
         // the video pass is stepped, so nothing can be recorded off it. this plays the replay through
         // once at real speed with the system output looped back into a wav — same speed curve as the
         // video, so the two line up end to end.
-        IEnumerator AudioPass(string dir)
-        {
-            var capture = new ReplayProcessAudioCapture();
-            string path = System.IO.Path.Combine(dir, "audio.wav");
-            if (!capture.Start(path)) yield break;
-
-            ReplayExportWindow.Instance?.SetStatus("audio pass, playing it through...");
-            float settle = Time.realtimeSinceStartup + 0.35f;
-            while (Time.realtimeSinceStartup < settle) yield return null;
-
-            _exportAudioLead = capture.Seconds;
-            _time = _rec.trimStart;
-            _paused = false;
-            _freeLook = false;
-            _audio.Seek(_time);
-
-            while (_time < _rec.trimEnd)
-            {
-                float from = _time;
-                float speed = PlaybackSpeed();
-                _time = Mathf.Min(_time + Time.unscaledDeltaTime * speed, _rec.trimEnd);
-                _audio.Tick();
-                _audio.SetSpeed(speed);
-                _audio.Advance(from, _time);
-                ApplyTime();
-                _world.Apply(_time);
-                SyncUi();
-                yield return null;
-            }
-
-            _paused = true;
-            capture.Stop();
-
-            float deadline = Time.realtimeSinceStartup + 3f;
-            while (!capture.Finished && Time.realtimeSinceStartup < deadline) yield return null;
-
-            _exportWav = path;
-            Plugin.Log.LogInfo($"audio pass done, {capture.Seconds:0.0}s captured with {_exportAudioLead:0.00}s of lead-in to trim");
-        }
-
-        IEnumerator ExportRoutine()
-        {
-            _exporting = true;
-            _paused = true;
-            _freeLook = false;
-            CloseContextMenu();
-            ClearPlayerHighlight();
-
-            int w = ReplayExport.Width;
-            int h = ReplayExport.Height;
-            int fps = ReplayExport.FrameRate;
-            string dir = ReplayExport.NewFolder(ReplayName());
-            float from = _rec.trimStart;
-            float until = _rec.trimEnd;
-            int cap = Mathf.CeilToInt(Mathf.Max(1f, until - from) * fps / MIN_EXPORT_SPEED);
-
-            _exportWav = null;
-            _exportAudioLead = 0f;
-            if (ReplayExport.AudioOn) yield return StartCoroutine(AudioPass(dir).WrapToIl2Cpp());
-
-            string outPath = dir + ".mp4";
-            var encoder = new ReplayEncoder(outPath, w, h, fps, ReplayExport.Kbps, _exportWav, _exportAudioLead);
-
-            var rt = new RenderTexture(w, h, 24);
-            var shot = new Texture2D(w, h, TextureFormat.BGRA32, false);
-            var readRect = new Rect(0f, 0f, w, h);
-            var endOfFrame = new WaitForEndOfFrame();
-            Plugin.Log.LogInfo($"export: {w}x{h} @ {fps}fps, {ReplayExport.Kbps}kbps, {Stamp(from)}-{Stamp(until)} of replay -> {dir}");
-
-            int frame = 0;
-            _time = from;
-            while (_time < until && frame < cap)
-            {
-                ApplyTime();
-                _world.Apply(_time);
-                SyncUi();
-
-                // costumes, dangly bits and everything else that chases the skeleton do it in
-                // LateUpdate, so the shot has to be taken after that or they trail a frame behind.
-                yield return endOfFrame;
-
-                _cam.targetTexture = rt;
-                _cam.Render();
-                _cam.targetTexture = null;
-
-                var was = RenderTexture.active;
-                RenderTexture.active = rt;
-                shot.ReadPixels(readRect, 0, 0, false);
-                shot.Apply(false);
-                RenderTexture.active = was;
-
-                encoder.WriteFrame(shot.GetRawTextureData());
-
-                frame++;
-                // one output frame is 1/fps of FINISHED footage, so the replay only advances by the
-                // keyframed game speed — that's what turns a 0.25x stretch into real slow motion.
-                _time += Mathf.Max(MIN_EXPORT_SPEED, PlaybackSpeed()) / fps;
-                ReplayExportWindow.Instance?.SetStatus(
-                    $"frame {frame} · {Mathf.RoundToInt(100f * (_time - from) / Mathf.Max(0.01f, until - from))}%");
-            }
-
-            Destroy(shot);
-            rt.Release();
-            Destroy(rt);
-
-            ReplayExportWindow.Instance?.SetStatus("finishing up...");
-            encoder.Dispose();
-            ReplayExport.CleanFrames(dir);
-
-            ReplayExportWindow.Instance?.SetStatus("done: " + System.IO.Path.GetFileName(outPath));
-            Plugin.Log.LogInfo($"export done, {frame} frames into {outPath}");
-            ReplayExport.Reveal(outPath);
-
-            _exporting = false;
-        }
 
         void LoadFrom()
         {
@@ -2579,6 +1770,7 @@ namespace BetterFG.Features.Replay
 
             _exiting = true;
             Instance = null;
+            DiscordPresenceService.OnReplayViewerClosed();
             StopAllCoroutines();
             StartCoroutine(ExitRoutine().WrapToIl2Cpp());
         }
@@ -2586,9 +1778,12 @@ namespace BetterFG.Features.Replay
         IEnumerator ExitRoutine()
         {
             ReplayKeyframeWindow.Instance?.Close();
+            ReplayVisibilityKeyframeWindow.Instance?.Close();
+            ReplayPostFxKeyframeWindow.Instance?.Close();
             _audio.Release();
             _world?.Release();
             _speech?.Release();
+            _postFx?.Release();
             RestoreCamera();
 
             foreach (var bean in _beans)

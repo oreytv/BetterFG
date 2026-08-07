@@ -127,6 +127,47 @@ namespace BetterFG.Nametag
         // in-game entry: local display + saved settings.
         public static void ApplyNametag() => ApplyNametagTo(NametagFinder.FindLocalDisplay(), CfgFromSettings());
 
+        public static RemoteNametagInfo BuildLocalNametagInfo()
+        {
+            var cfg = CfgFromSettings();
+            string customName = LocalPlayerInfo.CustomName;
+            string hideMode = SettingsService.Get(KEY_PLATFORM_HIDE, "none");
+            string platformHide = hideMode == "self" ? "true" : "";
+            string platformCustom = SettingsService.Get(KEY_PLATFORM_CUSTOM, "");
+
+            bool useDisplay = cfg.enabled || !string.IsNullOrEmpty(customName)
+                || !string.IsNullOrEmpty(platformHide) || !string.IsNullOrEmpty(platformCustom);
+            if (!useDisplay) return null;
+
+            bool nicknameOn = SettingsService.Get(KEY_NICKNAME_ENABLED, "false") == "true";
+            bool backingOn = SettingsService.Get(KEY_BACKING_ENABLED, "false") == "true";
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            float F(string k, float def) => float.TryParse(SettingsService.Get(k, def.ToString(ci)), System.Globalization.NumberStyles.Float, ci, out float v) ? v : def;
+
+            return new RemoteNametagInfo
+            {
+                customName = LocalPlayerInfo.DisplayName,
+                r = cfg.enabled ? cfg.r : 1f,
+                g = cfg.enabled ? cfg.g : 1f,
+                b = cfg.enabled ? cfg.b : 1f,
+                bold = cfg.enabled && cfg.bold,
+                italic = cfg.enabled && cfg.italic,
+                nameStyle = cfg.enabled ? cfg.style : "",
+                iconMode = cfg.enabled ? cfg.iconMode : "none",
+                iconCountry = cfg.iconCountry,
+                iconPath = cfg.iconPath,
+                iconScale = 1f,
+                nickname = nicknameOn ? SettingsService.Get(KEY_NICKNAME_TEXT, "") : "",
+                backingEnabled = backingOn,
+                backingPath = backingOn ? SettingsService.Get(KEY_BACKING_PATH, "") : "",
+                backingOffX = F(KEY_BACKING_OFFSET_X, 0f),
+                backingOffY = F(KEY_BACKING_OFFSET_Y, 0f),
+                backingScale = F(KEY_BACKING_SCALE, 1f),
+                platformHide = platformHide,
+                platformCustom = platformCustom,
+            };
+        }
+
         // apply the name (+ icon) to a specific display with explicit values. used both in-game and by the
         // config-tab preview (which passes a cloned display + its live field values).
         public static void ApplyNametagTo(PlayerInfoDisplay display, NametagCfg cfg)
@@ -375,6 +416,21 @@ namespace BetterFG.Nametag
             if (sprite == null) return;
             if (HasPlatformOverride(display, playerKey)) return;
 
+            SetPlatformIconSprite(display, sprite);
+        }
+
+        public static void ApplyPlatformIconByName(PlayerInfoDisplay display, string platformName)
+        {
+            if (display == null || !FeatureMorePlatformIcon.Enabled) return;
+
+            var sprite = FeatureMorePlatformIcon.SpriteForName(platformName);
+            if (sprite == null) return;
+
+            SetPlatformIconSprite(display, sprite);
+        }
+
+        static void SetPlatformIconSprite(PlayerInfoDisplay display, Sprite sprite)
+        {
             var goDisplay = display.TryCast<PlayerInfoDisplayGameObject>();
             if (goDisplay != null)
             {
