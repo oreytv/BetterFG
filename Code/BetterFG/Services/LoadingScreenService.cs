@@ -35,27 +35,26 @@ namespace BetterFG.Services
             _canvas.gameObject.SetActive(true);
         }
 
-        // plays the outro on the prefab's own animator instead of just yanking it away,
-        // then hides once that's had time to play out
+        // fire-and-forget hide for callers that don't need to know when it's actually gone
         public static void Hide()
         {
-            if (_canvas == null || !_canvas.gameObject.activeSelf) return;
-
-            Animator anim = _canvas.GetComponentInChildren<Animator>(true);
-
-            if (anim == null || AssetManager.Instance == null)
-            {
-                _canvas.gameObject.SetActive(false);
-                return;
-            }
-
-            anim.SetTrigger("end");
-            AssetManager.Instance.StartCoroutine(HideAfterStop().WrapToIl2Cpp());
+            if (AssetManager.Instance == null) return;
+            AssetManager.Instance.StartCoroutine(HideRoutine().WrapToIl2Cpp());
         }
 
-        private static IEnumerator HideAfterStop()
+        // plays the outro on the prefab's own animator instead of just yanking it away, then hides
+        // once that's had time to play out. yield on this directly when whatever comes next (a scene
+        // reload, say) can't be allowed to race the animation.
+        public static IEnumerator HideRoutine()
         {
-            yield return new WaitForSecondsRealtime(0.7f);
+            if (_canvas == null || !_canvas.gameObject.activeSelf) yield break;
+
+            Animator anim = _canvas.GetComponentInChildren<Animator>(true);
+            if (anim != null)
+            {
+                anim.SetTrigger("end");
+                yield return new WaitForSecondsRealtime(0.7f);
+            }
             if (_canvas != null) _canvas.gameObject.SetActive(false);
         }
     }

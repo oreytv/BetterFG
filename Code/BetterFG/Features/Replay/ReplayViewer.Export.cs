@@ -68,6 +68,16 @@ namespace BetterFG.Features.Replay
             _windowRt.gameObject.SetActive(false);
         }
 
+        void OpenControlsWindow()
+        {
+            ReplayControlsWindow.Show(_canvas.transform, new Rect(MARGIN, MARGIN, WIN_W, WIN_H),
+                Mathf.InverseLerp(SPEED_MIN, SPEED_MAX, _speed), Mathf.InverseLerp(SPEED_MIN, SPEED_MAX, 14f),
+                new Action<float>(OnSpeedChanged), new Action(OnControlsWindowClosed));
+            _windowRt.gameObject.SetActive(false);
+        }
+
+        void OnControlsWindowClosed() => _windowRt.gameObject.SetActive(!_minimized);
+
         void StartExport()
         {
             if (_exporting) return;
@@ -99,6 +109,7 @@ namespace BetterFG.Features.Replay
             _freeLook = false;
             _audio.Seek(_time);
             _starchart.Seek(_time);
+            _vfx.Seek(_time);
 
             while (_time < _rec.trimEnd && !_exportCancelled)
             {
@@ -108,8 +119,8 @@ namespace BetterFG.Features.Replay
                 _time = Mathf.Min(_time, _rec.trimEnd);
                 _audio.Tick();
                 _audio.SetSpeed(speed);
-                if (cutJump) { _audio.Seek(_time); _starchart.Seek(_time); }
-                else { _audio.Advance(from, _time); _starchart.Advance(from, _time); }
+                if (cutJump) { _audio.Seek(_time); _starchart.Seek(_time); _vfx.Seek(_time); }
+                else { _audio.Advance(from, _time); _starchart.Advance(from, _time); _vfx.Advance(from, _time); }
                 ApplyTime();
                 _world.Apply(_time);
                 SyncUi();

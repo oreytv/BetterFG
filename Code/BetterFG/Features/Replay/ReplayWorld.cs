@@ -1358,4 +1358,40 @@ namespace BetterFG.Features.Replay
             return tf != null ? tf.GetComponent<Levels.Starlink.StarlinkMapWalkway>() : null;
         }
     }
+
+    internal class ReplayVfxPlayer
+    {
+        readonly ReplayRecording _rec;
+        readonly Dictionary<uint, FG.Common.Character.FallGuyVFXController> _controllers;
+        int _cursor;
+
+        public ReplayVfxPlayer(ReplayRecording rec, Dictionary<uint, FG.Common.Character.FallGuyVFXController> controllers)
+        {
+            _rec = rec;
+            _controllers = controllers;
+        }
+
+        public void Seek(float time)
+        {
+            var events = _rec.diveSlideVfxEvents;
+            int i = 0;
+            while (i < events.Count && events[i].t <= time) i++;
+            _cursor = i;
+        }
+
+        public void Advance(float from, float to)
+        {
+            var events = _rec.diveSlideVfxEvents;
+            if (events.Count == 0) return;
+            if (to < from) { Seek(to); return; }
+
+            while (_cursor < events.Count && events[_cursor].t <= to)
+            {
+                var ev = events[_cursor];
+                _cursor++;
+                if (ev.t > from && _controllers.TryGetValue(ev.playerId, out var vfx) && vfx != null)
+                    vfx.HandleOnDive(new FG.Common.Character.VfxDiveEvent());
+            }
+        }
+    }
 }

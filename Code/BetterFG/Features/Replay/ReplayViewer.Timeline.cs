@@ -35,7 +35,9 @@ namespace BetterFG.Features.Replay
             var win = UGUIShip.CreatePanel(_canvas.transform, new Rect(MARGIN, MARGIN, WIN_W, WIN_H), Color.clear, "ReplayWindow");
             _windowRt = win;
             ReplayWindowKit.MainBackdrop(win);
-            ReplayWindowKit.Title(win, WIN_W, "BettrFG Replay", TITLE_POS);
+            ReplayWindowKit.Title(win, WIN_W, "REPLAY", TITLE_POS);
+            var titleLabel = win.GetComponentInChildren<Text>();
+            if (titleLabel != null) titleLabel.transform.localScale *= 1.15f;
             UGUIShip.CreateButton(win, new Rect(WIN_W - 30f, 3f, 26f, 20f), "<<", BTN_DARK, Color.white, UIScale.FS_SM, new Action(Minimize));
 
             _restoreBtn = UGUIShip.CreateButton(_canvas.transform, new Rect(2f, 2f, 34f, 20f), ">>",
@@ -50,21 +52,28 @@ namespace BetterFG.Features.Replay
             _info = UGUIShip.CreateLabel(win, new Rect(PAD, y, WIN_W - PAD * 2f, ROW * 4f), "", UIScale.FS_SM, HINT, TextAnchor.UpperLeft);
             y += ROW * 4f + 2f;
 
-            var nameField = UGUIShip.CreateInputField(win, new Rect(PAD, y, WIN_W - PAD * 2f, ROW),
+            float labelW = ReplayWindowKit.LABEL_W;
+            UGUIShip.CreateLabel(win, new Rect(PAD, y, labelW, ROW), "Name", UIScale.FS_SM, HINT);
+            var nameField = UGUIShip.CreateInputField(win, new Rect(PAD + labelW, y, WIN_W - PAD * 2f - labelW, ROW),
                 "replay name...", new Color(0f, 0f, 0f, 0.55f), Color.white, UIScale.FS_SM);
             nameField.text = ReplayName();
             nameField.onEndEdit.AddListener(new Action<string>(OnNameChanged));
             y += ROW + PAD;
 
-            float bw = (WIN_W - PAD * 5f) / 4f;
-            UGUIShip.CreateButton(win, new Rect(PAD, y, bw, ROW + 4f), "Save", BTN_DARK, Color.white, UIScale.FS_SM, new Action(SaveAs));
-            UGUIShip.CreateButton(win, new Rect(PAD * 2f + bw, y, bw, ROW + 4f), "Load", BTN_DARK, Color.white, UIScale.FS_SM, new Action(LoadFrom));
-            UGUIShip.CreateButton(win, new Rect(PAD * 3f + bw * 2f, y, bw, ROW + 4f), "Export", BTN_DARK, Color.white, UIScale.FS_SM, new Action(OpenExportWindow));
-            UGUIShip.CreateButton(win, new Rect(PAD * 4f + bw * 3f, y, bw, ROW + 4f), "Exit", BTN_RED, Color.white, UIScale.FS_SM, new Action(Exit));
-            y += ROW + 4f + PAD;
+            WindowRow(win, y, 0, "Save", new Action(SaveAs)); y += ROW;
+            WindowRow(win, y, 1, "Load", new Action(LoadFrom)); y += ROW;
+            WindowRow(win, y, 2, "Export", new Action(OpenExportWindow)); y += ROW;
+            WindowRow(win, y, 3, "Controls", new Action(OpenControlsWindow)); y += ROW;
+            WindowRow(win, y, 4, "Exit", new Action(Exit)); y += ROW;
 
-            UGUIShip.CreateSlider(win, PAD, y, WIN_W - PAD * 2f, "", Mathf.InverseLerp(SPEED_MIN, SPEED_MAX, _speed), ROW, PAD, UIScale.FS_SM,
-                new Action<float>(OnSpeedChanged), null, null, false, Mathf.InverseLerp(SPEED_MIN, SPEED_MAX, 14f));
+            win.sizeDelta = new Vector2(WIN_W, y + PAD);
+        }
+
+        static void WindowRow(RectTransform win, float y, int row, string label, Action onClick)
+        {
+            ReplayWindowKit.Stripe(win, y, WIN_W, row);
+            UGUIShip.CreateButton(win, new Rect(PAD, y, WIN_W - PAD * 2f, ROW), label,
+                ReplayWindowKit.PICKABLE, Color.white, UIScale.FS_SM, onClick);
         }
 
         void BuildTimeline()

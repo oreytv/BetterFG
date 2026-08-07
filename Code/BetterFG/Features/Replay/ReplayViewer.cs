@@ -182,6 +182,7 @@ namespace BetterFG.Features.Replay
         ReplayAudioPlayer _audio;
         ReplayWorldPlayer _world;
         ReplayStarchartPlayer _starchart;
+        ReplayVfxPlayer _vfx;
         ReplaySpeechPlayer _speech;
         ReplayPostFx _postFx;
         Camera _cam;
@@ -698,6 +699,7 @@ namespace BetterFG.Features.Replay
         void SpawnBeans()
         {
             var speakers = new Dictionary<uint, Transform>();
+            var vfxControllers = new Dictionary<uint, FG.Common.Character.FallGuyVFXController>();
             foreach (var p in _rec.players)
             {
                 string label = string.IsNullOrEmpty(p.name) ? ("Player " + p.playerId) : p.name;
@@ -724,12 +726,16 @@ namespace BetterFG.Features.Replay
                 _beans.Add(bean);
                 _tracks.Add(track);
                 speakers[p.playerId] = bean.transform;
+                var vfx = bean.GetComponent<FG.Common.Character.FallGuyVFXController>();
+                if (vfx != null) vfxControllers[p.playerId] = vfx;
             }
 
             SpawnGhostBeans();
 
             _speech = new ReplaySpeechPlayer(_rec, transform);
             _speech.Prepare(speakers);
+
+            _vfx = new ReplayVfxPlayer(_rec, vfxControllers);
 
             _postFx = new ReplayPostFx(_rec, transform);
         }
@@ -1119,7 +1125,7 @@ namespace BetterFG.Features.Replay
 
         GameObject Neutralise(GameObject bean, FallGuysCharacterController fgcc)
         {
-            if (fgcc != null) Destroy(fgcc);
+            if (fgcc != null) fgcc.enabled = false;
 
             // interpolation renders a body between its last two physics poses, so a bean we place by
             // hand every frame draws a step behind where we put it — dead obvious against a keyframed
@@ -1371,6 +1377,7 @@ namespace BetterFG.Features.Replay
             if (!_paused) _freeLook = false;
             _audio.Seek(_time);
             _starchart.Seek(_time);
+            _vfx.Seek(_time);
             SyncUi();
         }
 
@@ -1383,6 +1390,7 @@ namespace BetterFG.Features.Replay
             _freeLook = false;
             _audio.Seek(_time);
             _starchart.Seek(_time);
+            _vfx.Seek(_time);
             FollowPlayhead();
             ApplyTime();
             SyncUi();
@@ -1559,8 +1567,8 @@ namespace BetterFG.Features.Replay
                 }
 
                 _audio.SetSpeed(speed);
-                if (cutJump) { _audio.Seek(_time); _starchart.Seek(_time); }
-                else { _audio.Advance(from, _time); _starchart.Advance(from, _time); }
+                if (cutJump) { _audio.Seek(_time); _starchart.Seek(_time); _vfx.Seek(_time); }
+                else { _audio.Advance(from, _time); _starchart.Advance(from, _time); _vfx.Advance(from, _time); }
                 FollowPlayhead();
             }
             else _audio.SetSpeed(1f);
@@ -1815,6 +1823,13 @@ namespace BetterFG.Features.Replay
             int orphans = FmodUtil.StopSnapshots(null);
             Plugin.Log.LogInfo($"out of the replay viewer, {restored} game roots back on, {orphans} snapshots killed before they could outlive the client");
 
+            // hold the loading screen up (and finish its outro) BEFORE kicking the reload - reloading
+            // first let the game's own scene transition race our fade and stomp it, which is why it
+            // looked like the loading screen vanished instantly
+            float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
+            if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
+            yield return StartCoroutine(LoadingScreenService.HideRoutine().WrapToIl2Cpp());
+
             var client = GlobalGameStateClient.Instance;
             if (client != null)
             {
@@ -1822,10 +1837,6 @@ namespace BetterFG.Features.Replay
                 client.ReloadGame(true, EnumDisconnectReasonGraceful.NoReason);
             }
 
-            float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
-            if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
-
-            LoadingScreenService.Hide();
             Destroy(gameObject);
         }
 

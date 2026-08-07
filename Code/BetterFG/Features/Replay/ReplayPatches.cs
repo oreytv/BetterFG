@@ -143,6 +143,17 @@ namespace BetterFG.Features.Replay
         }
     }
 
+    [HarmonyPatch(typeof(FG.Common.Character.FallGuyVFXController), nameof(FG.Common.Character.FallGuyVFXController.HandleOnDive))]
+    internal static class ReplayDiveSlideVfxPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(FG.Common.Character.FallGuyVFXController __instance)
+        {
+            if (FeatureReplay.Live == null || __instance == null) return;
+            FeatureReplay.CaptureDiveSlideVfx(__instance);
+        }
+    }
+
     [HarmonyPatch(typeof(Levels.Starlink.StarlinkNode), nameof(Levels.Starlink.StarlinkNode.OnButtonPress))]
     internal static class ReplayStarchartButtonPatch
     {

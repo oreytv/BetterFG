@@ -259,6 +259,17 @@ namespace BetterFG.Features.Replay
                 });
         }
 
+        static void ReadVfx(BinaryReader br, ReplayRecording rec)
+        {
+            int events = br.ReadInt32();
+            for (int i = 0; i < events; i++)
+                rec.diveSlideVfxEvents.Add(new ReplayVfxEvent
+                {
+                    t = br.ReadSingle(),
+                    playerId = br.ReadUInt32(),
+                });
+        }
+
         static void ReadLevel(BinaryReader br, ReplayRecording rec)
         {
             int packedLength = br.ReadInt32();
@@ -413,6 +424,7 @@ namespace BetterFG.Features.Replay
                             ReadFrameList(br, container.cameraFrames, container.version);
                             if (container.version >= 3) ReadAudio(br, container);
                             if (container.version >= 15) ReadStarchart(br, container);
+                            if (container.version >= 17) ReadVfx(br, container);
                             if (container.version >= 4) ReadLevel(br, container);
                             if (container.version >= 6) ReadWorld(br, container, container.version >= 11);
                             if (container.version >= 7) ReadTextures(br, container);

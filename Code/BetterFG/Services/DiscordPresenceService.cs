@@ -411,7 +411,7 @@ namespace BetterFG.Services
                 shown = $"QUALIFIED {_place}{BetterFG.Features.TimePlacement.FeatureTimePlacement.Suffix(_place)}";
 
             string points = null;
-            if (status == null && GameRulesUtils.IsScoringRound())
+            if (status == null && !GameRulesUtils.IsRaceRound() && GameRulesUtils.IsScoringRound())
             {
                 int score;
                 if (cgm.IsSquadShow && cgm.SquadSize >= 2)

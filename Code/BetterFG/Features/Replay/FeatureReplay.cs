@@ -98,6 +98,12 @@ namespace BetterFG.Features.Replay
         public int pathCount;
     }
 
+    public struct ReplayVfxEvent
+    {
+        public float t;
+        public uint playerId;
+    }
+
     public struct ReplayAudioParam
     {
         public int name;
@@ -373,6 +379,7 @@ namespace BetterFG.Features.Replay
         public readonly List<ReplaySet> sets = new List<ReplaySet>();
         public readonly List<string> starchartPaths = new List<string>();
         public readonly List<ReplayStarchartEvent> starchartEvents = new List<ReplayStarchartEvent>();
+        public readonly List<ReplayVfxEvent> diveSlideVfxEvents = new List<ReplayVfxEvent>();
         public readonly List<ReplayPlayer> players = new List<ReplayPlayer>();
         public readonly List<ReplayGhost> ghosts = new List<ReplayGhost>();
         public readonly List<ReplayKeyframe> keyframes = new List<ReplayKeyframe>();
@@ -734,6 +741,8 @@ namespace BetterFG.Features.Replay
             _thumbRt = null;
             CaptureBfgLooks(rec);
 
+            rec.players.RemoveAll(p => p.frames.Count == 0);
+
             int frames = 0;
             foreach (var p in rec.players) frames += p.frames.Count;
             Plugin.Log.LogInfo($"round over, {frames} frames across {rec.players.Count} players, {rec.audioEvents.Count} bean sounds over {rec.audioKeys.Count} events");
@@ -797,6 +806,16 @@ namespace BetterFG.Features.Replay
 
             _live.starchartEvents.Add(new ReplayStarchartEvent { t = GameplayTime, pathStart = start, pathCount = count });
             Plugin.Log.LogInfo($"starchart button pressed at {GameplayTime:0.0}s, {count} walkway(s) lighting up");
+        }
+
+        public static void CaptureDiveSlideVfx(FG.Common.Character.FallGuyVFXController controller)
+        {
+            if (_live == null) return;
+
+            var fgcc = controller.GetComponent<FallGuysCharacterController>();
+            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.GetInstanceID(), out uint owner)) return;
+
+            _live.diveSlideVfxEvents.Add(new ReplayVfxEvent { t = GameplayTime, playerId = owner });
         }
 
         public static FallGuysCharacterController BeanFor(Animator animator)

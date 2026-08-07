@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 16;
+        public const int FormatVersion = 17;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 
@@ -51,6 +51,7 @@ namespace BetterFG.Features.Replay
                 WriteFrameList(bw, rec.cameraFrames);
                 WriteAudio(bw, rec);
                 WriteStarchart(bw, rec);
+                WriteVfx(bw, rec);
                 WriteLevel(bw, rec);
                 WriteWorld(bw, rec);
                 WriteTextures(bw, rec);
@@ -206,6 +207,16 @@ namespace BetterFG.Features.Replay
                 bw.Write(e.t);
                 bw.Write(e.pathStart);
                 bw.Write(e.pathCount);
+            }
+        }
+
+        static void WriteVfx(BinaryWriter bw, ReplayRecording rec)
+        {
+            bw.Write(rec.diveSlideVfxEvents.Count);
+            foreach (var e in rec.diveSlideVfxEvents)
+            {
+                bw.Write(e.t);
+                bw.Write(e.playerId);
             }
         }
 

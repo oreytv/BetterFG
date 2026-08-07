@@ -689,6 +689,7 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance != null)
                 FeatureMorePlatformIcon.QueuePrivateLobbyApply(__instance);
+            BetterFG.Services.DiscordPresenceService.Push();
         }
     }
 

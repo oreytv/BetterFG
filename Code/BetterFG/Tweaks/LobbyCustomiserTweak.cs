@@ -28,6 +28,8 @@ namespace BetterFG.Tweaks
         const string UiRootPath = "UICanvas_Client_V2(Clone)/Default";
         const string LobbyCanvasSub = "Prime_UI_PrivateLobby_Canvas(Clone)";
         const string TopBarSub = "Topbar_Prime(Clone)";
+        const string ShowSelectSub = "Prefab_UI_PrivateLobbyShowSelect(Clone)";
+        const string PlayerListSub = "Prime_UI_PrivateLobbyPlayerList(Clone)";
 
         const string SafeAreaSub = "Prime_UI_Customizer_Prefab_Canvas(Clone)/Generic_UI_CustomizerLandingPage_Prefab/SafeArea";
 
@@ -49,7 +51,7 @@ namespace BetterFG.Tweaks
         private CustomiserScreenViewModel _vm;
         private CustomiserSelectButtonsScreenViewModel _tabsVm;
         private TabsMenuInputHandler _tabsInput;
-        private PrivateLobbyScreenViewModel _lobbyVm;
+        private NavigableMenuInputHandler _lobbyInput;
         private Player _navPlayer;
         private int _vertAction;
         private GameObject _prevSel;
@@ -76,6 +78,13 @@ namespace BetterFG.Tweaks
 
         public override void DisableTweak() => Close();
 
+        void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus) return;
+            _heldVert = true;
+            if (_open && _tabsInput != null && !_selectorUp) _tabsInput.enabled = _onTabs;
+        }
+
         void Update()
         {
             if (!IsEnabled || !_open) return;
@@ -94,10 +103,16 @@ namespace BetterFG.Tweaks
             {
                 _selectorUp = selectorUp;
                 SetSelectorMode(selectorUp);
+                if (selectorUp) _vm.OnGainFocus();
+                else _vm.OnLoseFocus();
             }
             if (selectorUp) return;
 
-            if (!_onTabs && !_lobbyVm.IsViewOnTop) return;
+            var showSelect = root.Find(ShowSelectSub);
+            var playerList = root.Find(PlayerListSub);
+            bool popupOpen = (showSelect != null && showSelect.gameObject.activeSelf) ||
+                             (playerList != null && playerList.gameObject.activeSelf);
+            if (popupOpen) return;
 
             int dy = _navPlayer.GetButton(_vertAction) ? 1 : _navPlayer.GetNegativeButton(_vertAction) ? -1 : 0;
             if (dy != 0 && !_heldVert)
@@ -120,9 +135,10 @@ namespace BetterFG.Tweaks
         {
             _onTabs = tabs;
             EventSystem.current.sendNavigationEvents = !tabs;
+            _tabsInput.enabled = tabs;
+            _lobbyInput.enabled = !tabs;
             if (tabs)
             {
-                _lobbyVm.OnLoseFocus();
                 _tabsVm.OnGainFocus();
                 _tabsInput._tabs[_tabsInput._currentTabIndex].Select(true);
             }
@@ -130,12 +146,15 @@ namespace BetterFG.Tweaks
             {
                 foreach (var tab in _tabsInput._tabs) tab.Deselect(true);
                 _tabsVm.OnLoseFocus();
-                _lobbyVm.OnGainFocus();
+                var back = _lobbyInput._lastSelectedGameObject;
+                if (back != null && back.activeInHierarchy) EventSystem.current.SetSelectedGameObject(back);
             }
         }
 
         private void SetSelectorMode(bool on)
         {
+            _tabsInput.enabled = on || _onTabs;
+
             var rootGo = GameObject.Find(UiRootPath);
             var lobbyCanvas = rootGo == null ? null : rootGo.transform.Find(LobbyCanvasSub);
             if (lobbyCanvas != null) lobbyCanvas.gameObject.SetActive(!on);
@@ -232,14 +251,11 @@ namespace BetterFG.Tweaks
             }
 
             _vm = builder.CustomiserScreenViewModel;
-            _vm.OnGainFocus();
             _tabsVm = safeArea.parent.GetComponent<CustomiserSelectButtonsScreenViewModel>();
             _tabsInput = rowT.GetComponent<TabsMenuInputHandler>();
-            _lobbyVm = lobby.GetComponent<PrivateLobbyScreenViewModel>();
-
-            var lobbyInput = lobby.GetComponent<NavigableMenuInputHandler>();
-            _navPlayer = lobbyInput._rewiredPlayer;
-            _vertAction = lobbyInput.VerticalAction;
+            _lobbyInput = lobby.GetComponent<NavigableMenuInputHandler>();
+            _navPlayer = _lobbyInput._rewiredPlayer;
+            _vertAction = _lobbyInput.VerticalAction;
             _heldVert = false;
             _prevSel = null;
             SetRow(false);
@@ -292,11 +308,16 @@ namespace BetterFG.Tweaks
                 _origPpu = null;
             }
 
-            if (_onTabs)
+            if (_tabsInput != null)
             {
-                foreach (var tab in _tabsInput._tabs) tab.Deselect(true);
-                _tabsVm.OnLoseFocus();
+                if (_onTabs)
+                {
+                    foreach (var tab in _tabsInput._tabs) tab.Deselect(true);
+                    _tabsVm.OnLoseFocus();
+                }
+                _tabsInput.enabled = true;
             }
+            if (_lobbyInput != null) _lobbyInput.enabled = true;
             _onTabs = false;
             _heldVert = false;
             _prevSel = null;
@@ -308,7 +329,7 @@ namespace BetterFG.Tweaks
             _vm = null;
             _tabsVm = null;
             _tabsInput = null;
-            _lobbyVm = null;
+            _lobbyInput = null;
             _navPlayer = null;
 
             if (_customiserViewGo != null) _customiserViewGo.SetActive(false);
