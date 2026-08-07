@@ -216,6 +216,8 @@ namespace BetterFG.Features.Replay
         bool _sceneLoaded;
         bool _exiting;
         bool _swapping;
+        bool _loading;
+        float _exitStart;
         GameObject _fallbackLight;
         GameObject _highlight;
         uint _highlightPlayer;
@@ -356,6 +358,8 @@ namespace BetterFG.Features.Replay
             var viewer = go.AddComponent<ReplayViewer>();
             Instance = viewer;
             viewer._rec = rec;
+            viewer._loading = true;
+            LoadingScreenService.Show();
             DiscordPresenceService.OnReplayViewerOpened();
             viewer.PushReplayPresence();
             viewer.StartCoroutine(viewer.OpenRoutine().WrapToIl2Cpp());
@@ -363,6 +367,8 @@ namespace BetterFG.Features.Replay
 
         IEnumerator OpenRoutine()
         {
+            yield return new WaitForSecondsRealtime(0.5f);
+
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             _audio = new ReplayAudioPlayer(_rec);
@@ -386,6 +392,10 @@ namespace BetterFG.Features.Replay
             Plugin.Log.LogInfo($"replay viewer up: {_rec.roundName} on {_rec.sceneName}, {_beans.Count} beans, {_rec.duration:0.0}s");
 
             yield return StartCoroutine(_audio.Prepare(_cam.transform).WrapToIl2Cpp());
+
+            _loading = false;
+            LoadingScreenService.Hide();
+
             yield return StartCoroutine(ThumbnailRoutine().WrapToIl2Cpp());
         }
 
@@ -1475,7 +1485,7 @@ namespace BetterFG.Features.Replay
 
         void Update()
         {
-            if (_exiting || _exporting || _cam == null) return;
+            if (_exiting || _exporting || _cam == null || _loading) return;
 
             if (Cursor.lockState != CursorLockMode.None)
             {
@@ -1769,6 +1779,8 @@ namespace BetterFG.Features.Replay
             if (_exiting) return;
 
             _exiting = true;
+            LoadingScreenService.Show();
+            _exitStart = Time.realtimeSinceStartup;
             Instance = null;
             DiscordPresenceService.OnReplayViewerClosed();
             StopAllCoroutines();
@@ -1809,6 +1821,11 @@ namespace BetterFG.Features.Replay
                 client.ForceMainMenuSceneReload = true;
                 client.ReloadGame(true, EnumDisconnectReasonGraceful.NoReason);
             }
+
+            float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
+            if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
+
+            LoadingScreenService.Hide();
             Destroy(gameObject);
         }
 
