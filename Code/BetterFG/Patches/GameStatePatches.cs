@@ -245,6 +245,16 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(FGClient.CelebrationPreview), "CustomiseFallGuy")]
+    public class CelebrationPreviewBean
+    {
+        [HarmonyPostfix]
+        public static void Postfix(GameObject __0)
+        {
+            if (__0 != null) BeanMonitorService.PushBean(__0);
+        }
+    }
+
     // a party member's bean finished animating in — mesh is bound and the nametag text is populated,
     // so this is the clean moment to match it to a profile and apply (no polling/race). __instance is
     // the MainMenuFallGuy that just settled.

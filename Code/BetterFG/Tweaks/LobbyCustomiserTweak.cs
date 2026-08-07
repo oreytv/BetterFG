@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using FG.Common;
 using FGClient;
@@ -43,6 +44,8 @@ namespace BetterFG.Tweaks
         private RectTransform _row;
         private Vector2 _origAnchorMin, _origAnchorMax, _origPivot, _origAnchoredPos, _origSizeDelta;
         private Vector3 _origScale;
+        private List<UnityEngine.UI.Image> _rowImages;
+        private List<float> _origPpu;
         private CustomiserScreenViewModel _vm;
         private CustomiserSelectButtonsScreenViewModel _tabsVm;
         private TabsMenuInputHandler _tabsInput;
@@ -53,7 +56,7 @@ namespace BetterFG.Tweaks
         private bool _onTabs;
         private bool _heldVert;
         private bool _selectorUp;
-        private int _previousView = -1;
+        private GameObject _customiserViewGo;
         private bool _open;
         private bool _inLobby;
 
@@ -93,6 +96,8 @@ namespace BetterFG.Tweaks
                 SetSelectorMode(selectorUp);
             }
             if (selectorUp) return;
+
+            if (!_onTabs && !_lobbyVm.IsViewOnTop) return;
 
             int dy = _navPlayer.GetButton(_vertAction) ? 1 : _navPlayer.GetNegativeButton(_vertAction) ? -1 : 0;
             if (dy != 0 && !_heldVert)
@@ -185,8 +190,8 @@ namespace BetterFG.Tweaks
                 yield break;
             }
 
-            _previousView = view.CurrentViewIndex;
-            view.SetView(index, false, false, false);
+            _customiserViewGo = views[index];
+            _customiserViewGo.SetActive(true);
             _open = true;
 
             var topBar = GameObject.Find(UiRootPath).transform.Find(TopBarSub);
@@ -217,10 +222,17 @@ namespace BetterFG.Tweaks
             rowT.localScale = new Vector3(RowScale, RowScale, RowScale);
             row.anchoredPosition = new Vector2(-MarginX, -MarginY);
 
+            _rowImages = new List<UnityEngine.UI.Image>();
+            _origPpu = new List<float>();
             foreach (var img in rowT.GetComponentsInChildren<UnityEngine.UI.Image>(true))
+            {
+                _rowImages.Add(img);
+                _origPpu.Add(img.pixelsPerUnitMultiplier);
                 img.pixelsPerUnitMultiplier = PixelsPerUnit;
+            }
 
             _vm = builder.CustomiserScreenViewModel;
+            _vm.OnGainFocus();
             _tabsVm = safeArea.parent.GetComponent<CustomiserSelectButtonsScreenViewModel>();
             _tabsInput = rowT.GetComponent<TabsMenuInputHandler>();
             _lobbyVm = lobby.GetComponent<PrivateLobbyScreenViewModel>();
@@ -232,7 +244,7 @@ namespace BetterFG.Tweaks
             _prevSel = null;
             SetRow(false);
 
-            Plugin.Log.LogInfo($"customiser up via SetView({index}), buttons moved top right ({size.x} x {size.y} at {RowScale})");
+            Plugin.Log.LogInfo($"customiser view {index} forced active directly, buttons moved top right ({size.x} x {size.y} at {RowScale})");
             Plugin.Log.LogInfo($"row swap on vertical action {_vertAction}, up = customiser");
         }
 
@@ -272,6 +284,14 @@ namespace BetterFG.Tweaks
                 _row = null;
             }
 
+            if (_rowImages != null)
+            {
+                for (int i = 0; i < _rowImages.Count; i++)
+                    if (_rowImages[i] != null) _rowImages[i].pixelsPerUnitMultiplier = _origPpu[i];
+                _rowImages = null;
+                _origPpu = null;
+            }
+
             if (_onTabs)
             {
                 foreach (var tab in _tabsInput._tabs) tab.Deselect(true);
@@ -284,19 +304,15 @@ namespace BetterFG.Tweaks
 
             if (_selectorUp) SetSelectorMode(false);
             _selectorUp = false;
+            if (_vm != null) _vm.OnLoseFocus();
             _vm = null;
             _tabsVm = null;
             _tabsInput = null;
             _lobbyVm = null;
             _navPlayer = null;
 
-            var rootGo = GameObject.Find(UiRootPath);
-            var builderGo = rootGo == null ? null : rootGo.transform.Find("MainMenuBuilder(Clone)");
-            var builder = builderGo == null ? null : builderGo.GetComponent<MainMenuBuilder>();
-            if (builder != null && _previousView >= 0)
-                builder.SwitchableView.SetView(_previousView, false, false, false);
-
-            _previousView = -1;
+            if (_customiserViewGo != null) _customiserViewGo.SetActive(false);
+            _customiserViewGo = null;
             Plugin.Log.LogInfo("customiser closed, menu view handed back");
         }
     }
