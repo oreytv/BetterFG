@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -506,8 +506,6 @@ namespace BetterFG.Features.Replay
                 return new Material(shader);
             }
 
-            // has to actually draw a textured surface: the engine's own hidden shaders blend additively
-            // and render nothing at all, which is how the marker ended up invisible.
             Material best = null;
             int bestScore = 0;
             foreach (var candidate in Resources.FindObjectsOfTypeAll<Material>())
@@ -701,8 +699,6 @@ namespace BetterFG.Features.Replay
         float PlaybackSpeed()
         {
             if (!KeyframeSpan(out var a, out var b, out float raw)) return 1f;
-            // a "Cut" keyframe has no real speed value — StepSpeed leaves .speed at whatever it
-            // last was before switching to Cut, so lerping toward it ramps to a stale number
             if (b == null || b.cutToNext) return a.speed;
             return Mathf.Lerp(a.speed, b.speed, raw);
         }

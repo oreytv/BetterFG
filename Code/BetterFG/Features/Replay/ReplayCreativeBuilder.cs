@@ -132,6 +132,8 @@ namespace BetterFG.Features.Replay
                 PlaceAll(loader, schema);
             }
 
+            Physics.SyncTransforms();
+
             int placed = PlaceableCount() - before;
             if (placed <= 0)
                 Plugin.Log.LogWarning($"nothing got placed for {_rec.shareCode} (object database {(LevelEditorObjectList.CurrentObjects != null ? "was loaded" : "was MISSING")})");
@@ -266,12 +268,23 @@ namespace BetterFG.Features.Replay
         static void Place(Il2CppReferenceArray<UGCObjectDataSchema> schemas, List<GameObject> built, List<UGCObjectDataSchema> from)
         {
             if (schemas == null) return;
+
+            int failed = 0;
+            string firstFailure = null;
             for (int i = 0; i < schemas.Length; i++)
             {
                 if (schemas[i] == null) continue;
-                built.Add(LevelLoader.LoadObject(schemas[i], true));
+
+                GameObject go;
+                try { go = LevelLoader.LoadObject(schemas[i], true); }
+                catch (Exception ex) { failed++; firstFailure ??= ex.Message; continue; }
+
+                built.Add(go);
                 from.Add(schemas[i]);
             }
+
+            if (failed > 0)
+                Plugin.Log.LogWarning($"{failed}/{schemas.Length} objects wouldn't load, the rest went in fine — first one choked on {firstFailure}");
         }
 
         LevelAggregateDto LevelDto()

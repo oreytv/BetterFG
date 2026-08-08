@@ -2528,6 +2528,8 @@ namespace BetterFG.UI.Tab
             SaveSettings();
             MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings();
             MenuCustomizationApplication.Instance?.ReapplyBakedPinkGreyTextures();
+            MenuCustomizationApplication.Instance?.ReapplyCreativeBgLive();
+            MenuCustomizationApplication.Instance?.ReapplyLevelBrowserTilesLive();
             BetterFG.Features.QualificationTime.FeatureQualificationTime.ReapplyTimerColors();
         }
 

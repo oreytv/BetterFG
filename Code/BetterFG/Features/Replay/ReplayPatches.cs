@@ -10,6 +10,47 @@ using UnityEngine;
 
 namespace BetterFG.Features.Replay
 {
+    [HarmonyPatch(typeof(EventInstance), nameof(EventInstance.start))]
+    internal static class ReplaySlideAudioPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(EventInstance __instance)
+        {
+            if (FeatureReplay.Live == null || !__instance.isValid()) return;
+            if (__instance.getDescription(out var desc) != RESULT.OK) return;
+            if (desc.getPath(out string path) != RESULT.OK || string.IsNullOrEmpty(path)) return;
+            if (!path.EndsWith("/F_Slide", StringComparison.OrdinalIgnoreCase)) return;
+
+            var pairs = new List<(string, float)>();
+            if (desc.getParameterDescriptionCount(out int count) == RESULT.OK)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (desc.getParameterDescriptionByIndex(i, out var pd) != RESULT.OK) continue;
+                    if (__instance.getParameterByID(pd.id, out float value, out _) != RESULT.OK) continue;
+                    pairs.Add(((string)pd.name, value));
+                }
+            }
+
+            FeatureReplay.CaptureSlideAudio(pairs, __instance.handle);
+        }
+    }
+
+    [HarmonyPatch(typeof(EventInstance), nameof(EventInstance.stop))]
+    internal static class ReplaySlideAudioStopPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(EventInstance __instance)
+        {
+            if (FeatureReplay.Live == null || !__instance.isValid()) return;
+            if (__instance.getDescription(out var desc) != RESULT.OK) return;
+            if (desc.getPath(out string path) != RESULT.OK || string.IsNullOrEmpty(path)) return;
+            if (!path.EndsWith("/F_Slide", StringComparison.OrdinalIgnoreCase)) return;
+
+            FeatureReplay.CloseSlideAudio(__instance.handle);
+        }
+    }
+
     [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlayCharacterAudio))]
     internal static class ReplayCharacterAudioPatch
     {

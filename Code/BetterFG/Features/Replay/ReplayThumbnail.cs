@@ -15,8 +15,6 @@ namespace BetterFG.Features.Replay
 
         public static string PathFor(string replayPath) => Path.ChangeExtension(replayPath, Extension);
 
-        // the jpgs are 1080p, ~6mb decoded, and the decode + readback is a GPU stall. the tab pages
-        // through them and rebuilds its list on every open, so the small copies stay in memory
         static readonly System.Collections.Generic.Dictionary<string, Texture2D> _cache =
             new System.Collections.Generic.Dictionary<string, Texture2D>();
 

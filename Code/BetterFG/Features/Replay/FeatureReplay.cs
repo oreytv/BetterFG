@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -438,9 +438,11 @@ namespace BetterFG.Features.Replay
         static readonly Dictionary<uint, Tracked> _tracked = new Dictionary<uint, Tracked>();
         static readonly Dictionary<int, uint> _beanOwners = new Dictionary<int, uint>();
         static readonly Dictionary<int, FallGuysCharacterController> _animBeans = new Dictionary<int, FallGuysCharacterController>();
+        static bool _culledRemotes = true;
         static readonly Dictionary<string, int> _keyIds = new Dictionary<string, int>();
         static readonly Dictionary<string, int> _paramIds = new Dictionary<string, int>();
         static readonly Dictionary<int, int> _speechIds = new Dictionary<int, int>();
+        static readonly Dictionary<uint, float> _lastDiveSlideTimes = new Dictionary<uint, float>();
         static readonly Dictionary<IntPtr, int> _pairKeys = new Dictionary<IntPtr, int>();
         static readonly Dictionary<IntPtr, int[]> _paramSets = new Dictionary<IntPtr, int[]>();
         static readonly Dictionary<IntPtr, int> _openSounds = new Dictionary<IntPtr, int>();
@@ -505,6 +507,14 @@ namespace BetterFG.Features.Replay
 
             if (rec.isUgc) CaptureCreativeLevel(rec);
 
+            var audio = UnityEngine.Object.FindObjectOfType<AudioManager>();
+            if (audio != null)
+            {
+                _culledRemotes = audio.RemovePlayersAudioActive;
+                audio.RemovePlayersAudioActive = false;
+                if (_culledRemotes) Plugin.Log.LogInfo("other players' audio was being culled, switched that off so the replay actually gets their sounds");
+            }
+
             _tracked.Clear();
             _beanOwners.Clear();
             _animBeans.Clear();
@@ -514,13 +524,15 @@ namespace BetterFG.Features.Replay
             _pairKeys.Clear();
             _paramSets.Clear();
             _openSounds.Clear();
+            _lastDiveSlideTimes.Clear();
             _gameCam = null;
             _gsv = gsv;
             _live = rec;
 
             if (cgm?._clientPlayerManager?._playerIdIndex != null)
             {
-                foreach (var kvp in cgm._clientPlayerManager._playerIdIndex)
+                var cpm = cgm._clientPlayerManager;
+                foreach (var kvp in cpm._playerIdIndex)
                 {
                     if (BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(kvp.Key)) continue;
                     var data = kvp.Value;
@@ -534,7 +546,7 @@ namespace BetterFG.Features.Replay
                     p.partyId = data.partyId ?? p.partyId;
                     p.isLocal = data.isLocalPlayer;
                     p.isBot = data.isBot;
-                    ReadCustomisation(p, cgm._clientPlayerManager.GetPlayerCustomisationSelection(kvp.Key));
+                    ReadCustomisation(p, cpm.GetPlayerCustomisationSelection(kvp.Key));
                 }
             }
 
@@ -737,6 +749,9 @@ namespace BetterFG.Features.Replay
 
             rec.duration = _gsv?.GameplayTimeElapsed ?? 0f;
             _gsv = null;
+
+            var audio = UnityEngine.Object.FindObjectOfType<AudioManager>();
+            if (audio != null) audio.RemovePlayersAudioActive = _culledRemotes;
             rec.thumbJpg = ReplayThumbnail.Encode(_thumbRt);
             _thumbRt = null;
             CaptureBfgLooks(rec);
@@ -746,7 +761,6 @@ namespace BetterFG.Features.Replay
             int frames = 0;
             foreach (var p in rec.players) frames += p.frames.Count;
             Plugin.Log.LogInfo($"round over, {frames} frames across {rec.players.Count} players, {rec.audioEvents.Count} bean sounds over {rec.audioKeys.Count} events");
-
             SaveReplay.Write(rec);
         }
 
@@ -815,7 +829,54 @@ namespace BetterFG.Features.Replay
             var fgcc = controller.GetComponent<FallGuysCharacterController>();
             if (fgcc == null || !_beanOwners.TryGetValue(fgcc.GetInstanceID(), out uint owner)) return;
 
+            _lastDiveSlideTimes[owner] = GameplayTime;
             _live.diveSlideVfxEvents.Add(new ReplayVfxEvent { t = GameplayTime, playerId = owner });
+        }
+
+        public static void CaptureSlideAudio(List<(string name, float value)> parameters, IntPtr handle)
+        {
+            if (_live == null) return;
+
+            uint owner = 0;
+            Vector3 pos = Vector3.zero;
+            float bestDelta = 2.5f;
+            foreach (var kvp in _lastDiveSlideTimes)
+            {
+                float delta = GameplayTime - kvp.Value;
+                if (delta < 0f || delta >= bestDelta) continue;
+                if (!_tracked.TryGetValue(kvp.Key, out var candidate) || candidate.tf == null) continue;
+
+                bestDelta = delta;
+                owner = kvp.Key;
+                pos = candidate.tf.position;
+            }
+
+            int paramStart = _live.audioParams.Count;
+            if (parameters != null)
+                foreach (var (name, value) in parameters)
+                    _live.audioParams.Add(new ReplayAudioParam { name = Intern(_live.audioParamNames, _paramIds, name), value = value });
+
+            _live.audioEvents.Add(new ReplayAudioEvent
+            {
+                t = GameplayTime,
+                end = -1f,
+                playerId = owner,
+                pos = pos,
+                key = Intern(_live.audioKeys, _keyIds, "F_Slide"),
+                paramStart = paramStart,
+                paramCount = parameters?.Count ?? 0,
+            });
+            _openSounds[handle] = _live.audioEvents.Count - 1;
+        }
+
+        public static void CloseSlideAudio(IntPtr handle)
+        {
+            if (_live == null || !_openSounds.TryGetValue(handle, out int index)) return;
+            _openSounds.Remove(handle);
+
+            var sound = _live.audioEvents[index];
+            sound.end = GameplayTime;
+            _live.audioEvents[index] = sound;
         }
 
         public static FallGuysCharacterController BeanFor(Animator animator)
@@ -906,6 +967,16 @@ namespace BetterFG.Features.Replay
 
             uint owner = 0;
             if (controller != null) _beanOwners.TryGetValue(controller.GetInstanceID(), out owner);
+            else
+            {
+                float best = 4f * 4f;
+                foreach (var kvp in _tracked)
+                {
+                    if (kvp.Value.tf == null) continue;
+                    float d2 = (kvp.Value.tf.position - pos).sqrMagnitude;
+                    if (d2 < best) { best = d2; owner = kvp.Key; }
+                }
+            }
 
             rec.audioEvents.Add(new ReplayAudioEvent
             {
@@ -1005,8 +1076,10 @@ namespace BetterFG.Features.Replay
             return p;
         }
 
-        static void ReadCustomisation(ReplayPlayer p, CustomisationSelections sel)
+        static void ReadCustomisation(ReplayPlayer p, CustomisationSelections fallback)
         {
+            var sel = FallGuysLib.Players.PlayerUtils.GetClientPlayerManager()?.GetPlayerMetadataFromPlayerId(p.playerId)?.Selections;
+            if (sel == null) sel = fallback;
             if (sel == null) return;
             p.colour = ItemId(sel.ColourOption);
             p.pattern = ItemId(sel.PatternOption);

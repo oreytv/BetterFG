@@ -5,9 +5,6 @@ using System.Threading;
 
 namespace BetterFG.Features.Replay
 {
-    // wasapi process loopback. it taps the mix of THIS process tree only, so an export never picks up
-    // discord, a browser, or anything else on the desktop. needs win10 20h1 or newer; anything older
-    // fails activation and the export just goes out silent.
     internal class ReplayProcessAudioCapture
     {
         public const int SampleRate = 48000;
@@ -153,7 +150,6 @@ namespace BetterFG.Features.Replay
             _thread.SetApartmentState(ApartmentState.MTA);
             _thread.Start();
 
-            // activation is async; give it a moment so a failure is known before playback starts
             for (int i = 0; i < 200 && !_started && _error == null && !_finished; i++) Thread.Sleep(10);
             if (_error == null) return true;
 
@@ -239,7 +235,6 @@ namespace BetterFG.Features.Replay
                         int size = (int)frames * Channels * (Bits / 8);
                         if (size > 0 && size <= scratch.Length)
                         {
-                            // a silent packet comes back with no data, so pad it to keep the timeline honest
                             if ((flags & 2) != 0 || data == IntPtr.Zero) Array.Clear(scratch, 0, size);
                             else Marshal.Copy(data, scratch, 0, size);
 

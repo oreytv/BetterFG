@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -45,8 +45,6 @@ namespace BetterFG.Features.Replay
         const float PLAYPAUSE_SIZE = 20f;
         const float LANE_NAME_W = 62f;
         const float TICKS_Y = PAD + HEADER_H;
-        // the edge markers get their own band above the scrub strip, so grabbing one can never be
-        // confused with dragging the playhead
         const float EDGE_Y = TICKS_Y + 15f;
         const float EDGE_BAND_H = 13f;
         const float SCRUB_Y = EDGE_Y + EDGE_BAND_H;
@@ -134,25 +132,14 @@ namespace BetterFG.Features.Replay
         static Sprite _unsnapFillSprite;
         static Sprite _unsnapOutlineSprite;
 
-        // 1200x500 art: the slab's top edge runs y 229..235 and its bottom sits at 496, with the camera
-        // cluster parked at x 856..1199, y 13..219 — flush to the right edge. sliced with the camera as
-        // the top-right corner it stays its own size while the slab stretches to whatever width the
-        // timeline is.
         const float BG_SCALE = 0.31f;
         const float BG_BORDER_L = 8f;
         const float BG_BORDER_B = 8f;
         const float BG_BORDER_R = 344f;
-        // 238, not the 229 where the slab's top edge starts: the camera's base keeps going to 237 and
-        // anything of it below the border lands in the stretched middle and smears
         const float BG_BORDER_T = 238f;
-        // a smaller multiplier scales the sliced borders up, so the overhang has to grow with it or the
-        // slab stops lining up with the bar
         const float BG_PPU_MULT = 0.5f;
         const float BG_OVERHANG = BG_BORDER_T * BG_SCALE / BG_PPU_MULT;
 
-        // both markers are drawn off-centre art: the playhead's stem sits at x 23..26 of a 43 wide
-        // canvas and the edge marker's at x 40..53 of 63, with their grab arms flaring off to the
-        // side, so the stem centre is what lands on the time — not the middle of the image.
         const float PH_H = CAM_LANE_Y + LANE_H - SCRUB_Y;
         const float PH_W = PH_H * 43f / 150f;
         const float PH_STEM = 24.5f / 43f;
@@ -366,8 +353,33 @@ namespace BetterFG.Features.Replay
             viewer.StartCoroutine(viewer.OpenRoutine().WrapToIl2Cpp());
         }
 
+        static bool _backAtMenu;
+
+        public static void OnMainMenuEntered() => _backAtMenu = true;
+
+        IEnumerator BailOutOfMatch()
+        {
+            var ggsc = GlobalGameStateClient.Instance;
+            if (ggsc == null) yield break;
+
+            bool busy = ggsc.IsInGameMatch || ggsc.IsInGameplay || ggsc.IsInAnyMatchmakingState
+                || ggsc.AttemptingToMatchMakeIntoEpisode || ggsc.PrivateLobbyOpened || ggsc.IsInPostRoundState;
+            if (!busy) yield break;
+
+            Plugin.Log.LogInfo("replay opened from inside a match, dropping the connection first");
+            _backAtMenu = false;
+            FmodUtil.StopSnapshots(path => path == "snapshot:/Mix/SNAP_Mute_Ambience");
+            ggsc.ReloadGame(true, EnumDisconnectReasonGraceful.ConnectToGameFailed);
+
+            float until = Time.realtimeSinceStartup + 30f;
+            while (!_backAtMenu && Time.realtimeSinceStartup < until) yield return null;
+            if (!_backAtMenu) Plugin.Log.LogWarning("never saw the menu come back after the disconnect, opening the replay anyway");
+            yield return new WaitForSecondsRealtime(1f);
+        }
+
         IEnumerator OpenRoutine()
         {
+            yield return StartCoroutine(BailOutOfMatch().WrapToIl2Cpp());
             yield return new WaitForSecondsRealtime(0.5f);
 
             Cursor.lockState = CursorLockMode.None;
@@ -612,7 +624,6 @@ namespace BetterFG.Features.Replay
                 var gameUi = GameObject.Find("UICanvas_Client_V2(Clone)");
                 if (gameUi != null) { gameUi.SetActive(false); _hidden.Add(gameUi); }
 
-                // the nav prompt overlay lives in DontDestroyOnLoad, which the scene sweep above never sees
                 var navOverlay = GameObject.Find("Prefab_UI_NavigationOverlay(Clone)/SafeArea/SubMenuNavigation_Center");
                 if (navOverlay != null) { navOverlay.SetActive(false); _hidden.Add(navOverlay); }
             }
@@ -622,9 +633,6 @@ namespace BetterFG.Features.Replay
             MenuMusicService.SetGameMenuMusicPaused(true);
         }
 
-        // creative levels leave their editor-only controller rigs in the scene (camera controllers,
-        // gizmo helpers etc) — they never show in a live round because the game itself hides them,
-        // but the replay viewer loads the level directly and skips whatever does that
         void DisableControllerLeftovers()
         {
             foreach (var scene in _loadedScenes)
@@ -648,10 +656,6 @@ namespace BetterFG.Features.Replay
             MenuMusicService.SetGameMenuMusicPaused(MenuMusicService.Enabled);
         }
 
-        // exiting reloads the client, which takes GlobalGameStateClient's configuration with it — so on
-        // every open after the first there was nothing to read the character prefab out of and every
-        // replay came up empty. the prefab itself stays loaded, so hang onto it for the session and
-        // fall back to whatever's already in memory when the config isn't there.
         IEnumerator LoadBeanPrefab()
         {
             if (_beanPrefab != null) yield break;
@@ -1127,9 +1131,6 @@ namespace BetterFG.Features.Replay
         {
             if (fgcc != null) fgcc.enabled = false;
 
-            // interpolation renders a body between its last two physics poses, so a bean we place by
-            // hand every frame draws a step behind where we put it — dead obvious against a keyframed
-            // camera, and it puts the beans out of sync with the shot in an export.
             foreach (var rb in bean.GetComponentsInChildren<Rigidbody>(true))
             {
                 rb.interpolation = RigidbodyInterpolation.None;
@@ -1165,8 +1166,6 @@ namespace BetterFG.Features.Replay
 
         void OnDestroy() => UIScaleService.OnRescaled -= RebuildTimeline;
 
-        // the bar's width comes from the scaled reference resolution, not from anchors, so a rescale
-        // leaves it the wrong length until it's built again
         void RebuildTimeline()
         {
             if (_timelineRt == null || _exiting) return;
@@ -1251,8 +1250,6 @@ namespace BetterFG.Features.Replay
             _fallbackLight.transform.rotation = Quaternion.Euler(48f, 32f, 0f);
         }
 
-        // the slab covers the bar and the camera hangs above its top edge, so the image is taller than
-        // the timeline by exactly the sliced top border
 
         RectTransform BuildMarker(RectTransform parent, string name, float w, float h, Sprite outline, Sprite fill, out Image fillImg)
         {
@@ -1311,8 +1308,6 @@ namespace BetterFG.Features.Replay
 
         float TrackX(float time) => _trackLeft + _trackWidth * Mathf.Clamp01(TimeToFraction(time));
 
-        // hovering a marker's own band near its stem is what makes it grabbable, so that's what turns
-        // it white
         ReplayKeyframe HoveredKeyframe()
         {
             if (_canvas == null) return _dragKeyframe;
@@ -1415,16 +1410,12 @@ namespace BetterFG.Features.Replay
 
         static float SnapFrame(float t) => Mathf.Round(t * FRAME_RATE) / FRAME_RATE;
 
-        // trim handles always magnet onto nearby keyframes when the toggle is on, same as dragging
-        // a keyframe does — the playhead itself only gets that via a held shift (see SeekTo)
         float SnapEdge(float raw)
         {
             float framed = SnapFrame(raw);
             return _snapToKeyframes ? MagnetSnap(framed, null, null, null, out _) : framed;
         }
 
-        // magnet snap always lands on the 60fps grid already, since every keyframe time on the
-        // record is itself grid-aligned — nothing here needs to re-quantize its result
         float MagnetSnap(float framed, List<ReplayKeyframe> excludeCam, List<ReplayVisibilityKeyframe> excludeVis, List<ReplayPostFxKeyframe> excludeFx, out bool snapped)
         {
             float tol = _trackWidth > 0f ? (KEY_W * 0.75f / _trackWidth) * ViewSpan : 0f;
@@ -1620,22 +1611,10 @@ namespace BetterFG.Features.Replay
             sharpenRadius = k.sharpenRadius,
         };
 
-        // flying the camera only writes to a keyframe inside this mode, so opening the editor and
-        // nudging the view can't quietly rewrite the shot
 
-        // picking a player in the keyframe window is blind otherwise — there's no telling which of 30
-        // beans "Attached to" just landed on. the marker only shows while a player parameter is the
-        // thing being touched.
 
-        // the built-in additive shaders are stripped out of the game's build (Shader.Find only ever
-        // came back with Sprites/Default, which is why the marker read as flat alpha), so if they
-        // aren't there, borrow the blend setup off a material the game itself draws additively.
 
-        // the shot the keyframes describe is invisible from the free cam, so mark it on the replay
-        // canvas: the camera icon sits where that camera projects to, and the two lines are its
-        // frustum edges projected the same way, so they widen with the keyframed fov.
 
-        // canvas pixels, x right and y down from the top left, the same space SetPixelRect lays out in
 
         RectTransform BuildGizmoLine()
         {
@@ -1666,8 +1645,6 @@ namespace BetterFG.Features.Replay
             return k.rotation;
         }
 
-        // the shot the keyframes describe at the current time, whether or not the view camera is the
-        // thing showing it — the free-cam gizmo draws the same pose.
 
         Vector2 TimelineCursor()
         {
@@ -1677,8 +1654,6 @@ namespace BetterFG.Features.Replay
                 TIMELINE_Y + TIMELINE_H - Input.mousePosition.y / sf);
         }
 
-        // the lane-name gutter pushed the track right, and the old bound cut the last 50-odd pixels off
-        // the timeline — which is exactly where the end marker parks
         bool OverTimeline(Vector2 cursor) =>
             cursor.x >= 0f && cursor.x <= _trackLeft + _trackWidth + PAD && cursor.y >= 0f && cursor.y <= TIMELINE_H;
 
@@ -1768,9 +1743,6 @@ namespace BetterFG.Features.Replay
 
         void OnExportWindowClosed() => _windowRt.gameObject.SetActive(!_minimized);
 
-        // the video pass is stepped, so nothing can be recorded off it. this plays the replay through
-        // once at real speed with the system output looped back into a wav — same speed curve as the
-        // video, so the two line up end to end.
 
         void LoadFrom()
         {
@@ -1823,9 +1795,6 @@ namespace BetterFG.Features.Replay
             int orphans = FmodUtil.StopSnapshots(null);
             Plugin.Log.LogInfo($"out of the replay viewer, {restored} game roots back on, {orphans} snapshots killed before they could outlive the client");
 
-            // hold the loading screen up (and finish its outro) BEFORE kicking the reload - reloading
-            // first let the game's own scene transition race our fade and stomp it, which is why it
-            // looked like the loading screen vanished instantly
             float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
             if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
             yield return StartCoroutine(LoadingScreenService.HideRoutine().WrapToIl2Cpp());

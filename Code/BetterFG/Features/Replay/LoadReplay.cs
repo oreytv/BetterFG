@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -132,9 +132,6 @@ namespace BetterFG.Features.Replay
 
         static readonly Dictionary<string, ReplayMeta> _metaCache = new Dictionary<string, ReplayMeta>();
 
-        // header only: the container's json block sits right after the magic, so a listing never
-        // has to touch frames, textures or level data. cached off the write time because the tab
-        // rebuilds its whole list every time it opens
         public static ReplayMeta ReadMeta(string path)
         {
             var stamp = File.GetLastWriteTime(path);

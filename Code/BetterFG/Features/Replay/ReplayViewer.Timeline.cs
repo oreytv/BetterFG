@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -100,8 +100,6 @@ namespace BetterFG.Features.Replay
             _viewSpan = _rec.duration;
             NormaliseTrim();
 
-            // the striped strip is the scrub band: it sits exactly where the playhead's grab handle
-            // is, and everything below it is lanes.
             var scrub = UGUIShip.CreatePanel(bar, new Rect(_trackLeft, SCRUB_Y, trackW, SCRUB_H), new Color(1f, 1f, 1f, 0.08f), "ScrubBand");
             if (_stripeSprite == null) _stripeSprite = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.replay.stripe.png", 400f);
             var scrubImg = scrub.GetComponent<Image>();

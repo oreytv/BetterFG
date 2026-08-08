@@ -103,15 +103,34 @@ namespace BetterFG.Patches
             }
 
             var browser = __instance.TryCast<Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserScreenViewModel>();
-            if (browser != null && MenuCustomizationApplication.Instance != null &&
-                SettingsService.Get(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, "false") == "true")
+            if (browser != null && MenuCustomizationApplication.Instance != null)
             {
-                MenuCustomizationApplication.Instance.StartCoroutine(ApplyCreativeNextFrame(browser.transform).WrapToIl2Cpp());
+                MenuCustomizationApplication.Instance.StartCoroutine(ApplyCreativeNextFrame(browser.transform, true, null, false).WrapToIl2Cpp());
                 return;
             }
 
             var inst = MenuCustomizationApplication.Instance;
             if (inst == null) return;
+
+            if (__instance.TryCast<AFKWarningPopupViewModel>() != null)
+            {
+                inst.ReapplyForegroundFromSettings(__instance.transform);
+                return;
+            }
+
+            if (__instance.TryCast<PlayerReportListViewModel>() != null ||
+                __instance.TryCast<FGClient.UI.PlayerReportViewModel>() != null)
+            {
+                inst.StartCoroutine(ApplyCreativeNextFrame(__instance.transform, true, null, true, 0).WrapToIl2Cpp());
+                return;
+            }
+
+            if (__instance.TryCast<ReportUGCPopupViewModel>() != null ||
+                __instance.TryCast<LevelEditorModerationReportedViewModel>() != null)
+            {
+                inst.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(__instance.transform).WrapToIl2Cpp());
+                return;
+            }
 
             // the radial's 7 menu-item canvases instantiate as it opens, after DoFadeIn, so a
             // synchronous sweep misses them. its wedges settle a frame sooner than the rulebook's

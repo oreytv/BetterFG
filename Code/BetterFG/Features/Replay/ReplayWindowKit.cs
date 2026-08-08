@@ -24,8 +24,6 @@ namespace BetterFG.Features.Replay
         public static readonly Color ROW_ODD = new Color(0f, 0f, 0f, 0f);
         public static readonly Color PICKABLE = new Color(1f, 1f, 1f, 0.07f);
 
-        // pivot at the top left, so a window that resizes itself around its rows keeps the same local
-        // origin and anything positioned by transform (the title) stays where it was put.
         public static RectTransform Content(RectTransform window)
         {
             var go = new GameObject("Content");
@@ -39,8 +37,6 @@ namespace BetterFG.Features.Replay
             return rt;
         }
 
-        // where the title sits is per window (the art each one uses puts its box in a different
-        // place), so the caller owns the position and only the scale is shared.
         public static void Title(RectTransform content, float width, string text, Vector3 titlePosition)
         {
             var label = UGUIShip.CreateLabel(content, new Rect(PAD, 0f, width - PAD * 2f, HEAD), text,
@@ -56,10 +52,6 @@ namespace BetterFG.Features.Replay
         public static void EditBackdrop(RectTransform window) =>
             Backdrop(window, "BetterFG.assets.ui.replay.editwindow.png", 0.030f, 0.020f, 0.875f, 0.8067f);
 
-        // the art is a painted card sat inside a bigger canvas: [u0..u1]x[v0..v1] is the clear box the
-        // content has to land in, everything outside it (bushes off the bottom right, the slanted
-        // margins) has to hang past the window. anchoring the whole texture by that box means it keeps
-        // lining up when a window resizes itself around its rows.
         static void Backdrop(RectTransform window, string resource, float u0, float v0, float u1, float v1)
         {
             var tex = EmbeddedResourceandUnity.LoadTexture(resource);

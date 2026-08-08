@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -190,8 +190,6 @@ namespace BetterFG.Features.Replay
                 _world.Apply(_time);
                 SyncUi();
 
-                // costumes, dangly bits and everything else that chases the skeleton do it in
-                // LateUpdate, so the shot has to be taken after that or they trail a frame behind.
                 yield return endOfFrame;
 
                 _cam.targetTexture = rt;
@@ -207,8 +205,6 @@ namespace BetterFG.Features.Replay
                 encoder.WriteFrame(shot.GetRawTextureData());
 
                 frame++;
-                // one output frame is 1/fps of FINISHED footage, so the replay only advances by the
-                // keyframed game speed — that's what turns a 0.25x stretch into real slow motion.
                 AdvanceTime(Mathf.Max(MIN_EXPORT_SPEED, PlaybackSpeed()) / fps);
                 _shakeTime += 1f / fps;
                 int percent = Mathf.RoundToInt(100f * (_time - from) / Mathf.Max(0.01f, until - from));

@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 17;
+        public const int FormatVersion = 18;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 

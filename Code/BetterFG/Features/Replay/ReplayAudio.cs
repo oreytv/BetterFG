@@ -16,14 +16,28 @@ namespace BetterFG.Features.Replay
     {
         const float MAX_STEP = 0.5f;
 
+        const float FLAT_AUDIO_RANGE = 25f;
+        const float WIDE_AUDIO_RANGE = 60f;
+
         struct HeldSound
         {
             public EventInstance instance;
             public float end;
+            public Vector3 pos;
+            public bool flat;
+            public float range;
+        }
+
+        struct FlatOneShot
+        {
+            public EventInstance instance;
+            public Vector3 pos;
+            public float range;
         }
 
         readonly ReplayRecording _rec;
         readonly List<HeldSound> _held = new List<HeldSound>();
+        readonly List<FlatOneShot> _flatOneShots = new List<FlatOneShot>();
         readonly HashSet<int> _reported = new HashSet<int>();
         readonly List<Transform> _ears = new List<Transform>();
         readonly List<Pose> _earPoses = new List<Pose>();
@@ -33,6 +47,7 @@ namespace BetterFG.Features.Replay
         Transform _cam;
         float _pitch = 1f;
         bool _culledRemotes = true;
+        int _slideTemplate = -1;
         bool _ready;
         int _cursor;
         int _fired;
@@ -87,6 +102,7 @@ namespace BetterFG.Features.Replay
             {
                 ClearMix();
                 LoadSamples();
+                PickSurfaceDefault();
                 _ready = true;
                 Plugin.Log.LogInfo($"replay audio armed: {_rec.audioEvents.Count} sounds over {_rec.audioKeys.Count} events, {_banks.Count} of {banks.Count} banks pulled in by us");
             }
@@ -137,6 +153,7 @@ namespace BetterFG.Features.Replay
             SetSpeed(1f);
             _ready = false;
             StopHeld(0f, true);
+            StopFlatOneShots();
 
             foreach (var description in _desc)
             {
@@ -179,6 +196,61 @@ namespace BetterFG.Features.Replay
                 if (ear != null) ear.SetPositionAndRotation(_cam.position, _cam.rotation);
 
             RuntimeManager.StudioSystem.setListenerAttributes(0, RuntimeUtils.To3DAttributes(_cam));
+
+            for (int i = 0; i < _held.Count; i++)
+            {
+                var held = _held[i];
+                if (!held.flat || !held.instance.isValid()) continue;
+
+                float falloff = FlatFalloff(held.pos, held.range);
+                if (falloff <= 0f) held.instance.stop(FMOD.Studio.STOP_MODE.ALLOWFADEOUT);
+                else held.instance.setVolume(falloff);
+            }
+
+            for (int i = _flatOneShots.Count - 1; i >= 0; i--)
+            {
+                var shot = _flatOneShots[i];
+                if (!shot.instance.isValid()) { _flatOneShots.RemoveAt(i); continue; }
+
+                shot.instance.getPlaybackState(out var state);
+                if (state == PLAYBACK_STATE.STOPPED)
+                {
+                    shot.instance.release();
+                    _flatOneShots.RemoveAt(i);
+                    continue;
+                }
+
+                float falloff = FlatFalloff(shot.pos, shot.range);
+                if (falloff <= 0f)
+                {
+                    shot.instance.stop(FMOD.Studio.STOP_MODE.ALLOWFADEOUT);
+                    shot.instance.release();
+                    _flatOneShots.RemoveAt(i);
+                }
+                else shot.instance.setVolume(falloff);
+            }
+        }
+
+        float FlatFalloff(Vector3 pos, float range)
+        {
+            float d = Mathf.Clamp01(Vector3.Distance(pos, _cam.position) / range);
+            return 1f - d * d;
+        }
+
+        void PickSurfaceDefault()
+        {
+            for (int i = 0; i < _rec.audioEvents.Count; i++)
+            {
+                var sound = _rec.audioEvents[i];
+                if (sound.paramCount == 0) continue;
+                if (_rec.audioKeys[sound.key].IndexOf("Slide", StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                _slideTemplate = i;
+                Plugin.Log.LogInfo($"other people's slides came in bare, they'll borrow {_rec.audioKeys[sound.key]} and its {sound.paramCount} parameters so they actually make a noise");
+                return;
+            }
+
+            Plugin.Log.LogWarning("nothing in this replay has a slide with parameters, so other people's slides have nothing to copy and stay silent");
         }
 
         void LoadSamples()
@@ -211,8 +283,6 @@ namespace BetterFG.Features.Replay
             }
         }
 
-        // pitching the core master group rather than each instance means sounds already ringing when
-        // the speed ramps follow it too, instead of only the ones fired after the change
         public void SetSpeed(float speed)
         {
             speed = Mathf.Clamp(speed, 0.05f, 8f);
@@ -231,6 +301,7 @@ namespace BetterFG.Features.Replay
         public void Seek(float time)
         {
             StopHeld(time, true);
+            StopFlatOneShots();
 
             var events = _rec.audioEvents;
             int i = 0;
@@ -261,11 +332,30 @@ namespace BetterFG.Features.Replay
 
         void Fire(ReplayAudioEvent sound)
         {
+            if (sound.paramCount == 0 && _slideTemplate >= 0
+                && _rec.audioKeys[sound.key].IndexOf("Slide", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var template = _rec.audioEvents[_slideTemplate];
+                sound.key = template.key;
+                sound.paramStart = template.paramStart;
+                sound.paramCount = template.paramCount;
+            }
+
             string key = _rec.audioKeys[sound.key];
             try
             {
                 var guid = AudioManager.GetGuidForKey(key);
                 if (guid.IsNull) { Blame(sound.key, key, "no guid for that key"); return; }
+
+                var desc = RuntimeManager.GetEventDescription(guid);
+                bool flat = desc.isValid() && desc.is3D(out bool is3D) == RESULT.OK && !is3D;
+                // keep this falloff: Impact/Slide barely attenuate in fmod, drop it and they're audible from any distance
+                bool huge = key.IndexOf("Impact", StringComparison.OrdinalIgnoreCase) >= 0
+                    || key.IndexOf("Slide", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool needsFalloff = flat || huge;
+                float range = flat ? FLAT_AUDIO_RANGE : WIDE_AUDIO_RANGE;
+                float falloff = needsFalloff ? FlatFalloff(sound.pos, range) : 1f;
+                if (needsFalloff && falloff <= 0f) return;
 
                 var instance = RuntimeManager.CreateInstance(guid);
                 if (!instance.isValid()) { Blame(sound.key, key, "instance came back invalid"); return; }
@@ -281,13 +371,44 @@ namespace BetterFG.Features.Replay
                         RuntimeManager.StudioSystem.setParameterByName(name, parameter.value, true);
                 }
 
+
+                if (needsFalloff) instance.setVolume(falloff);
+
                 instance.start();
 
-                if (sound.end >= 0f) _held.Add(new HeldSound { instance = instance, end = sound.end });
+                if (sound.end >= 0f) _held.Add(new HeldSound { instance = instance, end = sound.end, pos = sound.pos, flat = needsFalloff, range = range });
+                else if (needsFalloff) _flatOneShots.Add(new FlatOneShot { instance = instance, pos = sound.pos, range = range });
                 else instance.release();
                 _fired++;
             }
             catch (Exception ex) { Blame(sound.key, key, ex.Message); }
+        }
+
+        public void PlayAt(string key, Vector3 pos)
+        {
+            if (!_ready) return;
+            try
+            {
+                var guid = AudioManager.GetGuidForKey(key);
+                if (guid.IsNull) return;
+
+                var desc = RuntimeManager.GetEventDescription(guid);
+                bool needsFalloff = desc.isValid() && desc.is3D(out bool is3D) == RESULT.OK && !is3D;
+                float falloff = needsFalloff ? FlatFalloff(pos, FLAT_AUDIO_RANGE) : 1f;
+                if (needsFalloff && falloff <= 0f) return;
+
+                var instance = RuntimeManager.CreateInstance(guid);
+                if (!instance.isValid()) return;
+
+                instance.set3DAttributes(RuntimeUtils.To3DAttributes(pos));
+                if (needsFalloff) instance.setVolume(falloff);
+                instance.start();
+
+                if (needsFalloff) _flatOneShots.Add(new FlatOneShot { instance = instance, pos = pos, range = FLAT_AUDIO_RANGE });
+                else instance.release();
+                _fired++;
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't fire {key} for a bounce: {ex.Message}"); }
         }
 
         void StopHeld(float time, bool all)
@@ -304,6 +425,20 @@ namespace BetterFG.Features.Replay
                 }
                 _held.RemoveAt(i);
             }
+        }
+
+        void StopFlatOneShots()
+        {
+            for (int i = _flatOneShots.Count - 1; i >= 0; i--)
+            {
+                var shot = _flatOneShots[i];
+                if (shot.instance.isValid())
+                {
+                    shot.instance.stop(FMOD.Studio.STOP_MODE.IMMEDIATE);
+                    shot.instance.release();
+                }
+            }
+            _flatOneShots.Clear();
         }
 
         void Blame(int index, string key, string why)

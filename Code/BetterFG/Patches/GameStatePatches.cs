@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -37,7 +37,6 @@ using static FG.Common.PartyService;
 
 namespace BetterFG.Patches.GameStates
 {
-    // main menu + lobby
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.OnMainMenuEntered), new[] { typeof(bool), typeof(bool) })]
     public class MainMenuBean
@@ -48,15 +47,14 @@ namespace BetterFG.Patches.GameStates
             if (__instance._lobbyVirtualCam != null)
             {
                 MenuCustomizationApplication.Instance?.CacheCamBase(__instance._lobbyVirtualCam);
-                // re-apply now that we have the real base — any earlier apply used the fallback base
                 MenuCustomizationApplication.AutoApplyCamFromSettings();
             }
 
             MenuCustomizationApplication.Instance?.CacheBgImageBase();
 
-            // enabled tweaks that react to entering the menu (anti-afk kill, lively fall guys reapply)
             BetterFG.Tweaks.BfgTweak.RaiseMainMenuEntered();
             BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
+            BetterFG.Features.Replay.ReplayViewer.OnMainMenuEntered();
 
             BetterFG.UI.Tab.NametagTab.CacheNameAssets();
             BetterFG.UI.BetterFGUIMan.ResolveAsapFont();
@@ -64,15 +62,10 @@ namespace BetterFG.Patches.GameStates
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
 
             FontReplacementService.ReapplyFromSettings();
-            // the game assigns fame/famepass nametag materials a few frames after the menu enters,
-            // i.e. after the sweep above already swapped that text's font -> gold shader renders on the
-            // wrong atlas = corruption. heal it once the materials have landed (reverts any touched text
-            // that turned famepass). this is the no-toggle fix for startup/menu-open corruption.
             MenuCustomizationApplication.Instance.StartCoroutine(HealFontAfterMenuEntered().WrapToIl2Cpp());
 
             FeatureStars.CreateInMenu();
             FeatureQualificationTime.CreateInMenu();
-            //__instance.StartCoroutine(FeatureAllCosmetics.ApplyAgainAfterMenuSettles().WrapToIl2Cpp());
 
             if (__instance._menuFallGuy != null)
                 BeanMonitorService.PushBean(__instance._menuFallGuy);
@@ -90,9 +83,6 @@ namespace BetterFG.Patches.GameStates
 
             BetterFG.Patches.ShowSelectorBg.AttachApplier();
 
-            // the level-editor menu backdrop is disabled at entry, and GameObject.Find can't see it while
-            // hidden — transform.Find walks inactive. drop the OnEnable applier so it paints on the first
-            // switch to the editor view and every one after.
             var creativeEditorBg = GameObject.Find("CameraRig")?.transform.Find("VirtualCameras/MainMenu_LevelEditor/Generic_UI_CreativeBackground_Prefab_Canvas");
             if (creativeEditorBg != null && creativeEditorBg.GetComponent<CreativeEditorBgApplier>() == null)
                 creativeEditorBg.gameObject.AddComponent<CreativeEditorBgApplier>();
@@ -106,9 +96,6 @@ namespace BetterFG.Patches.GameStates
                 MenuCustomizationApplication._fullCanvasReapplyPending = true;
             }
 
-            // resolve the menu bean's scale whether or not a costume is on — PlayerScaleService decides
-            // the right value (your global slider, or a costume's saved/baked scale). the old count==0
-            // gate meant equipping a costume left the menu bean stuck at 1.
             if (__instance._menuFallGuy != null)
                 PlayerScaleService.ApplyToBean(__instance._menuFallGuy, PlayerScaleService.GetPlayerScale(), PlayerScaleService.BeanScaleMode.Local);
 
@@ -140,15 +127,10 @@ namespace BetterFG.Patches.GameStates
             }
 
 #if PROFILES
-            // match lobby party holders to enabled profiles (custom skins/plinth/nametag)
             NetworkClient.PrimeProfilesForLobby(force: true);
             BetterFG.Customization.Profiles.LobbyProfileService.ApplyToLobby();
 #endif
 
-            // leaving the lobby drops the menu onto view index -1 (no focused child) and nothing
-            // re-grabs focus, so the game ends up out of focus. shove focus back onto the parent
-            // switchable view the same way the modal close path does. do it a couple frames later
-            // so the menu rebuild (MainMenuBuilder(Clone)) has settled before we focus.
             if (__instance != null)
                 __instance.StartCoroutine(RefocusParentAfterMenuEntered(__instance).WrapToIl2Cpp());
 
@@ -163,8 +145,6 @@ namespace BetterFG.Patches.GameStates
         private static IEnumerator HideMenuClutter()
         {
             yield return null;
-            // full-path Find walks inactive children (GameObject.Find skips them once hidden).
-            // the two live under different roots.
             var canvas = GameObject.Find("UICanvas_Client_V2(Clone)")?.transform;
             canvas?.Find("Default/MainMenuBuilder(Clone)/MainScreensParent/Menu_Screen_Main/Prime_UI_MainMenu_Canvas(Clone)/SafeArea/BottomRight_Group")?.gameObject.SetActive(true);
             canvas?.Find("Default/Topbar_Prime(Clone)/SafeArea/TabsHorizontalLayout/SeasonPassButton")?.gameObject.SetActive(true);
@@ -183,15 +163,9 @@ namespace BetterFG.Patches.GameStates
                 focusHandler.GainFocusOnSwitchableViewModel(idx);
             }
 
-            // also tell the builder's focus handler the parent regained focus, matching the
-            // modal close path that's known to work.
             var builder = GameObject.Find("UICanvas_Client_V2(Clone)/Default/MainMenuBuilder(Clone)");
             builder?.GetComponent<SwitchableViewFocusHandler>()?.OnParentViewGainedFocus();
 
-            // first menu entry: our NameTagViewModel postfix ran before the menu finished settling,
-            // and our material/outline swap got overwritten by a follow-up game update. switching
-            // views fixes it because it kicks the VM's UpdateDisplay again — do the same kick here
-            // so the styling lands fully without the user having to switch views.
             BetterFG.Nametag.NametagPatchHub.RefreshRemoteNametags();
         }
 
@@ -202,9 +176,6 @@ namespace BetterFG.Patches.GameStates
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
         }
 
-        // fame/famepass nametag materials get assigned a few frames into the menu, after the initial
-        // font sweep. heal a couple times so any text we wrongly swapped before its gold material landed
-        // gets reverted to its original atlas — no more famepass corruption on startup/menu open.
         private static IEnumerator HealFontAfterMenuEntered()
         {
             yield return new WaitForSeconds(0.3f);
@@ -226,13 +197,9 @@ namespace BetterFG.Patches.GameStates
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ApplyLobbyBGForegroundNextFrame().WrapToIl2Cpp());
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals(bean);
 
-            // lobby's ForegroundCanvas + the nav overlay only exist once the lobby screen opens.
-            // wait one frame so their Canvas components are fully bound before we touch them —
-            // applying same-frame doesn't stick.
             MenuCustomizationApplication.Instance?.StartCoroutine(ApplyScalingNextFrame().WrapToIl2Cpp());
 
 #if PROFILES
-            // make sure profiles are loaded, then match lobby party holders to them
             NetworkClient.PrimeProfilesForLobby(force: true);
             BetterFG.Customization.Profiles.LobbyProfileService.ApplyToLobby();
 #endif
@@ -255,9 +222,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // a party member's bean finished animating in — mesh is bound and the nametag text is populated,
-    // so this is the clean moment to match it to a profile and apply (no polling/race). __instance is
-    // the MainMenuFallGuy that just settled.
     [HarmonyPatch(typeof(MainMenuFallGuy), nameof(MainMenuFallGuy.OnAnimatedInComplete))]
     public class MainMenuFallGuyAnimatedIn
     {
@@ -271,8 +235,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // a party member left — clear our tracked lobby state so a removed holder doesn't keep a stale
-    // custom plinth/skin. (param names must match the real method: member/state, not a/a2.)
     [HarmonyPatch(typeof(PartyNameTag), nameof(PartyNameTag.HandlePlayerJoinedOrLeft))]
     public class PartyNameTagJoinLeave
     {
@@ -316,7 +278,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // PauseMusic fires when the game pauses (alt-tab / settings overlay etc). pause ours too.
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.PauseMusic))]
     public class Patch_MainMenuMusic_PauseSync
     {
@@ -328,9 +289,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // game uses StopMusic to come back from pause (no ResumeMusic call observed) AND to kick off
-    // the menu loop. resume ours, then pause the FMOD instance directly (the wrapper PauseMusic
-    // gets clobbered by the immediate PlayMenuMusic in the game's sequence).
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.StopMusic))]
     public class Patch_MainMenuMusic_StopSync
     {
@@ -359,9 +317,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // the PB popup's return-to-menu now lives on PBPopupDestroyWatcher (fires on the popup's
-    // actual OnDestroy) instead of hooking the OK click here, which softlocked when another
-    // popup tore ours down.
 
     [HarmonyPatch(typeof(ModalMessageBaseViewModel), nameof(ModalMessageBaseViewModel.SetModalBaseData))]
     public class Patch_ModalMessageBase_SetData
@@ -369,7 +324,7 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix(ModalMessageBaseViewModel __instance)
         {
-            MenuCustomizationApplication.Instance?.ReapplyModalForeground(__instance);
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance?.transform);
         }
     }
 
@@ -402,7 +357,7 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix(Component __instance)
         {
-            MenuCustomizationApplication.Instance?.ReapplyModalForeground(__instance);
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance?.transform);
         }
     }
 
@@ -459,8 +414,6 @@ namespace BetterFG.Patches.GameStates
     }
 
 
-    // Kicks off phase 1 (download + cache) as early as possible.
-    // Only fires if the round description matches the repo pattern.
     [HarmonyPatch(typeof(RoundLoader), "LoadViaShareCodeAndVersion")]
     public class UGCLevelLoad
     {
@@ -498,7 +451,6 @@ namespace BetterFG.Patches.GameStates
     }
 
 
-    // Phase 2: scene is ready � instantiate the cached prefab into it.
     [HarmonyPatch(typeof(RoundLoader), nameof(RoundLoader.NotifyLoadingFinished))]
     public class NotifyLoadingFinishedPatch
     {
@@ -509,20 +461,16 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // Phase 2: scene is ready � instantiate the cached prefab into it.
     [HarmonyPatch(typeof(RoundLoader), nameof(RoundLoader.BeginShowUGCLoadingGameScreenViewModel))]
     public class BeginShowUGCLoadingGameScreenViewModelPatch
     {
         [HarmonyPostfix]
         public static void Postfix()
         {
-            //MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.AutoApplyCamFromSettingsCoroutine().WrapToIl2Cpp());
             MenuCustomizationApplication.Instance.ReapplyForegroundFromSettings();
         }
     }
 
-    // the loading screen rewrites its description text in InitTexts/SetData, clobbering our swapped
-    // round description. re-apply ours right after either runs. (no-op when not loading our round.)
     [HarmonyPatch(typeof(LoadingUGCGameScreenViewModel), "InitTexts")]
     public class LoadingUGCInitTextsPatch
     {
@@ -537,7 +485,6 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix() => BetterFGUnityRounds.ApplyDescriptionNow();
     }
 
-    // Phase 2: scene is ready � instantiate the cached prefab into it.
     [HarmonyPatch(typeof(InGameMenuViewModel), nameof(InGameMenuViewModel.ToggleOpen))]
     public class InGameMenuViewModelToggleOpenPatch
     {
@@ -545,19 +492,16 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(bool isInGameMenuOpen, bool playSound)
         {
             if (!isInGameMenuOpen) return;
-            //MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.AutoApplyCamFromSettingsCoroutine().WrapToIl2Cpp());
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
         }
     }
 
-    // Phase 2: scene is ready � instantiate the cached prefab into it.
     [HarmonyPatch(typeof(UGCLevelLikeScreenViewModel), nameof(UGCLevelLikeScreenViewModel.Initialise))]
     public class UGCLevelLikeScreenViewModelToggleOpenPatch
     {
         [HarmonyPostfix]
         public static void Postfix()
         {
-            //MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.AutoApplyCamFromSettingsCoroutine().WrapToIl2Cpp());
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
         }
     }
@@ -582,10 +526,34 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance == null) return;
             BetterFG.Services.DiscordPresenceService.OnShowSelectorTileSeen();
-            MenuCustomizationApplication.Instance?.ReapplyShowTileFill(__instance.transform);
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance.transform);
             BetterFG.Features.Stars.FeatureStars.OnSetIndividualShowData(__instance, showSelectorShow);
             BetterFG.Tweaks.ShowTilePlaysTweak.OnSetShowData(__instance, showSelectorShow);
-            //BetterFG.Tweaks.MultiShowSelectTweak.OnTileData(__instance); // WIP, shelved
+        }
+    }
+
+    [HarmonyPatch(typeof(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileViewModel), "SetData")]
+    internal static class LevelBrowserTileViewModelSetDataPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileViewModel __instance)
+        {
+            if (__instance == null) return;
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance.transform, null, true);
+        }
+    }
+
+    // tags populate after the tile's own SetData fires, so the tile-scoped sweep above always
+    // misses them on first entry — hook the tag's own data point so it colours itself the moment
+    // it actually exists, instead of relying on manual apply to catch it late.
+    [HarmonyPatch(typeof(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileTagViewModel), "SetData")]
+    internal static class LevelBrowserTileTagViewModelSetDataPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileTagViewModel __instance)
+        {
+            if (__instance == null) return;
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance.transform, null, true);
         }
     }
 
@@ -644,7 +612,6 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance == null) return;
             FeatureMorePlatformIcon.ApplyPrivateLobbyLocalName(__instance.transform, "", __instance.PlayerName);
-            // SetData is the moment the game writes this row's name, so override it here too
             FeatureMorePlatformIcon.ApplyPrivateLobbyCustomName(__instance.transform, __instance.PlayerName);
         }
     }
@@ -677,10 +644,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // first open of the screen. SetUpPlayerList is a coroutine (its postfix fires before rows exist)
-    // and UpdatePlayerList only runs on changes, so the screen-focus event is the reliable trigger.
-    // OnOpened is declared on the ScreenViewModel BASE, and Harmony's DeclaredMethod won't find it
-    // through the subclass, so that patch silently never bound. OnGainFocus is declared right here.
     [HarmonyPatch(typeof(PrivateLobbyPlayerListViewModel), "OnGainFocus")]
     internal static class PrivateLobbyPlayerListViewModelOnOpenedPatch
     {
@@ -730,8 +693,6 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix() => BetterFG.Tweaks.MatchmakingQueueCountTweak.OnMatchmakingEnd();
     }
 
-    // fires once per player as they finish/are eliminated. shared by time-placement, stars and
-    // qualification-time — each keeps its own logic in its own file, this just fans out.
     [HarmonyPatch(typeof(ClientGameManager), "HandleServerPlayerProgress")]
     internal static class HandleServerPlayerProgressHub
     {
@@ -760,22 +721,15 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix() => BetterFG.Services.DiscordPresenceService.Push();
     }
 
-    // server-authoritative round result. this is the method that processes the results packet, so
-    // by the postfix LocalPlayerSucceeded reflects this round's outcome. feeds the win-streak debug
-    // overlay: local didn't succeed -> lost the show; succeeded on the final round -> won it.
     [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.HandleServerRoundResults))]
     internal static class HandleServerRoundResultsHub
     {
         [HarmonyPostfix]
         public static void Postfix(ClientGameManager __instance)
         {
-            //BetterFG.Features.WinStreakDebug.WinStreakDebugService.OnRoundResults();
         }
     }
 
-    // UpdateDisplay is defined on the base LoadingScreenViewModel, but that VM also lives at the
-    // main menu and ticks there — gating to the LoadingGameScreenViewModel subtype filters it down
-    // to actual in-round loading screens so PB lookups don't poll endlessly at the menu.
     [HarmonyPatch(typeof(LoadingScreenViewModel), nameof(LoadingScreenViewModel.UpdateDisplay))]
     internal static class LoadingScreenUpdateDisplayHub
     {
@@ -796,7 +750,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // round spawn
 
     [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.DoCharacterObjectSpawnPreparations))]
     internal static class RoundBeanSpawn
@@ -815,15 +768,10 @@ namespace BetterFG.Patches.GameStates
             Plugin.Log.LogInfo($"RoundBeanSpawn: local bean: {bean.name}");
             BeanMonitorService.LocalPlayerBean = bean;
             BeanMonitorService.PushBean(bean);
-            //FeatureAllCosmetics.ApplyCachedToBean(bean);
 
-            // NOTE: colour/pattern/texture reapply for the local bean now happens in
-            // CleanupLoadingScreens (behind the loading screen) instead of here on a delay - the
-            // old 1s-after-spawn reapply made the skin visibly pop in during the intro cameras.
         }
     }
 
-    // qualify screen
 
     [HarmonyPatch(typeof(CellBehaviour), nameof(CellBehaviour.AddFallGuy))]
     internal static class QualifyScreenOnBeanSpawn
@@ -862,10 +810,6 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix(GameObject __0, CellBehaviour __1, PlayerMetadata __2)
         {
-            // one-frame delay so the game finishes binding the cell's nametag material (gold/fame
-            // gets assigned right after this fires). running ApplyToNametag on every TMP under the
-            // cell re-derives any drifted famepass material onto our atlas — same fix the live
-            // watchdog uses, just scoped to this one cell at the right moment.
             string cellKey = __2 != null ? __2.PlayerKey : "";
             if (__1 != null && BeanMonitorService.Instance != null)
                 BeanMonitorService.Instance.StartCoroutine(FixCellNameNextFrame(__1, cellKey).WrapToIl2Cpp());
@@ -899,15 +843,11 @@ namespace BetterFG.Patches.GameStates
             foreach (var t in cell.GetComponentsInChildren<TMPro.TMP_Text>(true))
                 if (t != null) BetterFG.Customization.Menu.FontReplacementService.ApplyToNametag(t);
 
-            // LOCAL player only — matched by cleaned player key (survives profile name swaps), not object
-            // identity. our crown override is ours; don't stamp it on every displayed fall guy.
             if (BetterFG.Nametag.CrownRankService.Enabled && BetterFG.Nametag.CrownRankService.IsLocalPlayerKey(cellKey))
                 BetterFG.Nametag.CrownRankService.ApplyCrownTo(cell, BetterFG.Nametag.CrownRankService.CfgFromSettings());
         }
     }
 
-    // qualification screen teardown is another window where the player can legitimately bail —
-    // route it through the same leave flow as loading-screen back.
     [HarmonyPatch(typeof(StateQualificationScreen), nameof(StateQualificationScreen.Teardown))]
     internal static class QualScreenTeardownLeaveHook
     {
@@ -919,10 +859,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // every end-of-round banner's OnOpened: reparent into BannersState so the leaderboard draws over
-    // the banner, paint its colours, and let enabled tweaks react (respawn prompt teardown). the
-    // three Eliminated variants also flip on the leave-window so the back-prompt shows. one patch
-    // over all six via TargetMethods, branching the colour call by the banner's runtime type
     [HarmonyPatch]
     internal static class Patch_BannerScreens_OnOpened
     {
@@ -952,16 +888,16 @@ namespace BetterFG.Patches.GameStates
             var app = MenuCustomizationApplication.Instance;
             bool eliminatedBanner = false;
             if (__instance.TryCast<FGClient.UI.QualifiedScreenViewModel>() != null)
-                app?.ApplyQualifiedBannerColours(__instance);
+                app?.ApplyBannerColours(__instance, MenuCustomizationApplication.BannerScreen.Qualified);
             else if (__instance.TryCast<FGClient.EliminatedSquadScreenViewModel>() != null)
-            { app?.ApplySquadBannerColours(__instance); eliminatedBanner = true; }
+            { app?.ApplyBannerColours(__instance, MenuCustomizationApplication.BannerScreen.Squad); eliminatedBanner = true; }
             else if (__instance.TryCast<FGClient.EliminatedScreenViewModel>() != null
                   || __instance.TryCast<FGClient.EliminatedSquadEarlyScreenViewModel>() != null)
-            { app?.ApplyEliminatedBannerColours(__instance); eliminatedBanner = true; }
+            { app?.ApplyBannerColours(__instance, MenuCustomizationApplication.BannerScreen.Eliminated); eliminatedBanner = true; }
             else if (__instance.TryCast<FGClient.UI.WinnerScreenViewModel>() != null)
-                app?.ApplyWinnerBannerColours(__instance);
+                app?.ApplyBannerColours(__instance, MenuCustomizationApplication.BannerScreen.Winner);
             else
-                app?.ApplyRoundOverBannerColours(__instance);
+                app?.ApplyBannerColours(__instance, MenuCustomizationApplication.BannerScreen.RoundOver);
 
             if (eliminatedBanner)
             {
@@ -975,8 +911,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // OnClosed for the three Eliminated banners, clears the leave-window + close delegate. identical
-    // body for all three, so one patch over the set
     [HarmonyPatch]
     internal static class Patch_EliminatedBanners_OnClosed
     {
@@ -1003,7 +937,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // reward screen
 
     [HarmonyPatch(typeof(StateRewardScreen), nameof(StateRewardScreen.OnSceneLoaded))]
     internal static class RewardScreen
@@ -1044,18 +977,10 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // costume clone + game's own costume children both arrive async after the bean spawns, and
-    // the poller's own Update only ticks every 1s. kick it every 2 frames so we hide late arrivals
-    // quickly instead of letting the base bean show through for a beat. bails out the moment there
-    // are no pollers (no custom skin -> nothing to do) or once the pollers report they've settled,
-    // so on a plain bean this costs one hierarchy walk instead of ten.
     internal static class CostumePollerKick
     {
         public static IEnumerator Kick(GameObject bean)
         {
-            // the costume clone (and its poller) load async — on first menu entry the bean is found
-            // ~700ms before the poller exists. don't bail on "no pollers yet"; wait for one to show up
-            // (the base bean + UGC costume are both visible during that window), then hammer.
             int seenAt = -1;
             int idleFrames = 0;
             for (int i = 0; i < 90 && bean != null; i++)
@@ -1063,7 +988,6 @@ namespace BetterFG.Patches.GameStates
                 var pollers = bean.GetComponentsInChildren<BetterFG.Customization.Player.CostumePollerComponent>(true);
                 if (pollers == null || pollers.Length == 0)
                 {
-                    // still waiting for the costume to load. give up if it never comes.
                     if (i >= 80) yield break;
                     yield return null;
                     continue;
@@ -1074,7 +998,6 @@ namespace BetterFG.Patches.GameStates
                 foreach (var p in pollers)
                     if (p != null && p.PollNow()) anyWork = true;
 
-                // settled for two kicks running -> late arrivals are all in, stop hammering.
                 idleFrames = anyWork ? 0 : idleFrames + 1;
                 if (idleFrames >= 2 && i - seenAt >= 2) yield break;
 
@@ -1084,19 +1007,13 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // fans out every game-state swap to the things that care: UnityRoundLoader (first, sets InLevelEditor),
-    // the tweak fan-out, menu music, and the victory/qual-screen handling below. FallGuysLib patches the
-    // state machine and raises GameStateEvents.OnStateChanged; this is subscribed in Plugin.Load.
     internal static class GameStateDispatcher
     {
         public static void OnStateChanged(GameStateMachine.IGameState newState)
         {
             try
             {
-                // must run first, it sets InLevelEditor, which the tweaks' OnStateChanged reads
                 BetterFG.Features.UnityRound.Editor.UnityRoundLoader.OnReplaceCurrentState(newState);
-                // enabled tweaks reacting to the state swap (anti-afk re-enable, respawn prompt teardown,
-                // server-info label kill in the editor). MenuMusicService is a service, stays explicit.
                 BetterFG.Tweaks.BfgTweak.RaiseStateChanged(newState);
                 BetterFG.Services.MenuMusicService.OnReplaceCurrentState(newState);
                 BetterFG.Services.DiscordPresenceService.OnStateChanged(newState);
@@ -1124,8 +1041,6 @@ namespace BetterFG.Patches.GameStates
 
         private static IEnumerator HandleVictory(StateVictoryScreen victory)
         {
-            // WinnersInfos isn't populated the instant the state swaps in (the winner data
-            // lands a few hundred ms later), so poll until it's ready instead of a single wait.
             Il2CppSystem.Collections.Generic.List<WinnerInfo> infos = null;
             float elapsed = 0f;
             while (elapsed < 5f)
@@ -1158,8 +1073,6 @@ namespace BetterFG.Patches.GameStates
                 Plugin.Log.LogInfo($"VictoryScreen: localkey={localkey}, winnerCount={infos.Count}");
                 if (string.IsNullOrEmpty(localkey)) yield break;
 
-                // platform prefix varies for the same account (pc_steam_, xb1_, switch_, ...),
-                // so just compare the username after the platform token.
                 string localName = PlayerUtils.CleanPlayerName(localkey);
 
                 for (int i = 0; i < infos.Count; i++)
@@ -1185,25 +1098,15 @@ namespace BetterFG.Patches.GameStates
                 yield break;
             }
 
-            // wait one frame before touching the nameplate — the game's own NameTagViewModel
-            // setup runs in the same frame WinnersInfos becomes populated, and applying our
-            // changes before that finishes leaves the custom name + backing missing (game
-            // overwrites them right after). nickname is a separate object so it survived.
             yield return null;
 
-            // local won — apply our nametag to its plate, just like any other nametag
             try
             {
                 var vm = localWinner.NamePlateRef;
                 Plugin.Log.LogInfo($"VictoryScreen: NamePlateRef={(vm != null)}");
-                // we already know this is the local player, so pass the local username as the
-                // key — that's what HandleViewModel matches on to route to the local path.
                 if (vm != null)
                 {
                     NametagPatchHub.HandleViewModel(vm, LocalPlayerInfo.FGlocalplayerusername);
-                    // the icon X is positioned for the in-game HUD plate; the victory plate is a
-                    // different width, so nudge the icon back into place a couple frames later
-                    // (after the applicator's own next-frame reposition has run).
                     BeanMonitorService.Instance.StartCoroutine(NudgeVictoryIcon(vm).WrapToIl2Cpp());
                 }
             }
@@ -1217,7 +1120,6 @@ namespace BetterFG.Patches.GameStates
                 BeanMonitorService.Instance.StartCoroutine(PollForBean(spawn).WrapToIl2Cpp());
         }
 
-        // how far to shove the icon on the victory plate vs where the HUD-tuned code put it.
         private const float VICTORY_ICON_NUDGE_X = 25f;
         private const float VICTORY_ICON_NUDGE_Y = 0f;
 
@@ -1271,10 +1173,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // victory screen "likes" panel keeps building itself out after our menu sweep already ran,
-    // so its yellow heart fills end up unstyled. UpdateData is the right hook: fires every time
-    // the panel rebuilds for the current round's level data. one-frame delay so the child images
-    // exist by the time we recolour.
     [HarmonyPatch(typeof(FGClient.UI.UGCLevelLikeViewModel), nameof(FGClient.UI.UGCLevelLikeViewModel.UpdateData))]
     internal static class UGCLevelLikeViewModelForeground
     {
@@ -1291,7 +1189,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // cleanup loading screens + nametag queue
 
     [HarmonyPatch(typeof(RoundLoader), "CleanupLoadingScreens")]
     public class CleanupLoadingScreens
@@ -1315,10 +1212,6 @@ namespace BetterFG.Patches.GameStates
                 BeanMonitorService.LocalPlayerBean = fgcc.gameObject;
                 Plugin.Log.LogInfo($"CLS: player set: {fgcc.gameObject.name}");
 
-                // apply the local bean's colour/pattern/texture + game cosmetics from here (behind
-                // the loading screen) instead of on spawn, so the skin doesn't visibly pop in during
-                // the intro cameras. fire at 1s and 2s because the customisation handler / mesh may
-                // not be bound on the first attempt - the second pass catches it.
                 var beanHost = BeanMonitorService.Instance;
                 if (beanHost != null)
                     beanHost.StartCoroutine(ReapplyLocalCosmeticsBehindLoadingScreen(fgcc.gameObject).WrapToIl2Cpp());
@@ -1340,17 +1233,12 @@ namespace BetterFG.Patches.GameStates
             else
                 NametagIconApplicator.ApplyNametag();
 
-            // crown rank: apply from cleanup, NOT gated on WaitForNametag's sprite finder (that stays null until
-            // StateGameInProgress ~18s later, which is why the badge only lit up after the intro). the badge
-            // already exists here; give it a few frames to finish binding, then apply once.
             var crownHost = BeanMonitorService.Instance;
             if (crownHost != null)
                 crownHost.StartCoroutine(ApplyCrownAfterFrames(5).WrapToIl2Cpp());
 
             NametagIconApplicator.ApplyPlatformIcon();
 
-            // shadow resolution override only takes effect once a directional light exists in the
-            // scene — wait until round assets are loaded, then push it.
             BetterFG.Tweaks.ShadowCustomResolutionTweak.ApplyIfEnabled();
         }
 
@@ -1362,18 +1250,12 @@ namespace BetterFG.Patches.GameStates
 
         private static IEnumerator ReapplyLocalCosmeticsBehindLoadingScreen(GameObject bean)
         {
-            // push the bean (same as the spawn path) so OnBeansFound applies colour/pattern +
-            // cosmetics + texture. 1s then 2s: first pass usually lands, second catches the case
-            // where the customisation handler / mesh wasn't bound yet on the first try.
             yield return new WaitForSeconds(1f);
             if (bean != null) BeanMonitorService.PushBean(bean);
 
             yield return new WaitForSeconds(1f);
             if (bean != null) BeanMonitorService.PushBean(bean);
 
-            // the spawn-time scale fires before the roster settles, so GetOtherPlayerIds can read
-            // solo when it isn't (or vice versa). the round's fully up by now — reapply with the
-            // solo/public check trustworthy.
             if (bean != null)
                 PlayerScaleService.RestorePlayerScaleToBean(bean);
         }
@@ -1392,10 +1274,6 @@ namespace BetterFG.Patches.GameStates
                 if (NametagFinder.FindLocalNameTagSprite() != null)
                 {
                     NametagIconApplicator.ApplyNametag();
-                    // the game assigns the gold/famepass material a beat AFTER the nametag first appears,
-                    // which overwrites our first font swap. re-apply a couple times so the custom font
-                    // lands on the gold material on the FIRST round load, not only after HandleServerStartRound.
-                    // (crown rank isn't touched here — it's applied once from the cleanup coroutine above.)
                     yield return new WaitForSeconds(0.3f);
                     NametagIconApplicator.ApplyNametag();
                     yield return new WaitForSeconds(0.6f);
@@ -1409,7 +1287,6 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // round start � bean + nametag + phrases
 
     [HarmonyPatch(typeof(GlobalGameStateClient), "HandleServerStartRound")]
     public class HandleServerStartRoundPa
@@ -1435,8 +1312,6 @@ namespace BetterFG.Patches.GameStates
             if (platformHost != null)
                 platformHost.StartCoroutine(ApplyKnownNametagPlatformsAfterRoundStart().WrapToIl2Cpp());
 
-            // beans that spawn a bit after round start miss the apply above, so re-run the full nametag
-            // refresh once a second for 2s to catch late spawners.
             if (platformHost != null)
                 platformHost.StartCoroutine(PollNametagsAfterRoundStart().WrapToIl2Cpp());
 
@@ -1454,9 +1329,6 @@ namespace BetterFG.Patches.GameStates
             }
             catch (Exception ex) { Plugin.Log.LogWarning($"HSR: phrase patch: {ex.Message}"); }
 
-            // fan out round-start to every enabled tweak that overrides OnRoundStart (noises, camera
-            // assist, server info, respawn, lively fall guys). each keeps its own logic; this is the
-            // single call site. InstantLandingIndicator isn't registered as a tweak so it stays above.
             BetterFG.Tweaks.BfgTweak.RaiseRoundStart();
             BetterFG.Services.DiscordPresenceService.OnRoundStart();
 
@@ -1514,10 +1386,6 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         static void SetViewImplementation(SwitchableView __instance)
         {
-            // tear down any leftover PB popup on tab/view changes — but ONLY when our popup is
-            // actually open. this used to nuke EVERY child of ModalMessage on every single view
-            // switch, which wiped the game's own modal node and broke back/escape navigation in
-            // nested settings views (options/controller switchboard).
             if (BetterFG.Features.QualificationTime.PBPopup.IsOpen)
             {
                 var modalMessage = GameObject.Find("UICanvas_Client_V2(Clone)/ModalMessage");
@@ -1530,15 +1398,8 @@ namespace BetterFG.Patches.GameStates
                 BetterFG.Features.QualificationTime.PBPopup.IsOpen = false;
             }
 
-            // none of the reapplies below are menu-cosmetic concerns in the level editor — they're
-            // font/nametag/menu-lighting/foreground sweeps. but saving/publishing in creative fires a
-            // burst of view switches, and every switch here would run whole-scene FindObjectsOfType
-            // sweeps over the editor scene (your entire placed level + all the editor UI). that stacks
-            // into the multi-second save freeze people hit. nothing in the editor needs it, so skip.
             if (BetterFG.Features.UnityRound.Editor.UnityRoundLoader.InLevelEditor) return;
 
-            // keep this hook quiet. SetViewImplementation fires on normal tab/view changes, and
-            // repainting the whole UI canvas here makes private lobby/show selector feel awful.
             var app = MenuCustomizationApplication.Instance;
             if (app != null && __instance != null)
                 app.StartCoroutine(ApplyIndexZeroAfterFrames(__instance, 1).WrapToIl2Cpp());
@@ -1553,9 +1414,6 @@ namespace BetterFG.Patches.GameStates
 
             if (view != null && view.gameObject.name == "TabsHorizontalLayout") yield break;
 
-            // a view switch only rebuilds the new view's subtree — the rest of the scene kept its
-            // font/nametags/colours. resolve that subtree and scope all our reapplies to it instead
-            // of doing whole-scene FindObjectsOfType sweeps every switch (that was the menu lag).
             Transform scope = null;
             try
             {
@@ -1566,28 +1424,18 @@ namespace BetterFG.Patches.GameStates
             }
             catch { }
 
-            // resolution/graphics changes rebuild the canvases and wipe our custom UI scale reference
-            // res, so reassert it on every view switch (no-op when the toggle's off).
             UIScaleService.ApplySaved();
 
-            // this already reapplies the custom textures internally, don't double it up
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
 
-            // ambient/sun get clobbered by the game's per-view lighting setup — reassert on every switch
             MenuCustomizationApplication.Instance?.ApplyAmbientFromSettings();
             MenuCustomizationApplication.Instance?.ApplySunFromSettings();
 
-            // image bg hidden whenever the customiser screen is up
             MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
 
-            // the game's nametag customisation screen rewrites the live nameplates, so re-assert ours.
-            // scoped to the rebuilt view — nameplates elsewhere survived the switch.
             if (scope != null) NametagFinder.ReapplyNameplatesInScope(scope);
             else NametagFinder.ReapplyAllNameplates();
 
-            // menu text gets rebuilt on view switches (the game re-instantiates panels), dropping the
-            // custom font — re-swap. scoped to the new view; the rest of the scene still has our font.
-            // RestoreUncovered still runs scene-wide to heal any text that just turned famepass.
             FontReplacementService.RestoreUncovered();
             if (scope != null) FontReplacementService.ApplyToScope(scope);
             else FontReplacementService.HealAndReapply();
@@ -1599,16 +1447,11 @@ namespace BetterFG.Patches.GameStates
             var app = MenuCustomizationApplication.Instance;
             if (app == null) yield break;
 
-            // a SetData patch already recolours the symphony show selector, so don't let the
-            // view-switch repaint touch anything under it (double-applies / fights with that)
             if (scope != null)
                 app.ReapplyForegroundFromSettings(scope, "Prime_UI_SymphonyShowSelector_Prefab_Canvas(Clone)");
         }
     }
 
-    // shared hub for ClientGameManager.SwitchToSpectatorMode — every tweak/feature that needs to
-    // react to the local player entering spectator mode routes through here instead of installing
-    // its own patch. keeps the trampoline count on this hot method to one.
     [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.SwitchToSpectatorMode))]
     internal static class Patch_SwitchToSpectatorMode
     {
@@ -1630,26 +1473,5 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    // WIP Multi-Show Queue — shelved. launch confirms the highlighted show rather than the pinned set
-    // (OnShowConfirmed seems to act on the game's own selected tile, not the instance we call it on).
-    // patches commented out so the tweak installs nothing while parked.
-    //[HarmonyPatch(typeof(FGClient.CatapultServices.MatchmakingService), nameof(FGClient.CatapultServices.MatchmakingService.GetPlayerMatchmakingAuthToken))]
-    //internal static class MatchmakingServiceGetTokenPatch
-    //{
-    //    [HarmonyPrefix]
-    //    private static void Prefix(Il2CppSystem.Collections.Generic.List<string> showIds)
-    //    {
-    //        BetterFG.Tweaks.MultiShowSelectTweak.AugmentShowIds(showIds);
-    //    }
-    //}
 
-    //[HarmonyPatch(typeof(ShowSelectorShowTileViewModel), nameof(ShowSelectorShowTileViewModel.OnShowConfirmed))]
-    //internal static class ShowSelectorTileConfirmPatch
-    //{
-    //    [HarmonyPrefix]
-    //    private static bool Prefix(ShowSelectorShowTileViewModel __instance)
-    //    {
-    //        return !BetterFG.Tweaks.MultiShowSelectTweak.OnTileConfirm(__instance);
-    //    }
-    //}
 }
