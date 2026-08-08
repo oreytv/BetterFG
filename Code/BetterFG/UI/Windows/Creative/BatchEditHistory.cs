@@ -29,6 +29,8 @@ namespace BetterFG.UI.Windows.Creative
             public bool? PhysicsEnabled;
             public int? WeightIndex;
             public bool? Draggable;
+            public LevelEditorPlaceableObject LinkTo;
+            public bool? Linked;
         }
 
         public sealed class BatchEntry
@@ -100,6 +102,17 @@ namespace BetterFG.UI.Windows.Creative
                 {
                     BatchTargets.SnapCurrent(o, s, inv); // read current into inv for the fields s carries
                     BatchTargets.Restore(o, s);
+                }
+
+                if (s.Linked.HasValue && s.LinkTo != null)
+                {
+                    var ctrl = s.LinkTo.LinkController;
+                    if (ctrl != null)
+                    {
+                        inv.LinkTo = s.LinkTo;
+                        inv.Linked = ctrl.IsReceiverLinkedTo(o);
+                        BatchLink.SetLinked(ctrl, o, s.Linked.Value);
+                    }
                 }
 
                 inverse.Snaps.Add(inv);

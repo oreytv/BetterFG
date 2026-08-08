@@ -63,6 +63,7 @@ namespace BetterFG.Tweaks
             //Add<InstantLandingIndicatorTweak>(TweakCategory.Gameplay);
             Add<DisableCameraAssistTweak>(TweakCategory.Gameplay);
             Add<ImmediateRespawnTweak>(TweakCategory.Gameplay);
+            Add<CinematicSpectatorTweak>(TweakCategory.Gameplay);
 
             // ── Audio ──
             Add<SpectatorMusicTweak>(TweakCategory.Audio);

@@ -19,6 +19,7 @@ namespace BetterFG.UI.Windows.Creative
         public static CreativeSelectionWatcher Instance { get; private set; }
 
         private NavPromptHandle _prompt;
+        private bool _promptIsLink;
 
         void Awake()
         {
@@ -33,6 +34,11 @@ namespace BetterFG.UI.Windows.Creative
             // turned off while the window's up → close it
             if (!BatchEditWindow.FeatureEnabled && BatchEditWindow.Instance != null)
                 BatchEditWindow.Instance.Close();
+
+            // the label has to say "Link" the moment a controller joins the selection, otherwise there's
+            // nothing telling you the page exists. NavPrompt labels are baked at spawn, so flip = respawn.
+            bool linkNow = shouldPrompt && BatchLink.Controller() != null;
+            if (linkNow != _promptIsLink) { DestroyPrompt(); _promptIsLink = linkNow; }
 
             if (shouldPrompt) EnsurePrompt();
             else DestroyPrompt();
@@ -50,7 +56,7 @@ namespace BetterFG.UI.Windows.Creative
             // own UI owns focus while you're placing/selecting, so the default gameplay-focus gate
             // would swallow the press.
             _prompt = NavPromptCore.From(NavPrompt.Report)
-                .WithLabel("Batch edit", "bfg_creative_batchedit")
+                .WithLabel(_promptIsLink ? "Link to controller" : "Batch edit", "bfg_creative_batchedit")
                 .AnchoredAt(NavPromptAnchor.BottomCenter)
                 .AllowWhileUnfocused()
                 .PollActions(RewiredConsts.Action.Menu_Report)

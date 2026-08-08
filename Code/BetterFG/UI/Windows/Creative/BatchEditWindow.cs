@@ -47,7 +47,7 @@ namespace BetterFG.UI.Windows.Creative
         private static readonly Color HINT_COL = new Color(1f, 1f, 1f, 0.55f);
         private static readonly Color OK_COL = new Color(0.55f, 0.85f, 0.55f, 1f);
 
-        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics" };
+        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics", "Link" };
         // built-ins first, then whatever external DLLs registered (usually none). rebuilt each open so a
         // plugin that registers after the window's first build still shows up next time it opens.
         private string[] Subtabs()
@@ -104,6 +104,8 @@ namespace BetterFG.UI.Windows.Creative
         {
             Instance = this;
             AnyOpen = true;
+            // selected a controller? that's what you came here for — land on Link, not Recolour
+            if (BatchLink.Controller() != null) _subtab = 4;
             SetAnchorPosition(new Vector2(560f, 30f));
             ShowWindow();
             RebuildContent();
@@ -215,6 +217,7 @@ namespace BetterFG.UI.Windows.Creative
                 case 1: BuildScale(contentRoot, w, ref y); break;
                 case 2: BuildMaterial(contentRoot, w, ref y); break;
                 case 3: BuildPhysics(contentRoot, w, ref y); break;
+                case 4: BuildLink(contentRoot, w, ref y); break;
                 default: BuildExtra(contentRoot, w, ref y); break;
             }
 
@@ -522,6 +525,70 @@ namespace BetterFG.UI.Windows.Creative
                 new Action(() => Status(BatchPhysics.SetDraggable(true), "grabbable")));
             UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "OFF", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchPhysics.SetDraggable(false), "not grabbable")));
+        }
+
+        // ── link subtab ──────────────────────────────────────────────────────
+
+        private void BuildLink(RectTransform root, float w, ref float y)
+        {
+            var controller = BatchLink.Controller(out int controllers);
+            if (controller == null)
+            {
+                MakeLabel(root, new Rect(PAD, y, w, 48f),
+                    "no movement or rotation controller in the selection — multi-select one along with the objects it should drive",
+                    FS_SM, HINT_COL, TextAnchor.UpperLeft);
+                y += 52f;
+                return;
+            }
+
+            MakeLabel(root, new Rect(PAD, y, w, 16f), BatchLink.TypeName(controller) + " controller", FS_BODY, WHITE);
+            y += 20f;
+
+            if (controllers > 1)
+            {
+                MakeLabel(root, new Rect(PAD, y, w, 16f),
+                    controllers + " controllers selected, using the last one you clicked", FS_SM, HINT_COL);
+                y += 18f;
+            }
+
+            BatchLink.Survey(controller, out int receivers, out int linked, out int slotsFree);
+            MakeLabel(root, new Rect(PAD, y, w, 16f),
+                $"{linked} of {receivers} selected linked  ·  " + (slotsFree < 0 ? "no slot limit" : slotsFree + " slot(s) free"),
+                FS_SM, HINT_COL);
+            y += 24f;
+
+            float half = (w - 6f) * 0.5f;
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "LINK ALL", BTN_APPLY, WHITE, FS_BODY,
+                new Action(DoLink));
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "UNLINK ALL", BTN_STEP, WHITE, FS_BODY,
+                new Action(DoUnlink));
+            y += 34f;
+
+            MakeLabel(root, new Rect(PAD, y, w, 48f),
+                "each object goes through the editor's own link check, so anything past the limit or that this controller can't drive is skipped",
+                FS_SM, HINT_COL, TextAnchor.UpperLeft);
+            y += 52f;
+        }
+
+        private void DoLink()
+        {
+            var controller = BatchLink.Controller();
+            var entry = BatchEditHistory.Begin("link");
+            int n = BatchLink.LinkAll(entry, controller, out string note);
+            BatchEditHistory.Push(entry);
+            RebuildContent();
+            SetStatus(n > 0 ? $"linked {n} object(s)" + (note != null ? ", " + note : "") : (note ?? "nothing to link"),
+                n > 0 ? OK_COL : HINT_COL);
+        }
+
+        private void DoUnlink()
+        {
+            var controller = BatchLink.Controller();
+            var entry = BatchEditHistory.Begin("unlink");
+            int n = BatchLink.UnlinkAll(entry, controller);
+            BatchEditHistory.Push(entry);
+            RebuildContent();
+            SetStatus(n > 0 ? $"unlinked {n} object(s)" : "none of the selection was linked to it", n > 0 ? OK_COL : HINT_COL);
         }
 
         // ── registered extra subtab ──────────────────────────────────────────

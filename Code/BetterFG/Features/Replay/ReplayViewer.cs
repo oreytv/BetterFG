@@ -1797,6 +1797,7 @@ namespace BetterFG.Features.Replay
 
             float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
             if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
+            yield return new WaitForSecondsRealtime(2f);
             yield return StartCoroutine(LoadingScreenService.HideRoutine().WrapToIl2Cpp());
 
             var client = GlobalGameStateClient.Instance;
