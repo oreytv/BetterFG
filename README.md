@@ -2,8 +2,8 @@
  ![BettrFG Logo](./assets/betterfglogo.png)
 
  <p align="center">
-  <a href="https://github.com/oreytv/BettrFG/releases/tag/installer"><img src="https://img.shields.io/badge/installer-download-32c955" /></a>
-  <a href="https://github.com/oreytv/BettrFG/releases/latest"><img src="https://img.shields.io/github/v/release/oreytv/BettrFG?label=release" /></a>
+  <a href="https://github.com/oreyre9000/BettrFG/releases/tag/installer"><img src="https://img.shields.io/badge/installer-download-32c955" /></a>
+  <a href="https://github.com/oreyre9000/BettrFG/releases/latest"><img src="https://img.shields.io/github/v/release/oreytv/BettrFG?label=release" /></a>
   <img src="https://img.shields.io/github/downloads/oreytv/BettrFG/total?label=downloads" />
   <img src="https://img.shields.io/github/last-commit/oreytv/BettrFG?label=last%20commit" />
 </p>
@@ -43,7 +43,7 @@ http://dsc.gg/bettrfg
 
 # UGC creation
 - The mod does not yet consist of proper documentation. But it has a playlist for tutorials [here](https://www.youtube.com/playlist?list=PLAPN34Bm_MDFu7KDBP4NOARk07Mj7ybp8)
-- [Download base rig.blend](https://github.com/oreytv/BettrFG/raw/refs/heads/main/assets/base%20rig.blend)
+- [Download base rig.blend](https://github.com/oreyre9000/BettrFG/raw/refs/heads/main/assets/base%20rig.blend)
 - Unity https://unity.com/releases/editor/whats-new/2021.3.16f1
 
 # Credits
