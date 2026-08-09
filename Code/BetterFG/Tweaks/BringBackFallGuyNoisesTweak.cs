@@ -29,6 +29,34 @@ namespace BetterFG.Tweaks
 
         public override void OnRoundStart() => ApplyFix();
 
+        const float RemoteTickInterval = 1f / 20f;
+        float _nextRemoteTick;
+
+        void Update()
+        {
+            if (!Active) return;
+            if (Time.time < _nextRemoteTick) return;
+            _nextRemoteTick = Time.time + RemoteTickInterval;
+            TickAllRemotes();
+        }
+
+        static void TickAllRemotes()
+        {
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            if (gsv == null || !gsv.GetLiveClientGameManager(out ClientGameManager cgm)) return;
+
+            var index = cgm?._clientPlayerManager?._playerIdIndex;
+            if (index == null) return;
+
+            foreach (var kvp in index)
+            {
+                if (BeanNetworkUtil.IsFakeBean(kvp.Key)) continue;
+                var fgcc = kvp.Value?.fgcc;
+                if (fgcc == null || fgcc.IsLocalPlayer) continue;
+                TickRemote(fgcc, RemoteTickInterval);
+            }
+        }
+
         private static readonly AudioParamContainer _params = new AudioParamContainer();
         private const float RewooCooldown = 1.25f;
         private const float FallingWoo = 0.8f;
@@ -44,7 +72,7 @@ namespace BetterFG.Tweaks
         private static readonly System.Collections.Generic.Dictionary<int, float> _peakFall = new System.Collections.Generic.Dictionary<int, float>();
         private static readonly System.Collections.Generic.Dictionary<int, float> _fallTime = new System.Collections.Generic.Dictionary<int, float>();
 
-        internal static void TickRemote(FallGuysCharacterController c)
+        internal static void TickRemote(FallGuysCharacterController c, float elapsed)
         {
             if (c == null) return;
             try
@@ -58,7 +86,7 @@ namespace BetterFG.Tweaks
 
                 bool descending = !grounded && yvel < 0f;
                 _fallTime.TryGetValue(id, out float dropping);
-                dropping = descending ? dropping + Time.deltaTime : 0f;
+                dropping = descending ? dropping + elapsed : 0f;
                 _fallTime[id] = dropping;
 
                 Fire(c, Voe.Falling, dropping >= FallingWoo, master.VO_Falling);
@@ -186,17 +214,6 @@ namespace BetterFG.Tweaks
             FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO");
             FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_3D");
             FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_2D");
-        }
-    }
-
-    [HarmonyPatch(typeof(FallGuysCharacterController), nameof(FallGuysCharacterController.OnManagedUpdate_Remote))]
-    internal static class BringBackFallGuyNoises_RemoteTick
-    {
-        [HarmonyPostfix]
-        public static void Postfix(FallGuysCharacterController __instance)
-        {
-            if (!BringBackFallGuyNoisesTweak.Active) return;
-            BringBackFallGuyNoisesTweak.TickRemote(__instance);
         }
     }
 

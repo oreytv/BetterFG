@@ -50,11 +50,11 @@ namespace BetterFG.Customization.Menu
         private readonly Dictionary<int, UnityEngine.UI.Image> _fgTouchedImages = new Dictionary<int, UnityEngine.UI.Image>();
         private readonly Dictionary<int, UnityEngine.Sprite> _showSelectOriginalSprites = new Dictionary<int, UnityEngine.Sprite>();
 
-        public static IEnumerator ReapplyForegroundFromSettingsCoroutine(Transform scopeRoot = null)
+        public static IEnumerator ReapplyForegroundFromSettingsCoroutine(Transform scopeRoot = null, bool anyImage = false)
         {
             yield return null;
             yield return new WaitForSeconds(0.01f);
-            Instance.ReapplyForegroundFromSettings(scopeRoot);
+            Instance.ReapplyForegroundFromSettings(scopeRoot, anyImage: anyImage);
         }
 
         public void ReapplyForegroundFromSettings(Transform scopeRoot = null, string excludeSubtreeName = null, bool anyImage = false, bool refreshOriginals = false)

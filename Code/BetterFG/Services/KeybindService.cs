@@ -63,6 +63,29 @@ namespace BetterFG.Services
             return k.ToString();
         }
 
+        private static Rewired.Keyboard Kb => Rewired.ReInput.isReady ? Rewired.ReInput.controllers.Keyboard : null;
+
+        public static bool KeyHeld(KeyCode k)
+        {
+            if (k == KeyCode.None) return false;
+            var kb = Kb;
+            return kb == null ? Input.GetKey(k) : kb.GetKey(k);
+        }
+
+        public static bool KeyDown(KeyCode k)
+        {
+            if (k == KeyCode.None) return false;
+            var kb = Kb;
+            return kb == null ? Input.GetKeyDown(k) : kb.GetKeyDown(k);
+        }
+
+        public static bool ShiftHeld()
+        {
+            var kb = Kb;
+            if (kb == null) return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            return kb.GetKey(KeyCode.LeftShift) || kb.GetKey(KeyCode.RightShift);
+        }
+
         private static void EnsureLoaded()
         {
             if (_loaded) return;
@@ -81,12 +104,13 @@ namespace BetterFG.Services
         // Scan all KeyCodes this frame; return the first one freshly pressed (excluding modifiers/mouse).
         public static KeyCode PollPressedKey()
         {
-            if (!Input.anyKeyDown) return KeyCode.None;
+            var kb = Kb;
+            if (kb == null && !Input.anyKeyDown) return KeyCode.None;
             foreach (KeyCode kc in Enum.GetValues(typeof(KeyCode)))
             {
                 if (kc == KeyCode.None) continue;
                 if (IsExcluded(kc)) continue;
-                if (Input.GetKeyDown(kc)) return kc;
+                if (kb == null ? Input.GetKeyDown(kc) : kb.GetKeyDown(kc)) return kc;
             }
             return KeyCode.None;
         }

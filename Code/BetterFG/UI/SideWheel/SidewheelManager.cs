@@ -161,10 +161,8 @@ namespace BetterFG.UI.SideWheel
         void Update()
         {
             var wheelKey = BetterFG.Services.KeybindService.Get(BetterFG.Services.KeybindId.ToggleWheel);
-            if (wheelKey != KeyCode.None
-                && Input.GetKeyDown(wheelKey)
-                && !Input.GetKey(KeyCode.LeftShift)
-                && !Input.GetKey(KeyCode.RightShift)
+            if (BetterFG.Services.KeybindService.KeyDown(wheelKey)
+                && !BetterFG.Services.KeybindService.ShiftHeld()
                 && !IsTyping())
                 SetWheelVisible(!_wheelVisible);
 

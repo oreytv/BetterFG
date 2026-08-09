@@ -123,6 +123,7 @@ namespace BetterFG.Features.Replay
                 else { _audio.Advance(from, _time); _starchart.Advance(from, _time); _vfx.Advance(from, _time); }
                 ApplyTime();
                 _world.Apply(_time);
+                _tail.Apply(_time);
                 SyncUi();
                 yield return null;
             }
@@ -188,6 +189,7 @@ namespace BetterFG.Features.Replay
             {
                 ApplyTime();
                 _world.Apply(_time);
+                _tail.Apply(_time);
                 SyncUi();
 
                 yield return endOfFrame;

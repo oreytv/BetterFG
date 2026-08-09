@@ -195,6 +195,28 @@ namespace BetterFG.Features.Replay
         }
     }
 
+    [HarmonyPatch(typeof(Levels.Tag.TailTagAccessory), nameof(Levels.Tag.TailTagAccessory.OnAccessoryEnabled))]
+    internal static class ReplayTailEnablePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Levels.Tag.TailTagAccessory __instance)
+        {
+            if (FeatureReplay.Live == null) return;
+            FeatureReplay.CaptureTailState(__instance, true);
+        }
+    }
+
+    [HarmonyPatch(typeof(Levels.Tag.TailTagAccessory), nameof(Levels.Tag.TailTagAccessory.OnAccessoryDisabled))]
+    internal static class ReplayTailDisablePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Levels.Tag.TailTagAccessory __instance)
+        {
+            if (FeatureReplay.Live == null) return;
+            FeatureReplay.CaptureTailState(__instance, false);
+        }
+    }
+
     [HarmonyPatch(typeof(Levels.Starlink.StarlinkNode), nameof(Levels.Starlink.StarlinkNode.OnButtonPress))]
     internal static class ReplayStarchartButtonPatch
     {

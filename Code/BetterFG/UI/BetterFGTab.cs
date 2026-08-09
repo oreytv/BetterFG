@@ -207,7 +207,8 @@ namespace BetterFG.UI
             var hoverTint = hoverGo.AddComponent<TabHoverTint>();
             hoverTint.Tab = this;
 
-            BetterFGUIMan.MakeObjectTooltip(titleRt, "Right click to switch!");
+            int others = Mathf.Max(0, BetterFGTabRegistry.All.Count - BetterFGUIMan.MAX_SLOTS);
+            BetterFGUIMan.MakeObjectTooltip(titleRt, $"Right click to switch to another tab of {others} others", 0.4f);
 
             titleGo.AddComponent<Image>().color = Color.clear;
             var btn = titleGo.AddComponent<Button>();

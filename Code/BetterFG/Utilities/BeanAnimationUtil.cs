@@ -13,18 +13,31 @@ namespace BetterFG.Utilities
             return character?.GetComponent<Animator>();
         }
 
-        public static void DriveLocomotion(Animator anim, Transform bean, Vector3 v)
+        public static bool CheckGrounded(Transform bean, out float slopeAngle)
         {
-            if (anim == null || bean == null) return;
-
             float r = FallGuysCharacterController.GroundCheckSphereCastRadius;
             bool grounded = Physics.SphereCast(bean.position + Vector3.up * (r + 0.1f),
                 r, Vector3.down, out var hit, 0.4f,
                 FallGuysCharacterController.groundMask, QueryTriggerInteraction.Ignore);
+            slopeAngle = grounded ? Vector3.Angle(hit.normal, Vector3.up) : 0f;
+            return grounded;
+        }
+
+        public static void DriveLocomotion(Animator anim, Transform bean, Vector3 v)
+        {
+            if (anim == null || bean == null) return;
+            bool grounded = CheckGrounded(bean, out float slopeAngle);
+            DriveLocomotion(anim, bean, v, grounded, slopeAngle);
+        }
+
+        // grounded/slope passed in directly — for callers throttling their own CheckGrounded calls
+        // instead of paying a SphereCast every frame.
+        public static void DriveLocomotion(Animator anim, Transform bean, Vector3 v, bool grounded, float slopeAngle = 0f)
+        {
+            if (anim == null || bean == null) return;
 
             anim.SetBool(FallGuysCharacterController.groundedParam, grounded);
-            anim.SetFloat(FallGuysCharacterController.slopeAngleParam,
-                grounded ? Vector3.Angle(hit.normal, Vector3.up) : 0f);
+            anim.SetFloat(FallGuysCharacterController.slopeAngleParam, slopeAngle);
 
             Vector3 local = Quaternion.Inverse(bean.rotation) * new Vector3(v.x, 0f, v.z);
             float mod = FallGuysCharacterController.AnimationVelocityParamModifier;

@@ -106,28 +106,6 @@ namespace BetterFG.Nametag
             text = StripSizeTagsTweak.Strip(text);
         }
 
-        [HarmonyPatch(typeof(PrivateLobbyPlayerListEntryViewModel), "PlayerName", MethodType.Setter)]
-        internal static class patch_PlayerListEntryName
-        {
-            [HarmonyPrefix]
-            public static void Prefix(ref string value)
-            {
-                if (StripSizeTagsTweak.Active) value = StripSizeTagsTweak.Strip(value);
-            }
-        }
-
-        [HarmonyPatch(typeof(PlayerNameManager), nameof(PlayerNameManager.GetNameToDisplayForPlayer))]
-        internal static class patch_GetNameToDisplayForPlayer
-        {
-            [HarmonyPrefix]
-            public static void Prefix(ref string platformAccountName, ref string playerGeneratedName)
-            {
-                if (!StripSizeTagsTweak.Active) return;
-                platformAccountName = StripSizeTagsTweak.Strip(platformAccountName);
-                playerGeneratedName = StripSizeTagsTweak.Strip(playerGeneratedName);
-            }
-        }
-
         [HarmonyPatch(typeof(PlayerInfoDisplayGameObject), "SetTextAlpha")]
         internal static class patch_SetTextAlpha
         {
@@ -148,6 +126,28 @@ namespace BetterFG.Nametag
             {
                 NametagIconApplicator.SetIconAlphaForDisplay(__instance, alpha);
                 return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(PrivateLobbyPlayerListEntryViewModel), "PlayerName", MethodType.Setter)]
+        internal static class patch_PlayerListEntryName
+        {
+            [HarmonyPrefix]
+            public static void Prefix(ref string value)
+            {
+                if (StripSizeTagsTweak.Active) value = StripSizeTagsTweak.Strip(value);
+            }
+        }
+
+        [HarmonyPatch(typeof(PlayerNameManager), nameof(PlayerNameManager.GetNameToDisplayForPlayer))]
+        internal static class patch_GetNameToDisplayForPlayer
+        {
+            [HarmonyPrefix]
+            public static void Prefix(ref string platformAccountName, ref string playerGeneratedName)
+            {
+                if (!StripSizeTagsTweak.Active) return;
+                platformAccountName = StripSizeTagsTweak.Strip(platformAccountName);
+                playerGeneratedName = StripSizeTagsTweak.Strip(playerGeneratedName);
             }
         }
 
@@ -259,8 +259,7 @@ namespace BetterFG.Nametag
             if (vm == null) return;
 
             var txt = vm._playerNameText;
-            if (txt != null && txt.fontMaterial != null)
-                txt.fontMaterial.renderQueue = 4000;
+            NametagIconApplicator.EnsureNametagRenderQueue(txt);
 
             string key = !string.IsNullOrEmpty(playerKey) ? playerKey : vm._playerName;
 

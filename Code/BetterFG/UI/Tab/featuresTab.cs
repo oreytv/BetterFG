@@ -37,19 +37,6 @@ namespace BetterFG.UI.Tab
         RectTransform _listRt;
         float _viewportH;
         float _contentW;
-        bool _wasOpen;
-
-        void Update()
-        {
-            if (_wasOpen == IsOpen) return;
-            _wasOpen = IsOpen;
-            var all = FeatureRegistry.all;
-            for (int i = 0; i < all.Count; i++)
-            {
-                if (IsOpen) all[i].OnOpen();
-                else all[i].OnClosed();
-            }
-        }
 
         protected override void BuildBackground(RectTransform root)
         {

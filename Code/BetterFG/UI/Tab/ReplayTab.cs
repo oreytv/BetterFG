@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Features.Replay;
 using BetterFG.Services;
 using BetterFG.Utilities;
@@ -49,6 +51,9 @@ namespace BetterFG.UI.Tab
         Text _statusLbl;
         InputField _searchField;
         bool _wasOpen;
+
+        readonly List<(string path, RawImage raw, RectTransform iRt)> _pendingThumbs = new List<(string, RawImage, RectTransform)>();
+        Coroutine _thumbRoutine;
 
         readonly List<ReplayMeta> _data = new List<ReplayMeta>();
         List<ReplayMeta> _filtered = new List<ReplayMeta>();
@@ -288,6 +293,9 @@ namespace BetterFG.UI.Tab
         void RenderPage()
         {
             if (_listContent == null) return;
+            if (_thumbRoutine != null) { StopCoroutine(_thumbRoutine); _thumbRoutine = null; }
+            _pendingThumbs.Clear();
+
             for (int i = _listContent.childCount - 1; i >= 0; i--)
                 Destroy(_listContent.GetChild(i).gameObject);
 
@@ -299,6 +307,9 @@ namespace BetterFG.UI.Tab
 
             for (int i = start; i < end; i++)
                 BuildRow(_filtered[i], (i - start) % 2 == 0 ? ROW_ALT : ROW_CLEAR);
+
+            if (_pendingThumbs.Count > 0)
+                _thumbRoutine = StartCoroutine(LoadPendingThumbs().WrapToIl2Cpp());
 
             _prevBtn.gameObject.SetActive(pageCount > 1);
             _nextBtn.gameObject.SetActive(pageCount > 1);
@@ -344,8 +355,9 @@ namespace BetterFG.UI.Tab
             float starW = 26f, delW = 24f;
             float rowW = TabWidth - PAD * 2f;
 
-            var thumb = ReplayThumbnail.Load(meta.path);
-            if (thumb != null)
+            var cachedThumb = ReplayThumbnail.Peek(meta.path);
+            bool hasThumb = cachedThumb != null || ReplayThumbnail.HasThumbnail(meta.path);
+            if (hasThumb)
             {
                 var maskGo = new GameObject("Thumb");
                 maskGo.transform.SetParent(rowGo.transform, false);
@@ -363,12 +375,18 @@ namespace BetterFG.UI.Tab
                 iRt.anchorMin = Vector2.zero;
                 iRt.anchorMax = Vector2.one;
                 iRt.pivot = new Vector2(0.5f, 0.5f);
-                float imgH = thumbW / ((float)thumb.width / thumb.height);
-                iRt.offsetMin = new Vector2(0f, -(imgH - ROW_H) * 0.5f);
-                iRt.offsetMax = new Vector2(0f, (imgH - ROW_H) * 0.5f);
                 var raw = imgGo.AddComponent<RawImage>();
-                raw.texture = thumb;
                 raw.raycastTarget = false;
+
+                if (cachedThumb != null)
+                {
+                    raw.texture = cachedThumb;
+                    SizeThumbImage(iRt, thumbW, cachedThumb);
+                }
+                else
+                {
+                    _pendingThumbs.Add((meta.path, raw, iRt));
+                }
             }
 
             float timeW = 80f;
@@ -388,7 +406,7 @@ namespace BetterFG.UI.Tab
             szRt.anchorMin = szRt.anchorMax = szRt.pivot = new Vector2(1f, 1f);
             szRt.anchoredPosition = new Vector2(-(starW + delW + 8f), -3f - (FS + 4f));
 
-            float textX = (thumb != null ? thumbW + 6f : 4f);
+            float textX = (hasThumb ? thumbW + 6f : 4f);
             float textW = rowW - textX - starW - delW - 12f;
 
             var dTxt = UGUIShip.CreateLabel(rowGo.transform, new Rect(0f, 0f, textW, FS_SM),
@@ -456,6 +474,33 @@ namespace BetterFG.UI.Tab
             dRt.anchorMin = dRt.anchorMax = new Vector2(1f, 0.5f);
             dRt.pivot = new Vector2(1f, 0.5f);
             dRt.anchoredPosition = new Vector2(-3f, 0f);
+        }
+
+        static void SizeThumbImage(RectTransform iRt, float thumbW, Texture thumb)
+        {
+            float imgH = thumbW / ((float)thumb.width / thumb.height);
+            iRt.offsetMin = new Vector2(0f, -(imgH - ROW_H) * 0.5f);
+            iRt.offsetMax = new Vector2(0f, (imgH - ROW_H) * 0.5f);
+        }
+
+        IEnumerator LoadPendingThumbs()
+        {
+            var batch = new List<(string path, RawImage raw, RectTransform iRt)>(_pendingThumbs);
+            _pendingThumbs.Clear();
+
+            int sinceYield = 0;
+            foreach (var (path, raw, iRt) in batch)
+            {
+                if (raw == null || iRt == null) continue;
+                var tex = ReplayThumbnail.Load(path);
+                if (tex != null && raw != null && iRt != null)
+                {
+                    raw.texture = tex;
+                    SizeThumbImage(iRt, ROW_H * 2.4f, tex);
+                }
+                if (++sinceYield >= 3) { sinceYield = 0; yield return null; }
+            }
+            _thumbRoutine = null;
         }
 
         void OpenFromDisk()

@@ -217,7 +217,7 @@ namespace BetterFG.Nametag
             {
                 string raw = _cachedRawName ?? System.Text.RegularExpressions.Regex.Replace(tmp.text, "<[^>]+>", "").Trim();
                 tmp.text = raw;
-                if (AssetManager.DefaultNameMaterial != null) tmp.fontMaterial = AssetManager.DefaultNameMaterial;
+                if (AssetManager.DefaultNameMaterial != null) tmp.fontSharedMaterial = AssetManager.DefaultNameMaterial;
                 tmp.color = Color.white;
             }
 
@@ -268,6 +268,32 @@ namespace BetterFG.Nametag
             }
         }
 
+        // nametags need to render at queue 4000 to show up on top of water/ice (a real vanilla FG bug),
+        // but touching TMP_Text.fontMaterial to do it force-instances a brand new Material PER TEXT —
+        // do that across a full lobby's worth of remote nametags at round start and every one of them
+        // stops batching with every other nametag, permanently, for the rest of the round. this is what
+        // was silently costing fps that scaled with player count and only recovered as players left.
+        // fix: bump the render queue on ONE shared clone per distinct base material (cached), and point
+        // every nametag using that base at the SAME clone via fontSharedMaterial instead of fontMaterial
+        // — fontSharedMaterial never instances, so nametags sharing a base material keep batching.
+        private static readonly Dictionary<int, Material> _queueBumpedShared = new Dictionary<int, Material>();
+
+        public static void EnsureNametagRenderQueue(TMP_Text txt)
+        {
+            if (txt == null) return;
+            var shared = txt.fontSharedMaterial;
+            if (shared == null || shared.renderQueue == 4000) return;
+
+            int key = shared.GetInstanceID();
+            if (!_queueBumpedShared.TryGetValue(key, out var bumped) || bumped == null)
+            {
+                bumped = new Material(shared) { hideFlags = HideFlags.HideAndDontSave };
+                bumped.renderQueue = 4000;
+                _queueBumpedShared[key] = bumped;
+            }
+            txt.fontSharedMaterial = bumped;
+        }
+
         public static void ApplyRenderQueueToAllNametags()
         {
             try
@@ -283,8 +309,7 @@ namespace BetterFG.Nametag
                     for (int i = 0; i < spawned.Count; i++)
                     {
                         var txt = TryGetNameText(spawned[i]?.playerInfo);
-                        if (txt != null && txt.fontMaterial != null)
-                            txt.fontMaterial.renderQueue = 4000;
+                        EnsureNametagRenderQueue(txt);
                     }
                 }
             }
@@ -906,7 +931,7 @@ namespace BetterFG.Nametag
             {
                 tmp.text = displayName;
                 tmp.color = UnityEngine.Color.white;
-                if (AssetManager.DefaultNameMaterial != null) tmp.fontMaterial = AssetManager.DefaultNameMaterial;
+                if (AssetManager.DefaultNameMaterial != null) tmp.fontSharedMaterial = AssetManager.DefaultNameMaterial;
                 RemoveUIIcon(tmp.transform);
                 // font replacement is independent of the nametag feature — still apply the custom font
                 // (with the default shadow material's outline) even when nametag styling is off.
@@ -1041,14 +1066,14 @@ namespace BetterFG.Nametag
                 // don't stomp gold famepass names — a profile-less remote who finished the pass has
                 // the "asap-bold sdf_EndFamePass" material on their TMP (possibly an "(Instance)" of it).
                 // resetting to DefaultNameMaterial here is what made every gold name look white.
-                var curMat = tmp3d.fontMaterial;
+                var curMat = tmp3d.fontSharedMaterial;
                 bool isGold = curMat != null && curMat.name != null && curMat.name.IndexOf("EndFamePass", StringComparison.OrdinalIgnoreCase) >= 0;
 
                 if (!isGold)
                 {
                     // reset whatever ApplyTextStyle did: gradient off, default material, white, no tags
                     tmp3d.enableVertexGradient = false;
-                    if (AssetManager.DefaultNameMaterial != null) tmp3d.fontMaterial = AssetManager.DefaultNameMaterial;
+                    if (AssetManager.DefaultNameMaterial != null) tmp3d.fontSharedMaterial = AssetManager.DefaultNameMaterial;
                     tmp3d.color = UnityEngine.Color.white;
                     tmp3d.text = System.Text.RegularExpressions.Regex.Replace(tmp3d.text ?? "", "<[^>]*>", "").Trim();
                 }
@@ -1408,14 +1433,17 @@ namespace BetterFG.Nametag
             {
                 tmp.enableVertexGradient = false;
                 var mat = AssetManager.GoldNameMaterial;
-                if (mat != null) tmp.fontMaterial = mat;
+                // no per-player state on this one — every "gold" nametag can share the same material,
+                // so assign via fontSharedMaterial (not fontMaterial, which force-instances a clone
+                // per text and silently breaks batching across every gold nametag on screen).
+                if (mat != null) tmp.fontSharedMaterial = mat;
                 tmp.color = new UnityEngine.Color(1f, 1f, 1f, a);
                 tmp.text = $"{style}{name}{close}";
             }
             else
             {
                 tmp.enableVertexGradient = false;
-                if (AssetManager.DefaultNameMaterial != null) tmp.fontMaterial = AssetManager.DefaultNameMaterial;
+                if (AssetManager.DefaultNameMaterial != null) tmp.fontSharedMaterial = AssetManager.DefaultNameMaterial;
                 tmp.color = new UnityEngine.Color(1f, 1f, 1f, a);
                 int ri = Mathf.Clamp(Mathf.RoundToInt(r * 255), 0, 255);
                 int gi = Mathf.Clamp(Mathf.RoundToInt(g * 255), 0, 255);
@@ -1423,16 +1451,14 @@ namespace BetterFG.Nametag
                 tmp.text = $"<color=#{ri:X2}{gi:X2}{bi:X2}>{style}{name}{close}</color>";
             }
 
-            if (tmp.fontMaterial != null)
-                tmp.fontMaterial.renderQueue = 4000;
+            EnsureNametagRenderQueue(tmp);
 
             // now that the final material (shadow/gold/default) is set with its outline, hand off to the
             // font replacement system: if an override targets this nametag's font it swaps to our atlas
             // and rebuilds THIS material onto it, so the custom font lands WITH the outline. no-op when
             // font replacement is off or nothing targets this font.
             BetterFG.Customization.Menu.FontReplacementService.ApplyToNametag(tmp);
-            if (tmp.fontMaterial != null)
-                tmp.fontMaterial.renderQueue = 4000;
+            EnsureNametagRenderQueue(tmp);
         }
 
         // Returns a darker, more saturated version of an RGB color for use as an outline.

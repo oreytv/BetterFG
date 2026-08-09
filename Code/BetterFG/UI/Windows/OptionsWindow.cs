@@ -735,7 +735,7 @@ namespace BetterFG.UI.Windows
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (KeybindService.KeyDown(KeyCode.Escape))
             {
                 Finish();
                 return;

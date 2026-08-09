@@ -57,7 +57,7 @@ namespace BetterFG.Tweaks
             if (root == null) return;
             // clip curve paths are "SKELETON/Root/.../Eye_L_jnt" — sample on the GO that holds
             // SKELETON as a direct child so paths resolve cleanly and we never touch the bean root.
-            var skel = FindSkeletonRoot(root.transform);
+            var skel = FindChildNamed(root.transform, "SKELETON");
             if (skel == null) return;
             var host = skel.parent != null ? skel.parent.gameObject : skel.gameObject;
 
@@ -67,7 +67,7 @@ namespace BetterFG.Tweaks
                 if (drv == null)
                 {
                     drv = host.AddComponent<BlinkDriverComponent>();
-                    drv.Init(clip);
+                    drv.Init(clip, FindChildNamed(skel, "Eye_L_jnt"), FindChildNamed(skel, "Eye_R_jnt"));
                 }
                 drv.enabled = true;
             }
@@ -77,10 +77,9 @@ namespace BetterFG.Tweaks
             }
         }
 
-        private static Transform FindSkeletonRoot(Transform root)
+        private static Transform FindChildNamed(Transform root, string name)
         {
             if (root == null) return null;
-            // BFS for a child named "SKELETON"
             var stack = new System.Collections.Generic.Stack<Transform>();
             stack.Push(root);
             while (stack.Count > 0)
@@ -89,7 +88,7 @@ namespace BetterFG.Tweaks
                 for (int i = 0; i < t.childCount; i++)
                 {
                     var c = t.GetChild(i);
-                    if (c.name == "SKELETON") return c;
+                    if (c.name == name) return c;
                     stack.Push(c);
                 }
             }
@@ -104,12 +103,24 @@ namespace BetterFG.Tweaks
         private AnimationClip _clip;
         private float _time;
         private float _speed = 1f;
+        private float _sampleTimer;
+        private const float SampleInterval = 1f / 24f;
 
-        public void Init(AnimationClip clip)
+        private Transform _eyeL;
+        private Transform _eyeR;
+        private Vector3 _eyeLPos, _eyeRPos;
+        private Quaternion _eyeLRot, _eyeRRot;
+        private Vector3 _eyeLScale, _eyeRScale;
+        private bool _eyesCached;
+
+        public void Init(AnimationClip clip, Transform eyeL, Transform eyeR)
         {
             _clip = clip;
+            _eyeL = eyeL;
+            _eyeR = eyeR;
             _speed = UnityEngine.Random.Range(0.8f, 1.25f);
             _time = UnityEngine.Random.Range(0f, Mathf.Max(0.05f, clip.length));
+            _sampleTimer = UnityEngine.Random.Range(0f, SampleInterval);
         }
 
         void LateUpdate()
@@ -121,6 +132,21 @@ namespace BetterFG.Tweaks
                 while (_time >= _clip.length) _time -= _clip.length;
                 if (_time < 0f) _time = 0f;
             }
+
+            // SampleAnimation (full curve/path evaluation) only runs at SampleInterval — every other
+            // frame we just re-write the two eye bones straight from the last sample, which is what
+            // actually needs to happen every LateUpdate to keep winning over the animator's own pose.
+            _sampleTimer += Time.deltaTime;
+            if (_sampleTimer < SampleInterval)
+            {
+                if (_eyesCached)
+                {
+                    if (_eyeL != null) { _eyeL.localPosition = _eyeLPos; _eyeL.localRotation = _eyeLRot; _eyeL.localScale = _eyeLScale; }
+                    if (_eyeR != null) { _eyeR.localPosition = _eyeRPos; _eyeR.localRotation = _eyeRRot; _eyeR.localScale = _eyeRScale; }
+                }
+                return;
+            }
+            _sampleTimer = 0f;
 
             // snapshot the host transform — SampleAnimation can write to the root itself when a
             // curve targets an empty path (or the clip's authoring root was at this level). restore
@@ -135,6 +161,10 @@ namespace BetterFG.Tweaks
             t.localPosition = pos;
             t.localRotation = rot;
             t.localScale = scl;
+
+            if (_eyeL != null) { _eyeLPos = _eyeL.localPosition; _eyeLRot = _eyeL.localRotation; _eyeLScale = _eyeL.localScale; }
+            if (_eyeR != null) { _eyeRPos = _eyeR.localPosition; _eyeRRot = _eyeR.localRotation; _eyeRScale = _eyeR.localScale; }
+            _eyesCached = true;
         }
     }
 }

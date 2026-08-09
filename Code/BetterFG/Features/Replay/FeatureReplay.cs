@@ -104,6 +104,13 @@ namespace BetterFG.Features.Replay
         public uint playerId;
     }
 
+    public struct ReplayTailEvent
+    {
+        public float t;
+        public uint playerId;
+        public bool enabled;
+    }
+
     public struct ReplayAudioParam
     {
         public int name;
@@ -380,6 +387,12 @@ namespace BetterFG.Features.Replay
         public readonly List<string> starchartPaths = new List<string>();
         public readonly List<ReplayStarchartEvent> starchartEvents = new List<ReplayStarchartEvent>();
         public readonly List<ReplayVfxEvent> diveSlideVfxEvents = new List<ReplayVfxEvent>();
+        public readonly List<ReplayTailEvent> tailEvents = new List<ReplayTailEvent>();
+        public string tailPrefab = "";
+        public string tailBoneName = "";
+        public Vector3 tailLocalPos;
+        public Quaternion tailLocalRot = Quaternion.identity;
+        public Vector3 tailLocalScale = Vector3.one;
         public readonly List<ReplayPlayer> players = new List<ReplayPlayer>();
         public readonly List<ReplayGhost> ghosts = new List<ReplayGhost>();
         public readonly List<ReplayKeyframe> keyframes = new List<ReplayKeyframe>();
@@ -709,7 +722,7 @@ namespace BetterFG.Features.Replay
 
         public static void OnServerPlayerProgress(GameMessageServerPlayerProgress progressMessage)
         {
-            if (_live == null || progressMessage == null || progressMessage.isSkipping) return;
+            if (_live == null || progressMessage == null) return;
             if (BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(progressMessage.playerId)) return;
             var p = Resolve(progressMessage.playerId);
             if (p.outTime < 0f) p.outTime = GameplayTime;
@@ -831,6 +844,26 @@ namespace BetterFG.Features.Replay
 
             _lastDiveSlideTimes[owner] = GameplayTime;
             _live.diveSlideVfxEvents.Add(new ReplayVfxEvent { t = GameplayTime, playerId = owner });
+        }
+
+        public static void CaptureTailState(Levels.Tag.TailTagAccessory accessory, bool enabled)
+        {
+            if (_live == null || accessory == null) return;
+
+            var fgcc = accessory.GetComponentInParent<FallGuysCharacterController>(true);
+            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.GetInstanceID(), out uint owner)) return;
+
+            if (string.IsNullOrEmpty(_live.tailPrefab) && accessory.transform.parent != null)
+            {
+                var tf = accessory.transform;
+                _live.tailPrefab = ReplayWorldPath.BaseName(tf.name);
+                _live.tailBoneName = ReplayWorldPath.BaseName(tf.parent.name);
+                tf.GetLocalPositionAndRotation(out _live.tailLocalPos, out _live.tailLocalRot);
+                _live.tailLocalScale = tf.localScale;
+                Plugin.Log.LogInfo($"tail rig captured: '{_live.tailPrefab}' hanging off '{_live.tailBoneName}'");
+            }
+
+            _live.tailEvents.Add(new ReplayTailEvent { t = GameplayTime, playerId = owner, enabled = enabled });
         }
 
         public static void CaptureSlideAudio(List<(string name, float value)> parameters, IntPtr handle)

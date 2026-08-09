@@ -59,6 +59,14 @@ namespace BetterFG.Features.QualificationTime
                 optionLabels = new List<string> { "Current", "Solos", "Duos", "Squads", "Fastest", "All" },
                 defaultId = "current",
             },
+            new FeatureChoice
+            {
+                id = "livepbmode",
+                label = "Which timer to show",
+                optionIds = new List<string> { "current", "fastest" },
+                optionLabels = new List<string> { "Current", "Fastest" },
+                defaultId = "current",
+            },
         });
 
         static bool On(string setting) => BetterFG.Features.FeatureRegistry.IsOn("pb", setting);
@@ -877,8 +885,8 @@ namespace BetterFG.Features.QualificationTime
                 pbRt.sizeDelta = new Vector2(400f, 40f);
 
                 float pb = 0f;
-                bool pbFound = !string.IsNullOrEmpty(roundId2) && PBStore.TryGet(roundId2, out pb, out _, roundName2);
-                if (!pbFound && !string.IsNullOrEmpty(roundName2)) pbFound = PBStore.TryGet(roundName2, out pb, out _, null);
+                bool pbFound = !string.IsNullOrEmpty(roundId2) && TryGetLiveTimerPb(roundId2, roundName2, out pb);
+                if (!pbFound && !string.IsNullOrEmpty(roundName2)) pbFound = TryGetLiveTimerPb(roundName2, null, out pb);
                 if (pbFound)
                 {
                     TimeSpan pbSpan = TimeSpan.FromSeconds(pb);
@@ -966,7 +974,6 @@ namespace BetterFG.Features.QualificationTime
             string last = null;
             while (gen == _liveTimerGen && _liveTimerGo != null)
             {
-                //using (BetterFG.Utilities.PerfProbe.Time("qual.LiveTimerTick"))
                 if (_liveTimerVm != null && GlobalGameStateClient.Instance?.GameStateView != null)
                 {
                     float elapsed = GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed;
@@ -1030,6 +1037,26 @@ namespace BetterFG.Features.QualificationTime
                 if (best.HasValue) result.Add(best.Value);
             }
             return result;
+        }
+
+        // live-timer PB label: "current" reads the show you're actually playing (old behavior),
+        // "fastest" scans solos/duos/squads for this round and shows whichever is quickest.
+        static bool TryGetLiveTimerPb(string id, string displayNameHint, out float pb)
+        {
+            if (feature.GetChoice("livepbmode") != "fastest")
+                return PBStore.TryGet(id, out pb, out _, displayNameHint);
+
+            pb = 0f;
+            bool found = false;
+            foreach (var t in new[] { PbType.Solos, PbType.Duos, PbType.Squads })
+            {
+                if (PBStore.TryGet(id, t, out float time, out _, displayNameHint) && (!found || time < pb))
+                {
+                    pb = time;
+                    found = true;
+                }
+            }
+            return found;
         }
 
         static bool GhostExistsFor(string cacheId, PbType t)
@@ -1369,6 +1396,9 @@ namespace BetterFG.Features.QualificationTime
             int lastState = 0;
             int driftFrames = 0;
             int driftIdx = -1;
+            bool lastGrounded = true;
+            float lastSlopeAngle = 0f;
+            float nextGroundCheck = 0f;
             while (ghostGo != null && _ghostGos.Contains(ghostGo) && idx < frames.Count)
             {
                 float elapsed = GlobalGameStateClient.Instance?.GameStateView != null
@@ -1414,8 +1444,19 @@ namespace BetterFG.Features.QualificationTime
                     // replicated timestamps often match and give dt=0. zVel is XZ speed magnitude, not the
                     // facing-forward component, which collapsed to ~0 when the bean moved off its facing
                     Vector3 pos = ghostGo.transform.position;
+
+                    // grounded/slope come from a real SphereCast, but ghosts don't need it re-cast every
+                    // render frame — 20Hz is way faster than grounded state actually changes. position and
+                    // every animator param below still update every frame, so movement stays fully smooth.
+                    if (Time.unscaledTime >= nextGroundCheck)
+                    {
+                        nextGroundCheck = Time.unscaledTime + 1f / 20f;
+                        lastGrounded = BeanAnimationUtil.CheckGrounded(ghostGo.transform, out lastSlopeAngle);
+                    }
+
                     BeanAnimationUtil.DriveLocomotion(ghostAnim, ghostGo.transform,
-                        havePrevPos && Time.deltaTime > 0f ? (pos - prevPos) / Time.deltaTime : Vector3.zero);
+                        havePrevPos && Time.deltaTime > 0f ? (pos - prevPos) / Time.deltaTime : Vector3.zero,
+                        lastGrounded, lastSlopeAngle);
                     prevPos = pos;
                     havePrevPos = true;
                 }
@@ -1993,7 +2034,6 @@ namespace BetterFG.Features.QualificationTime
 
         void Update()
         {
-            //using var _ = BetterFG.Utilities.PerfProbe.Time("ghost.RecorderUpdate");
             var frames = FeatureQualificationTime._ghostFrames;
             if (frames == null) return;
             _elapsed += Time.deltaTime;

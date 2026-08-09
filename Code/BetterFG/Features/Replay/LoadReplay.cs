@@ -114,11 +114,22 @@ namespace BetterFG.Features.Replay
             Plugin.Log.LogInfo($"replay lives outside the usual folder, keeping a pointer to it: {path}");
         }
 
+        static List<string> _listCache;
+        static DateTime _listCacheDirStamp = DateTime.MinValue;
+        static bool _listCacheValid;
+
         public static List<string> ListFiles()
         {
-            var paths = new List<string>();
             try
             {
+                DateTime dirStamp = Directory.Exists(SaveReplay.ReplayDir)
+                    ? Directory.GetLastWriteTimeUtc(SaveReplay.ReplayDir)
+                    : DateTime.MinValue;
+
+                if (_listCacheValid && dirStamp == _listCacheDirStamp)
+                    return _listCache;
+
+                var paths = new List<string>();
                 if (Directory.Exists(SaveReplay.ReplayDir))
                     paths.AddRange(Directory.GetFiles(SaveReplay.ReplayDir, "*" + SaveReplay.Extension));
 
@@ -126,9 +137,17 @@ namespace BetterFG.Features.Replay
                     if (File.Exists(entry)) paths.Add(entry);
 
                 paths.Sort((a, b) => File.GetLastWriteTimeUtc(b).CompareTo(File.GetLastWriteTimeUtc(a)));
+
+                _listCache = paths;
+                _listCacheDirStamp = dirStamp;
+                _listCacheValid = true;
+                return paths;
             }
-            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't list replays: {ex.Message}"); }
-            return paths;
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"couldn't list replays: {ex.Message}");
+                return _listCache ?? new List<string>();
+            }
         }
 
         static readonly Dictionary<string, ReplayMeta> _metaCache = new Dictionary<string, ReplayMeta>();
@@ -272,6 +291,24 @@ namespace BetterFG.Features.Replay
                 });
         }
 
+        static void ReadTail(BinaryReader br, ReplayRecording rec)
+        {
+            rec.tailPrefab = br.ReadString();
+            rec.tailBoneName = br.ReadString();
+            rec.tailLocalPos = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+            rec.tailLocalRot = new Quaternion(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+            rec.tailLocalScale = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+
+            int events = br.ReadInt32();
+            for (int i = 0; i < events; i++)
+                rec.tailEvents.Add(new ReplayTailEvent
+                {
+                    t = br.ReadSingle(),
+                    playerId = br.ReadUInt32(),
+                    enabled = br.ReadBoolean(),
+                });
+        }
+
         static void ReadLevel(BinaryReader br, ReplayRecording rec)
         {
             int packedLength = br.ReadInt32();
@@ -369,6 +406,17 @@ namespace BetterFG.Features.Replay
             }
         }
 
+        static void FixupMissingOutTimes(ReplayRecording rec)
+        {
+            if (rec.duration <= 0f) return;
+            foreach (var p in rec.players)
+            {
+                if (p.outTime >= 0f || p.frames.Count == 0) continue;
+                float last = p.frames[p.frames.Count - 1].t;
+                if (last < rec.duration - 0.5f) p.outTime = last;
+            }
+        }
+
         static int ReadFrames(ReplayRecording rec, string jsonPath)
         {
             string framePath = SaveReplay.FramesPathFor(jsonPath);
@@ -427,12 +475,14 @@ namespace BetterFG.Features.Replay
                             if (container.version >= 3) ReadAudio(br, container);
                             if (container.version >= 15) ReadStarchart(br, container);
                             if (container.version >= 17) ReadVfx(br, container);
+                            if (container.version >= 19) ReadTail(br, container);
                             if (container.version >= 4) ReadLevel(br, container);
                             if (container.version >= 6) ReadWorld(br, container, container.version >= 11);
                             if (container.version >= 7) ReadTextures(br, container);
                             if (container.version >= 8) ReadSpeech(br, container);
                             if (container.version >= 16) ReadGhosts(br, container);
 
+                            FixupMissingOutTimes(container);
                             container.sourcePath = path;
                             Remember(path);
                             Plugin.Log.LogInfo($"loaded replay {Path.GetFileName(path)}: {container.roundName}, {container.players.Count} players, {container.keyframes.Count} camera keys, {container.visibilityKeyframes.Count} visibility keys, {packed} frames, {container.audioEvents.Count} sounds, {container.speechEvents.Count} bubbles, {container.worldObjects.Count} world objects");
@@ -451,6 +501,7 @@ namespace BetterFG.Features.Replay
                 rec.sourcePath = path;
                 Remember(path);
                 int legacy = ReadFrames(rec, path);
+                FixupMissingOutTimes(rec);
                 Plugin.Log.LogInfo($"loaded replay {Path.GetFileName(path)} (old two-file layout): {rec.roundName}, {rec.players.Count} players, {legacy} frames");
                 return rec;
             }

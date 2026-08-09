@@ -15,17 +15,22 @@ namespace BetterFG.Features.Replay
 
         public static string PathFor(string replayPath) => Path.ChangeExtension(replayPath, Extension);
 
-        static readonly System.Collections.Generic.Dictionary<string, Texture2D> _cache =
-            new System.Collections.Generic.Dictionary<string, Texture2D>();
+        static readonly System.Collections.Generic.Dictionary<string, RenderTexture> _cache =
+            new System.Collections.Generic.Dictionary<string, RenderTexture>();
 
         public static void Forget(string replayPath)
         {
-            if (!_cache.TryGetValue(replayPath, out var tex)) return;
+            if (!_cache.TryGetValue(replayPath, out var rt)) return;
             _cache.Remove(replayPath);
-            if (tex != null) UnityEngine.Object.Destroy(tex);
+            if (rt != null) { rt.Release(); UnityEngine.Object.Destroy(rt); }
         }
 
-        public static Texture2D Load(string replayPath)
+        public static bool HasThumbnail(string replayPath) => File.Exists(PathFor(replayPath));
+
+        public static Texture Peek(string replayPath)
+            => _cache.TryGetValue(replayPath, out var cached) && cached != null ? cached : null;
+
+        public static Texture Load(string replayPath)
         {
             if (_cache.TryGetValue(replayPath, out var cached) && cached != null) return cached;
 
@@ -37,23 +42,14 @@ namespace BetterFG.Features.Replay
                 var full = new Texture2D(2, 2, TextureFormat.RGB24, false);
                 full.LoadImage(File.ReadAllBytes(path));
 
-                var rt = RenderTexture.GetTemporary(LIST_W, LIST_H, 0);
+                var rt = new RenderTexture(LIST_W, LIST_H, 0) { hideFlags = HideFlags.HideAndDontSave };
+                rt.Create();
                 Graphics.Blit(full, rt);
-                var was = RenderTexture.active;
-                RenderTexture.active = rt;
-
-                var tex = new Texture2D(LIST_W, LIST_H, TextureFormat.RGB24, false);
-                tex.ReadPixels(new Rect(0f, 0f, LIST_W, LIST_H), 0, 0, false);
-                tex.Apply(false);
-
-                RenderTexture.active = was;
-                RenderTexture.ReleaseTemporary(rt);
                 UnityEngine.Object.Destroy(full);
 
-                tex.filterMode = FilterMode.Bilinear;
-                tex.hideFlags = HideFlags.HideAndDontSave;
-                _cache[replayPath] = tex;
-                return tex;
+                rt.filterMode = FilterMode.Bilinear;
+                _cache[replayPath] = rt;
+                return rt;
             }
             catch (Exception ex)
             {

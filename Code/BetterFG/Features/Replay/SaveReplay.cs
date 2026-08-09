@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 18;
+        public const int FormatVersion = 19;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 
@@ -52,6 +52,7 @@ namespace BetterFG.Features.Replay
                 WriteAudio(bw, rec);
                 WriteStarchart(bw, rec);
                 WriteVfx(bw, rec);
+                WriteTail(bw, rec);
                 WriteLevel(bw, rec);
                 WriteWorld(bw, rec);
                 WriteTextures(bw, rec);
@@ -217,6 +218,23 @@ namespace BetterFG.Features.Replay
             {
                 bw.Write(e.t);
                 bw.Write(e.playerId);
+            }
+        }
+
+        static void WriteTail(BinaryWriter bw, ReplayRecording rec)
+        {
+            bw.Write(rec.tailPrefab);
+            bw.Write(rec.tailBoneName);
+            bw.Write(rec.tailLocalPos.x); bw.Write(rec.tailLocalPos.y); bw.Write(rec.tailLocalPos.z);
+            bw.Write(rec.tailLocalRot.x); bw.Write(rec.tailLocalRot.y); bw.Write(rec.tailLocalRot.z); bw.Write(rec.tailLocalRot.w);
+            bw.Write(rec.tailLocalScale.x); bw.Write(rec.tailLocalScale.y); bw.Write(rec.tailLocalScale.z);
+
+            bw.Write(rec.tailEvents.Count);
+            foreach (var e in rec.tailEvents)
+            {
+                bw.Write(e.t);
+                bw.Write(e.playerId);
+                bw.Write(e.enabled);
             }
         }
 

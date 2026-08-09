@@ -168,8 +168,6 @@ namespace BetterFG.UI
         public TabHoverTint(IntPtr ptr) : base(ptr) { }
         public BetterFGTab Tab;
         private bool _hovering = false;
-        private float _hoverTime = 0f;
-        private bool _tooltipShown = false;
         private bool _idlePushed = false;
         private RectTransform _rt;
 
@@ -194,18 +192,8 @@ namespace BetterFG.UI
                     ClearHover();
             }
 
-            if (_hovering)
-            {
-                _hoverTime += Time.deltaTime;
-                if (!_tooltipShown && _hoverTime >= Tooltip.HoverDelay && Tab != null)
-                {
-                    _tooltipShown = true;
-                    BetterFGUIMan.Instance?.ShowTooltip(Tab.TabTitle);
-                }
-
-                if (Input.GetMouseButtonDown(1))
-                    BetterFGUIMan.Instance?.RequestSlotDropdown(Tab);
-            }
+            if (_hovering && Input.GetMouseButtonDown(1))
+                BetterFGUIMan.Instance?.RequestSlotDropdown(Tab);
         }
 
         private bool IsMouseOver()
@@ -217,13 +205,11 @@ namespace BetterFG.UI
 
         private void ClearHover()
         {
-            _hoverTime = 0f;
             if (_hovering)
             {
                 _hovering = false;
                 Tab?.NotifyTitleHover(false);
             }
-            if (_tooltipShown) { BetterFGUIMan.Instance?.HideTooltip(); _tooltipShown = false; }
         }
 
         void OnDisable() { ClearHover(); }
@@ -236,6 +222,8 @@ namespace BetterFG.UI
         // no hover delay — pops the instant the pointer is over the trigger (used by the little
         // "?" credit markers next to tweak labels).
         public bool instant = false;
+        // per-instance delay override. negative = fall back to the shared Tooltip.HoverDelay.
+        public float delay = -1f;
         // optional: a UI image (usually a faint background behind the trigger's label) shown only
         // while hovered, so the user can see something is hoverable before the tooltip pops.
         public GameObject hoverImage;
@@ -276,7 +264,8 @@ namespace BetterFG.UI
             if (hoverImage != null) hoverImage.SetActive(over);
             if (!over) { if (_shown) { BetterFGUIMan.Instance?.HideTooltip(); _shown = false; } _t = 0f; return; }
             _t += Time.deltaTime;
-            if (!_shown && _t >= (instant ? 0f : Tooltip.HoverDelay)) { _shown = true; BetterFGUIMan.Instance?.ShowTooltip(text); }
+            float wait = instant ? 0f : (delay >= 0f ? delay : Tooltip.HoverDelay);
+            if (!_shown && _t >= wait) { _shown = true; BetterFGUIMan.Instance?.ShowTooltip(text); }
         }
 
         void OnDisable() { if (_shown) { BetterFGUIMan.Instance?.HideTooltip(); _shown = false; _t = 0f; } if (hoverImage != null) hoverImage.SetActive(false); }
@@ -439,17 +428,16 @@ namespace BetterFG.UI
             MenuMusicService.TickVolume();
             SettingsService.TickBackup();
 
-            // Use simple rising-edge detection to avoid repeated toggles
             if (!IsTyping())
             {
-                bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                bool shift = KeybindService.ShiftHeld();
                 var uiKey = KeybindService.Get(KeybindId.ToggleUI);
-                bool zNow = uiKey != KeyCode.None && Input.GetKey(uiKey);
+                bool zNow = KeybindService.KeyHeld(uiKey);
                 if (zNow && !_prevZ && shift)
                     SetVisible(!_visible);
                 _prevZ = zNow;
 
-                bool f1Now = Input.GetKey(KeyCode.F1);
+                bool f1Now = KeybindService.KeyHeld(KeyCode.F1);
                 if (f1Now && !_prevF1)
                     SetCursorFree(!_cursorFree);
                 _prevF1 = f1Now;
@@ -1077,10 +1065,11 @@ namespace BetterFG.UI
         }
 
         // ── Tooltip ───────────────────────────────────────────────────────────
-        public static void MakeObjectTooltip(RectTransform rt, string text)
+        public static void MakeObjectTooltip(RectTransform rt, string text, float delay = -1f)
         {
             var t = rt.gameObject.AddComponent<TooltipTrigger>();
             t.text = text;
+            t.delay = delay;
         }
 
         public void ShowTooltip(string text)
@@ -1519,7 +1508,7 @@ namespace BetterFG.UI
             if (_asapFont == null) Plugin.Log.LogWarning("asap font not found at menu entry?");
         }
 
-        private static TMP_FontAsset GameAsapFont() => _asapFont;
+        public static TMP_FontAsset GameAsapFont() => _asapFont;
 
         private void AddWatermarkLine(string text, Color color)
             => AddWatermarkLine(_watermarkGo.transform, text, color);

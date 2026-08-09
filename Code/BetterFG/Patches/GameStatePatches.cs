@@ -272,7 +272,9 @@ namespace BetterFG.Patches.GameStates
             if (view == MainMenuViews.Lobby)
             {
                 MenuCustomizationApplication.AutoApplyCamFromSettings();
-                MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
+                var builder = GameObject.Find("UICanvas_Client_V2(Clone)/Default/MainMenuBuilder(Clone)");
+                MenuCustomizationApplication.Instance.StartCoroutine(
+                    MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(builder != null ? builder.transform : null).WrapToIl2Cpp());
             }
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
         }
@@ -467,7 +469,7 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix()
         {
-            MenuCustomizationApplication.Instance.ReapplyForegroundFromSettings();
+            MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
         }
     }
 
@@ -534,7 +536,9 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance == null) return;
             BetterFG.Services.DiscordPresenceService.OnShowSelectorTileSeen();
-            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance.transform);
+            var app = MenuCustomizationApplication.Instance;
+            if (app != null)
+                app.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(__instance.transform).WrapToIl2Cpp());
             BetterFG.Features.Stars.FeatureStars.OnSetIndividualShowData(__instance, showSelectorShow);
             BetterFG.Tweaks.ShowTilePlaysTweak.OnSetShowData(__instance, showSelectorShow);
         }
@@ -547,7 +551,9 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileViewModel __instance)
         {
             if (__instance == null) return;
-            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance.transform, null, true);
+            var app = MenuCustomizationApplication.Instance;
+            if (app != null)
+                app.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(__instance.transform, anyImage: true).WrapToIl2Cpp());
         }
     }
 
@@ -561,7 +567,9 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileTagViewModel __instance)
         {
             if (__instance == null) return;
-            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance.transform, null, true);
+            var app = MenuCustomizationApplication.Instance;
+            if (app != null)
+                app.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(__instance.transform, anyImage: true).WrapToIl2Cpp());
         }
     }
 
@@ -1429,6 +1437,20 @@ namespace BetterFG.Patches.GameStates
                 int index = view != null ? view.CurrentViewIndex : -1;
                 if (views != null && index >= 0 && index < views.Length && views[index] != null)
                     scope = views[index].transform;
+                else if (view != null)
+                    scope = view.transform;
+
+                for (int depth = 0; depth < 4 && scope != null; depth++)
+                {
+                    var nested = scope.GetComponent<SwitchableView>();
+                    if (nested == null) break;
+                    var nestedViews = nested._views;
+                    int nestedIndex = nested.CurrentViewIndex;
+                    if (nestedViews == null || nestedIndex < 0 || nestedIndex >= nestedViews.Length || nestedViews[nestedIndex] == null) break;
+                    var next = nestedViews[nestedIndex].transform;
+                    if (next == scope) break;
+                    scope = next;
+                }
             }
             catch { }
 

@@ -31,6 +31,7 @@ namespace BetterFG.Tweaks
         NavPromptHandle _prompt;
         bool _promptShowsOn;
         bool _cinematicOn;
+        bool _sessionOver;
         ClientGameManager _cgm;
         CameraDirector _director;
         Cinemachine.CinemachineBrain _brain;
@@ -44,9 +45,24 @@ namespace BetterFG.Tweaks
 
         public override void DisableTweak() => Shutdown();
 
-        public override void OnSpectatorMode() => ClearCaches();
+        public static void OnClientGameManagerShutdown()
+        {
+            if (Instance == null) return;
+            Instance._sessionOver = true;
+            Instance.Shutdown();
+        }
 
-        public override void OnRoundStart() => Shutdown();
+        public override void OnSpectatorMode()
+        {
+            _sessionOver = false;
+            ClearCaches();
+        }
+
+        public override void OnRoundStart()
+        {
+            _sessionOver = false;
+            Shutdown();
+        }
 
         public override void OnStateChanged(GameStateMachine.IGameState newState)
         {
@@ -55,7 +71,7 @@ namespace BetterFG.Tweaks
 
         void Update()
         {
-            if (!IsEnabled) { Shutdown(); return; }
+            if (!IsEnabled || _sessionOver) { Shutdown(); return; }
 
             if (_cgm == null) GlobalGameStateClient.Instance?.GameStateView?.GetLiveClientGameManager(out _cgm);
             if (_cgm == null || !_cgm.IsSpectatorMode) { Shutdown(); return; }
@@ -172,7 +188,7 @@ namespace BetterFG.Tweaks
             _prompt = NavPromptCore.From(NavPrompt.Favourite)
                 .WithLabel(_cinematicOn ? "Cinematic Cam: On" : "Cinematic Cam: Off",
                            _cinematicOn ? "bfg_cinematic_spectator_on" : "bfg_cinematic_spectator_off")
-                .AnchoredAt(NavPromptAnchor.TopRight, new Vector2(-260f, -70f))
+                .AnchoredAt(NavPromptAnchor.TopRight, new Vector2(-360f, -70f))
                 .OnOwnCanvas()
                 .PollActions(RewiredConsts.Action.Menu_Favourite)
                 .AllowWhileUnfocused()

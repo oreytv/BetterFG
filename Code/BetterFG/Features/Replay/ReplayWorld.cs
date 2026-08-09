@@ -388,6 +388,8 @@ namespace BetterFG.Features.Replay
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
                     foreach (var c in uvRenderers)
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
+                    foreach (var c in root.GetComponentsInChildren<Levels.ScoreZone.SpawnableCollectable>(true))
+                        if (c != null) TrackSubtree(c.transform, scene.name, r);
 
                     foreach (var sw in root.GetComponentsInChildren<SetSwitcher>(true))
                     {
@@ -1391,6 +1393,86 @@ namespace BetterFG.Features.Replay
                 _cursor++;
                 if (ev.t > from && _controllers.TryGetValue(ev.playerId, out var vfx) && vfx != null)
                     vfx.HandleOnDive(new FG.Common.Character.VfxDiveEvent());
+            }
+        }
+    }
+
+    internal class ReplayTailPlayer
+    {
+        class Track
+        {
+            public uint playerId;
+            public Transform tail;
+            public bool active;
+        }
+
+        readonly ReplayRecording _rec;
+        readonly List<Track> _tracks = new List<Track>();
+        GameObject _prefabCache;
+        bool _prefabSearched;
+
+        public ReplayTailPlayer(ReplayRecording rec)
+        {
+            _rec = rec;
+        }
+
+        public void Attach(uint playerId, GameObject bean)
+        {
+            if (string.IsNullOrEmpty(_rec.tailPrefab) || bean == null) return;
+
+            Transform bone = null;
+            foreach (var t in bean.GetComponentsInChildren<Transform>(true))
+                if (t.name == _rec.tailBoneName) { bone = t; break; }
+            if (bone == null) return;
+
+            var prefab = FindTailPrefab();
+            if (prefab == null) return;
+
+            var clone = UnityEngine.Object.Instantiate(prefab, bone);
+            clone.name = "BettrFG_ReplayTail";
+            clone.transform.SetLocalPositionAndRotation(_rec.tailLocalPos, _rec.tailLocalRot);
+            clone.transform.localScale = _rec.tailLocalScale;
+            foreach (var c in clone.GetComponentsInChildren<Levels.Tag.TagAccessory>(true)) UnityEngine.Object.Destroy(c);
+            foreach (var c in clone.GetComponentsInChildren<Collider>(true)) UnityEngine.Object.Destroy(c);
+            clone.SetActive(false);
+
+            _tracks.Add(new Track { playerId = playerId, tail = clone.transform });
+        }
+
+        GameObject FindTailPrefab()
+        {
+            if (_prefabSearched) return _prefabCache;
+            _prefabSearched = true;
+
+            foreach (var candidate in Resources.FindObjectsOfTypeAll<GameObject>())
+            {
+                if (candidate == null || ReplayWorldPath.BaseName(candidate.name) != _rec.tailPrefab) continue;
+                _prefabCache = candidate;
+                if (!candidate.scene.IsValid()) break;
+            }
+            if (_prefabCache == null)
+                Plugin.Log.LogWarning($"no '{_rec.tailPrefab}' anywhere in memory, tails won't show in this replay");
+            return _prefabCache;
+        }
+
+        public void Apply(float time)
+        {
+            var events = _rec.tailEvents;
+            foreach (var track in _tracks)
+            {
+                if (track.tail == null) continue;
+
+                bool on = false;
+                for (int i = 0; i < events.Count; i++)
+                {
+                    var e = events[i];
+                    if (e.playerId != track.playerId || e.t > time) continue;
+                    on = e.enabled;
+                }
+
+                if (on == track.active) continue;
+                track.active = on;
+                track.tail.gameObject.SetActive(on);
             }
         }
     }

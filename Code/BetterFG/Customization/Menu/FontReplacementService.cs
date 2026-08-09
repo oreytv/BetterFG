@@ -195,9 +195,7 @@ namespace BetterFG.Customization.Menu
                 var cur = t.font;
                 if (cur == null) return;
 
-                Material curMat = null;
-                try { curMat = t.fontMaterial; } catch { }
-                if (curMat == null) try { curMat = t.fontSharedMaterial; } catch { }
+                Material curMat = GetRenderingMaterialSafe(t);
 
                 FontOverride match;
 
@@ -216,7 +214,10 @@ namespace BetterFG.Customization.Menu
                     // (see ApplyNiceGold) instead of mapping the baked metallic texture onto our atlas.
                     if (IsMetallicGold(curMat)) { ApplyNiceGold(t, match.builtAsset); t.ForceMeshUpdate(); return; }
                     var d = DeriveMaterial(match.builtAsset, curMat);
-                    if (d != null) t.fontMaterial = d;
+                    // DeriveMaterial returns a SHARED cached material (keyed by base+atlas) — assign via
+                    // fontSharedMaterial, not fontMaterial, or every nametag that hits this re-instances
+                    // its own private clone of it and stops batching with every other nametag.
+                    if (d != null) t.fontSharedMaterial = d;
                     t.ForceMeshUpdate();
                     return;
                 }
@@ -246,7 +247,7 @@ namespace BetterFG.Customization.Menu
                 // gradient on the gold shader. looks right on any font.
                 if (IsMetallicGold(curMat)) { ApplyNiceGold(t, match.builtAsset); t.ForceMeshUpdate(); return; }
                 var derived = DeriveMaterial(match.builtAsset, curMat);
-                if (derived != null) t.fontMaterial = derived;
+                if (derived != null) t.fontSharedMaterial = derived;
                 t.ForceMeshUpdate();
             }
             catch { }
@@ -299,7 +300,10 @@ namespace BetterFG.Customization.Menu
                 _niceGoldAtlas = built.GetInstanceID();
             }
 
-            t.fontMaterial = _niceGold;
+            // _niceGold is ONE shared material reused for every gold nametag — assign it via
+            // fontSharedMaterial (not fontMaterial), or every gold nametag re-instances its own
+            // private clone of it and stops batching with every other gold nametag on screen.
+            t.fontSharedMaterial = _niceGold;
             t.color = Color.white;
             t.enableVertexGradient = true;
             t.colorGradient = new VertexGradient(GOLD_FACE, GOLD_FACE, Color.white, Color.white);
@@ -364,6 +368,31 @@ namespace BetterFG.Customization.Menu
             }
         }
 
+        private static Material GetRenderingMaterialSafe(TMP_Text t)
+        {
+            try
+            {
+                var cr = t.canvasRenderer;
+                if (cr != null && cr.materialCount > 0)
+                {
+                    var m = cr.GetMaterial(0);
+                    if (m != null) return m;
+                }
+            }
+            catch { }
+            try
+            {
+                var mr = t.GetComponent<MeshRenderer>();
+                if (mr != null)
+                {
+                    var sm = mr.sharedMaterials;
+                    if (sm != null && sm.Length > 0 && sm[0] != null) return sm[0];
+                }
+            }
+            catch { }
+            try { return t.fontSharedMaterial; } catch { return null; }
+        }
+
         // skip the gold/fame nametag material (and its per-text "(Instance)" copies). its name always
         // contains "EndFamePass" — the gold-rgb path nulls _FaceTex so we can't detect it by texture,
         // but the name stem survives instancing. these shaders are bound to their original atlas and
@@ -379,7 +408,6 @@ namespace BetterFG.Customization.Menu
         private static bool RendersProtected(TMP_Text t)
         {
             try { if (IsProtected(t.fontSharedMaterial)) return true; } catch { }
-            try { if (IsProtected(t.fontMaterial)) return true; } catch { }
             try
             {
                 var cr = t.canvasRenderer;
@@ -558,9 +586,7 @@ namespace BetterFG.Customization.Menu
                     var cur = t.font;
                     if (cur == null || !cur.name.StartsWith(OUR_PREFIX, StringComparison.Ordinal)) continue;
 
-                    Material curMat = null;
-                    try { curMat = t.fontMaterial; } catch { }
-                    if (curMat == null) try { curMat = t.fontSharedMaterial; } catch { }
+                    Material curMat = GetRenderingMaterialSafe(t);
 
                     // material is already on our atlas — nothing drifted, leave it.
                     if (curMat != null && curMat.name != null &&

@@ -170,6 +170,7 @@ namespace BetterFG.Features.Replay
         ReplayWorldPlayer _world;
         ReplayStarchartPlayer _starchart;
         ReplayVfxPlayer _vfx;
+        ReplayTailPlayer _tail;
         ReplaySpeechPlayer _speech;
         ReplayPostFx _postFx;
         Camera _cam;
@@ -391,6 +392,7 @@ namespace BetterFG.Features.Replay
             yield return StartCoroutine(LoadLevel().WrapToIl2Cpp());
             yield return null;
             ApplySets();
+            RollRandomisers();
             DisableControllerLeftovers();
             yield return StartCoroutine(LoadBeanPrefab().WrapToIl2Cpp());
 
@@ -398,6 +400,7 @@ namespace BetterFG.Features.Replay
 
             _world = new ReplayWorldPlayer(_rec, _loadedScenes);
             _starchart = new ReplayStarchartPlayer(_rec, _loadedScenes);
+            _tail = new ReplayTailPlayer(_rec);
             yield return StartCoroutine(_world.Prepare().WrapToIl2Cpp());
 
             SpawnBeans();
@@ -484,6 +487,7 @@ namespace BetterFG.Features.Replay
             yield return StartCoroutine(LoadLevel().WrapToIl2Cpp());
             yield return null;
             ApplySets();
+            RollRandomisers();
             DisableControllerLeftovers();
             if (_beanPrefab == null) yield return StartCoroutine(LoadBeanPrefab().WrapToIl2Cpp());
 
@@ -494,6 +498,7 @@ namespace BetterFG.Features.Replay
 
             _world = new ReplayWorldPlayer(_rec, _loadedScenes);
             _starchart = new ReplayStarchartPlayer(_rec, _loadedScenes);
+            _tail = new ReplayTailPlayer(_rec);
             yield return StartCoroutine(_world.Prepare().WrapToIl2Cpp());
 
             SpawnBeans();
@@ -601,6 +606,18 @@ namespace BetterFG.Features.Replay
 
             Plugin.Log.LogInfo($"variations: {applied}/{_rec.sets.Count} switchers back on the recorded set"
                 + (unmatched.Count > 0 ? $" — no match for {string.Join(", ", unmatched)}" : ""));
+        }
+
+        void RollRandomisers()
+        {
+            int rolled = 0;
+            foreach (var mgr in Resources.FindObjectsOfTypeAll<SeededRandomisablesManager>())
+            {
+                if (mgr == null || !mgr.gameObject.scene.IsValid()) continue;
+                try { mgr.RollSeededRandomisables(); rolled++; }
+                catch (Exception ex) { Plugin.Log.LogWarning($"seeded randomiser wouldn't roll, maze/randomised rooms might stay empty ({ex.Message})"); }
+            }
+            if (rolled > 0) Plugin.Log.LogInfo($"rolled {rolled} seeded randomisables, maze/randomised rooms should actually have content now");
         }
 
         void HideGame()
@@ -732,6 +749,7 @@ namespace BetterFG.Features.Replay
                 speakers[p.playerId] = bean.transform;
                 var vfx = bean.GetComponent<FG.Common.Character.FallGuyVFXController>();
                 if (vfx != null) vfxControllers[p.playerId] = vfx;
+                _tail.Attach(p.playerId, bean);
             }
 
             SpawnGhostBeans();
@@ -1572,6 +1590,7 @@ namespace BetterFG.Features.Replay
         {
             if (_exiting || _world == null) return;
             _world.Apply(_time);
+            _tail.Apply(_time);
         }
 
         static ReplayKeyframe Clone(ReplayKeyframe k) => new ReplayKeyframe
