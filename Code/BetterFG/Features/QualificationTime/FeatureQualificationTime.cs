@@ -254,7 +254,8 @@ namespace BetterFG.Features.QualificationTime
             if (string.IsNullOrEmpty(roundId)) roundId = "unknown";
             roundId = PBStore.CanonicalRoundId(roundId);
             string roundName = _roundNameCache ?? cgmRoundName ?? roundId;
-            bool isUnityRound = !roundId.StartsWith("ugc-");
+            bool isRealUgc = cgm != null ? cgm.IsUGCRound : roundId.StartsWith("ugc-");
+            bool isUnityRound = !isRealUgc;
             string roundCacheId = (isUnityRound && !string.IsNullOrEmpty(roundName)) ? roundName : roundId;
             Plugin.Log.LogInfo("QualTime: round=" + roundId + " name=" + roundName + " elapsed=" + elapsed);
 
@@ -278,7 +279,7 @@ namespace BetterFG.Features.QualificationTime
                     }
                     else
                     {
-                        isPb = PBStore.TrySet(roundCacheId, roundName, elapsed);
+                        isPb = PBStore.TrySet(roundCacheId, roundName, elapsed, isRealUgc);
                         if (isPb && On("ghost"))
                             SaveGhost(roundCacheId, PBStore.CurrentType());
                     }
@@ -294,7 +295,7 @@ namespace BetterFG.Features.QualificationTime
                 if (canStorePb && On("qual"))
                     ShowPbLabel(clone.transform, isPb, roundName, elapsed, prevPb);
                 if (canStorePb)
-                    BetterFGUIMan.Instance.StartCoroutine(WaitForFeatureInput(clone, roundCacheId, roundName, isPb, elapsed, PBStore.CurrentType()).WrapToIl2Cpp());
+                    BetterFGUIMan.Instance.StartCoroutine(WaitForFeatureInput(clone, roundCacheId, roundName, isPb, elapsed, PBStore.CurrentType(), isRealUgc).WrapToIl2Cpp());
             }
 
             BetterFGUIMan.Instance.StartCoroutine(DismissAfterDelay(clone).WrapToIl2Cpp());
@@ -302,7 +303,7 @@ namespace BetterFG.Features.QualificationTime
             Plugin.Log.LogInfo("QualTime: done");
         }
 
-        static IEnumerator WaitForFeatureInput(GameObject clone, string roundId, string roundName, bool isPb, float elapsed, PbType type)
+        static IEnumerator WaitForFeatureInput(GameObject clone, string roundId, string roundName, bool isPb, float elapsed, PbType type, bool isUgc)
         {
             // Favorite prompt (Report glyph) always shows so you can toggle favorite on this PB
             // whether or not the run beat it. non-PB runs additionally get the Set-as-PB prompt
@@ -356,7 +357,7 @@ namespace BetterFG.Features.QualificationTime
                 // Set-as-PB prompt below (isPb stays false, so setPbPrompt shows).
                 if (isPb)
                 {
-                    PBStore.TrySet(roundId, roundName, type, elapsed);
+                    PBStore.TrySet(roundId, roundName, type, elapsed, isUgc);
                     if (On("ghost")) SaveGhost(roundId, type);
                 }
                 // small beat before the real prompts pop in
@@ -404,7 +405,7 @@ namespace BetterFG.Features.QualificationTime
                     favPrompt?.GameObject.transform.SetSiblingIndex(0); // keep favorite on the left
                 }
                 if (setPbPrompt != null && setPbPrompt.IsPressed())
-                    ShowOverridePbConfirm(roundId, roundName, elapsed, type);
+                    ShowOverridePbConfirm(roundId, roundName, elapsed, type, isUgc);
                 yield return null;
             }
             favPrompt?.Destroy();
@@ -426,7 +427,7 @@ namespace BetterFG.Features.QualificationTime
                 .SpawnOn(parent);
         }
 
-        static void ShowOverridePbConfirm(string roundId, string roundName, float elapsed, PbType type)
+        static void ShowOverridePbConfirm(string roundId, string roundName, float elapsed, PbType type, bool isUgc)
         {
             string showLabel = ShowLabel(type);
             TimeSpan tNew = TimeSpan.FromSeconds(elapsed);
@@ -457,7 +458,7 @@ namespace BetterFG.Features.QualificationTime
                     if (!ok) return;
                     float prevPb = 0f;
                     PBStore.TryGet(roundId, type, out prevPb, out _, roundName);
-                    PBStore.ForceSet(roundId, roundName, type, elapsed);
+                    PBStore.ForceSet(roundId, roundName, type, elapsed, isUgc);
                     if (On("ghost")) SaveGhost(roundId, type);
                     Plugin.Log.LogInfo($"QualTime: force-set PB {roundName} [{type}] = {newTime}");
                     _forceTreatAsPb = true;

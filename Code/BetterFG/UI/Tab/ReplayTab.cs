@@ -228,6 +228,9 @@ namespace BetterFG.UI.Tab
             bool on = !FeatureReplay.AutoRecord;
             FeatureReplay.SetAutoRecord(on);
             PaintAuto(on);
+            if (on)
+                BetterFGUIMan.Instance?.ShowTooltipTimed(
+                    "Unfortunately replays are very resource expensive. With this setting on, please beware of the giant FPS drop in certain levels.", 3.5f);
             Plugin.Log.LogInfo(on ? "replays will record from the next round start" : "auto-record off, rounds won't be saved");
         }
 
@@ -376,6 +379,14 @@ namespace BetterFG.UI.Tab
             var tRt = tTxt.rectTransform;
             tRt.anchorMin = tRt.anchorMax = tRt.pivot = new Vector2(1f, 1f);
             tRt.anchoredPosition = new Vector2(-(starW + delW + 8f), -3f);
+
+            double sizeMb = meta.sizeBytes / (1024.0 * 1024.0);
+            var szTxt = UGUIShip.CreateLabel(rowGo.transform, new Rect(0f, 0f, timeW, FS_SM),
+                (sizeMb >= 100.0 ? $"{sizeMb:F0} MB" : $"{sizeMb:F1} MB"), FS_SM - 2, DIM, TextAnchor.UpperRight);
+            szTxt.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var szRt = szTxt.rectTransform;
+            szRt.anchorMin = szRt.anchorMax = szRt.pivot = new Vector2(1f, 1f);
+            szRt.anchoredPosition = new Vector2(-(starW + delW + 8f), -3f - (FS + 4f));
 
             float textX = (thumb != null ? thumbW + 6f : 4f);
             float textW = rowW - textX - starW - delW - 12f;

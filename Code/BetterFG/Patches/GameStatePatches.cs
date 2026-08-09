@@ -471,6 +471,14 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(FGClient.UI.GameplayInstructionsViewModel), "set_ObjectiveText")]
+    internal static class GameplayInstructionsObjectiveTextPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(ref string value)
+            => value = BetterFG.Tweaks.ObjectiveRoundNumberTweak.AppendRoundNumber(value);
+    }
+
     [HarmonyPatch(typeof(LoadingUGCGameScreenViewModel), "InitTexts")]
     public class LoadingUGCInitTextsPatch
     {

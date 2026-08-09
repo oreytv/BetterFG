@@ -64,6 +64,7 @@ namespace BetterFG.Tweaks
             Add<DisableCameraAssistTweak>(TweakCategory.Gameplay);
             Add<ImmediateRespawnTweak>(TweakCategory.Gameplay);
             Add<CinematicSpectatorTweak>(TweakCategory.Gameplay);
+            Add<ObjectiveRoundNumberTweak>(TweakCategory.Gameplay);
 
             // ── Audio ──
             Add<SpectatorMusicTweak>(TweakCategory.Audio);

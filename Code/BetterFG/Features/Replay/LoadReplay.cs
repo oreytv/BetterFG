@@ -18,6 +18,7 @@ namespace BetterFG.Features.Replay
         public float duration;
         public int players;
         public DateTime when;
+        public long sizeBytes;
         public string haystack;
     }
 
@@ -137,7 +138,11 @@ namespace BetterFG.Features.Replay
             var stamp = File.GetLastWriteTime(path);
             if (_metaCache.TryGetValue(path, out var hit) && hit.when == stamp) return hit;
 
-            var meta = new ReplayMeta { path = path, when = stamp, isFav = IsFavourite(path) };
+            long size = new FileInfo(path).Length;
+            string framesPath = SaveReplay.FramesPathFor(path);
+            if (File.Exists(framesPath)) size += new FileInfo(framesPath).Length;
+
+            var meta = new ReplayMeta { path = path, when = stamp, isFav = IsFavourite(path), sizeBytes = size };
             string json = null;
             try
             {

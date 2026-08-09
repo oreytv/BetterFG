@@ -353,7 +353,7 @@ namespace BetterFG.UI.Tab
                     rawId = rawId,
                     haystack = (label + " " + kv.Key).ToLowerInvariant(),
                     hasGhost = rawId != null && FeatureQualificationTime.HasGhost(label, rawId),
-                    isUgc = rawId != null && rawId.Contains("ugc-"),
+                    isUgc = e.isUgc,
                     isFav = PBStore.IsFeatured(rawId, label),
                     date = e.date,
                     solosDate = e.solosDate,

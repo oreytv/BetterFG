@@ -25,6 +25,7 @@ namespace BetterFG.Features.QualificationTime
             public float? duos;
             public float? squads;
             public string rawId;
+            public bool isUgc;
             // legacy single date kept for back-compat reads. new code writes per-show dates below;
             // GetDate falls back to this if a per-show date is missing (old json).
             public string date;
@@ -192,6 +193,7 @@ namespace BetterFG.Features.QualificationTime
                 sb.Append($",\"solosDate\":\"{JsonEscape(e.solosDate ?? "")}\"");
                 sb.Append($",\"duosDate\":\"{JsonEscape(e.duosDate ?? "")}\"");
                 sb.Append($",\"squadsDate\":\"{JsonEscape(e.squadsDate ?? "")}\"");
+                sb.Append($",\"isUgc\":{(e.isUgc ? "true" : "false")}");
                 sb.Append($",\"featured\":{(isFeatured ? "true" : "false")}}}");
             }
             sb.Append("]}");
@@ -239,7 +241,10 @@ namespace BetterFG.Features.QualificationTime
                     entryJson.Contains("\"duos\":") ||
                     entryJson.Contains("\"squads\":");
 
-                Entry incoming = new Entry { displayName = name, rawId = id };
+                // isUgc predates this save format for most entries -> fall back to the old id-prefix
+                // guess only when the field is genuinely absent, so old rows aren't misclassified.
+                bool isUgc = entryJson.Contains("\"isUgc\":") ? JsonUtil.GetBool(entryJson, "isUgc") : IsUgc(id);
+                Entry incoming = new Entry { displayName = name, rawId = id, isUgc = isUgc };
                 if (hasNewFields)
                 {
                     incoming.solos = ReadNullableFloat(entryJson, "solos");
@@ -291,6 +296,7 @@ namespace BetterFG.Features.QualificationTime
                 existing.displayName = incoming.displayName;
             if (string.IsNullOrEmpty(existing.rawId) && !string.IsNullOrEmpty(incoming.rawId))
                 existing.rawId = incoming.rawId;
+            existing.isUgc = incoming.isUgc;
             // legacy date stays the earliest seen, used only as a back-compat fallback now
             existing.date = Earlier(existing.date, incoming.date);
             // per slot: pair the kept time with its own date so they don't drift apart
@@ -476,10 +482,10 @@ namespace BetterFG.Features.QualificationTime
         }
 
         // sets the time for the CURRENT show type. returns true if it's a new pb for that show.
-        public static bool TrySet(string id, string displayName, float time)
-            => TrySet(id, displayName, CurrentType(), time);
+        public static bool TrySet(string id, string displayName, float time, bool? isUgc = null)
+            => TrySet(id, displayName, CurrentType(), time, isUgc);
 
-        public static bool TrySet(string id, string displayName, PbType type, float time)
+        public static bool TrySet(string id, string displayName, PbType type, float time, bool? isUgc = null)
         {
             if (!BetterFG.Features.FeatureRegistry.IsOn("pb", "store")) return false;
             EnsureLoaded();
@@ -489,6 +495,7 @@ namespace BetterFG.Features.QualificationTime
             _cache.TryGetValue(key, out var entry);
             entry.displayName = displayName;
             entry.rawId = id;
+            if (isUgc.HasValue) entry.isUgc = isUgc.Value;
             var existing = entry.Get(type);
             if (existing.HasValue && existing.Value <= time)
             {
@@ -513,7 +520,7 @@ namespace BetterFG.Features.QualificationTime
         // overwrite the PB for this show regardless of whether the new time is faster — used when
         // the player explicitly chooses to set a slower run as their PB (e.g. resetting after a
         // fluke time they don't want to defend). bypasses the faster-than gate TrySet enforces.
-        public static void ForceSet(string id, string displayName, PbType type, float time)
+        public static void ForceSet(string id, string displayName, PbType type, float time, bool? isUgc = null)
         {
             if (!BetterFG.Features.FeatureRegistry.IsOn("pb", "store")) return;
             EnsureLoaded();
@@ -523,6 +530,7 @@ namespace BetterFG.Features.QualificationTime
             _cache.TryGetValue(key, out var entry);
             entry.displayName = displayName;
             entry.rawId = id;
+            if (isUgc.HasValue) entry.isUgc = isUgc.Value;
             entry.Set(type, time);
             string now = Today();
             entry.SetDate(type, now);

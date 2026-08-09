@@ -180,6 +180,12 @@ namespace BetterFG.Patches
                 return;
             }
 
+            if (__instance.TryCast<LevelEditorEditStringViewModel>() != null)
+            {
+                inst.ReapplyForegroundFromSettings(__instance.transform, null, true);
+                return;
+            }
+
             // editor nav bar: recolour the whole Safe Area (Play + Library prompts, no shader) when the nav shows.
             if (__instance.TryCast<LevelEditorNavigationScreenViewModel>() != null)
             {
@@ -294,7 +300,11 @@ namespace BetterFG.Patches
             if (__instance == null || inst == null) return;
             if (SettingsService.Get(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, "false") != "true") return;
             var content = __instance.transform.parent;
-            inst.ReapplyForegroundFromSettings(content != null ? content : __instance.transform, null, true, true);
+            // refreshOriginals must stay false here: RetintRadialItems below already re-derives this
+            // item's selected/deselected colours from its true cached originals every call. passing true
+            // made this sweep treat our own just-applied tint as the "real" colour and retint it again
+            // on every click, drifting further off with each one.
+            inst.ReapplyForegroundFromSettings(content != null ? content : __instance.transform, null, true, false);
             inst.RetintRadialItems(__instance.transform);
         }
     }

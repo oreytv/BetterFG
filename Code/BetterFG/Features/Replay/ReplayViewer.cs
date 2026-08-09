@@ -1795,17 +1795,17 @@ namespace BetterFG.Features.Replay
             int orphans = FmodUtil.StopSnapshots(null);
             Plugin.Log.LogInfo($"out of the replay viewer, {restored} game roots back on, {orphans} snapshots killed before they could outlive the client");
 
-            float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
-            if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
-            yield return new WaitForSecondsRealtime(2f);
-            yield return StartCoroutine(LoadingScreenService.HideRoutine().WrapToIl2Cpp());
-
             var client = GlobalGameStateClient.Instance;
             if (client != null)
             {
                 client.ForceMainMenuSceneReload = true;
                 client.ReloadGame(true, EnumDisconnectReasonGraceful.NoReason);
             }
+
+            float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
+            if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
+            yield return new WaitForSecondsRealtime(2f);
+            yield return StartCoroutine(LoadingScreenService.HideRoutine().WrapToIl2Cpp());
 
             Destroy(gameObject);
         }

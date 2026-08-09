@@ -206,6 +206,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<LobbyCustomiserTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<DisableCameraAssistTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<CinematicSpectatorTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<ObjectiveRoundNumberTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomCursorTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<DisableAntiAfkTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<StartupTitleScreenTweak>();

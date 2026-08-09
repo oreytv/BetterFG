@@ -32,6 +32,8 @@ namespace BetterFG.Features.TimePlacement
             new FeatureSetting { id = "twolines", label = "Two lines for big squads", defaultOn = true },
             // players the server flagged as disconnected read "DC" rather than being lumped in as OUT.
             new FeatureSetting { id = "showdc", label = "Mark disconnects", defaultOn = true },
+            // players who hit the Explore skip button read "SKIPPED" rather than being lumped in as OUT.
+            new FeatureSetting { id = "showskip", label = "Mark skips", defaultOn = true },
         },
         onOpen: () => OnToggled(),
         onClosed: () => OnToggled(),
@@ -129,6 +131,7 @@ namespace BetterFG.Features.TimePlacement
         static bool TwoLines => On("twolines");
         static bool ShowInGameplay => On("gameplay");
         static bool ShowDisconnects => On("showdc");
+        static bool ShowSkips => On("showskip");
 
         // the GameStates container holding PlayingState/SpectatorState/BannersState/etc.
         const string GameStatesPath =
@@ -196,6 +199,8 @@ namespace BetterFG.Features.TimePlacement
         static readonly Dictionary<string, float> _deathTimes = new Dictionary<string, float>();
         // keys the server flagged isDisconnected — they left rather than being knocked out.
         static readonly HashSet<string> _disconnectedKeys = new HashSet<string>();
+        // keys who hit the level's skip button (Explore) — they chose to bail, not died/dc'd.
+        static readonly HashSet<string> _skippedKeys = new HashSet<string>();
         static int _soloSig;                             // running hash of the current solo leaderboard
         static int _lastSoloSig;                         // last logged signature, to dedupe the spam
         // score-change patches only flip this; the poll drains it once per frame. a hunt round fires
@@ -231,6 +236,7 @@ namespace BetterFG.Features.TimePlacement
             _qualTimes.Clear();
             _deathTimes.Clear();
             _disconnectedKeys.Clear();
+            _skippedKeys.Clear();
             _nextPlace = 0;
             _soloSig = 0;
             _lastSoloSig = 0;
@@ -745,10 +751,22 @@ namespace BetterFG.Features.TimePlacement
         // feature (HandlePlayerFinished never fired in testing; the real per-player event is here).
         public static void OnServerPlayerProgress(GameMessageServerPlayerProgress progressMessage)
         {
-            if (progressMessage == null || progressMessage.isSkipping) return;
+            if (progressMessage == null) return;
             string pkey = PlayerKeyById(progressMessage.playerId);
             float clock = GlobalGameStateClient.Instance?.GameStateView != null
                 ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed : 0f;
+            if (progressMessage.isSkipping)
+            {
+                // Explore: they hit the skip button rather than dying or dropping — worth calling
+                // out separately from OUT/DISCONNECTED on the roster.
+                if (!string.IsNullOrEmpty(pkey))
+                {
+                    _skippedKeys.Add(pkey);
+                    if (!_deathTimes.ContainsKey(pkey)) _deathTimes[pkey] = clock;
+                }
+                OnPlayerEliminated(progressMessage.playerId);
+                return;
+            }
             if (progressMessage.succeeded)
             {
                 // remember when they qualified so the roster can show a time column. capture the live
@@ -1829,17 +1847,20 @@ namespace BetterFG.Features.TimePlacement
                 else
                 {
                     // eliminated: red wins even for our own — losing is loud. someone who dropped
-                    // out gets the greyed DC label instead, they didn't lose to the level.
-                    bool dc = ShowDisconnects && _disconnectedKeys.Contains(e.key);
-                    string col = dc ? "#8C97A8" : "#FF5555";
+                    // out gets the greyed DC label instead, they didn't lose to the level. someone
+                    // who hit the Explore skip button gets called out too — they chose to bail.
+                    bool skipped = ShowSkips && _skippedKeys.Contains(e.key);
+                    bool dc = !skipped && ShowDisconnects && _disconnectedKeys.Contains(e.key);
+                    string col = skipped ? "#FFA500" : dc ? "#8C97A8" : "#FF5555";
                     // "DISCONNECTED" is far too wide for the placement column at full size, so it
                     // shrinks and takes over the time slot as well — a leaver's exact exit time
                     // isn't worth the collision.
                     SetRow(row,
-                        dc ? $"<b><color={col}><size=55%>DISCONNECTED</size></color></b>"
-                           : $"<b><color={col}>OUT</color></b>",
+                        skipped ? $"<b><color={col}>SKIPPED</color></b>"
+                        : dc ? $"<b><color={col}><size=55%>DISCONNECTED</size></color></b>"
+                             : $"<b><color={col}>OUT</color></b>",
                         $"<size=85%><color={col}>{e.name}</color></size>",
-                        dc || time.Length == 0 ? "" : $"<size=110%><color={col}>{time}</color></size>", 80f, new List<string> { e.key }, 40f);
+                        dc || skipped || time.Length == 0 ? "" : $"<size=110%><color={col}>{time}</color></size>", 80f, new List<string> { e.key }, 40f);
                 }
                 row++;
             }

@@ -10,14 +10,14 @@ namespace BetterFG.UI.Windows
         public TweaksWindow(IntPtr ptr) : base(ptr) { }
 
         protected override float WindowWidth => 280f;
-        protected override float WindowHeight => 160f;
+        protected override float WindowHeight => 220f;
         protected override string WindowTitle => "Tweaks";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         protected override void BuildContent(RectTransform contentRoot)
         {
-            BgPosition = new Vector3(139.3993f, 55.0135f, 0f);
-            BgScale = new Vector3(1.3415f, 5.3623f, 1f);
+            BgPosition = new Vector3(139.3993f, 74.9552f, 0f);
+            BgScale = new Vector3(1.3415f, 4.5877f, 1f);
             ContentPosition = new Vector3(-1.6132f, -17.32f, 0f);
             ContentScale = new Vector3(1.0473f, 1.04f, 1f);
             ContentOffsetMin = new Vector2(-1.6132f, -25.92f);
