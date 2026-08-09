@@ -420,10 +420,10 @@ namespace BetterFG.Features.QualificationTime
         static NavPromptHandle SpawnFavPrompt(Transform parent, string roundId, string roundName)
         {
             bool fav = PBStore.IsFeatured(roundId, roundName);
-            return NavPromptCore.From(NavPrompt.LE_Select)
+            return NavPromptCore.From(NavPrompt.PlayEmote)
                 .WithLabel(fav ? "Unfavorite PB" : "Favorite PB", fav ? "bfg_unfavpb_label" : "bfg_favpb_label")
                 .AnchoredAt(NavPromptAnchor.Custom)
-                .PollActions(RewiredConsts.Action.LevelEditorReticle_MultiSelect_Paint_Selection)
+                .PollActions(RewiredConsts.Action.Menu_EmoteMenu1)
                 .SpawnOn(parent);
         }
 

@@ -172,7 +172,7 @@ namespace BetterFG.Tweaks
             _prompt = NavPromptCore.From(NavPrompt.Favourite)
                 .WithLabel(_cinematicOn ? "Cinematic Cam: On" : "Cinematic Cam: Off",
                            _cinematicOn ? "bfg_cinematic_spectator_on" : "bfg_cinematic_spectator_off")
-                .AnchoredAt(NavPromptAnchor.TopRight)
+                .AnchoredAt(NavPromptAnchor.TopRight, new Vector2(-260f, -70f))
                 .OnOwnCanvas()
                 .PollActions(RewiredConsts.Action.Menu_Favourite)
                 .AllowWhileUnfocused()

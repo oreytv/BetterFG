@@ -9,6 +9,7 @@ using BetterFG.Utilities;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using MPG.Utility;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using Wushu.Integration;
@@ -93,8 +94,26 @@ namespace BetterFG.Features.Replay
 
             yield return _host.StartCoroutine(_loadScene(FraggleCommonManager.BootstrapSceneName, false).WrapToIl2Cpp());
             yield return _host.StartCoroutine(_loadScene(FraggleCommonManager.CommonSceneName, false).WrapToIl2Cpp());
+
+            GameObject sceneBg = null;
+            LevelEditorThemeLighting sceneLighting = null;
             if (!string.IsNullOrEmpty(Background))
+            {
                 yield return _host.StartCoroutine(_loadScene(Background, true).WrapToIl2Cpp());
+
+                var bgScene = SceneManager.GetSceneByName(Background);
+                if (bgScene.IsValid() && bgScene.isLoaded)
+                {
+                    foreach (var root in bgScene.GetRootGameObjects())
+                    {
+                        var found = root.GetComponentInChildren<LevelEditorThemeLighting>(true);
+                        if (found == null) continue;
+                        sceneBg = root;
+                        sceneLighting = found;
+                        break;
+                    }
+                }
+            }
 
             if (fcm != null) fcm.LevelLoader = loader;
 
@@ -142,30 +161,19 @@ namespace BetterFG.Features.Replay
 
             yield return null;
             yield return null;
-            yield return _host.StartCoroutine(ApplyThemeLook(loader, theme, skyboxId).WrapToIl2Cpp());
+            yield return _host.StartCoroutine(ApplyThemeLook(loader, theme, skyboxId, sceneBg, sceneLighting).WrapToIl2Cpp());
         }
 
-        IEnumerator ApplyThemeLook(LevelLoader loader, ThemeData theme, string skyboxId)
+        IEnumerator ApplyThemeLook(LevelLoader loader, ThemeData theme, string skyboxId, GameObject sceneBg, LevelEditorThemeLighting sceneLighting)
         {
             if (theme != null) ThemeManager.SetLevelTheme(theme);
 
-            var existing = ThemeManager._sceneBackgroundAndLighting;
-            if (existing != null && theme != null && theme.SkyboxId == skyboxId)
+            if (sceneLighting != null)
             {
-                var existingLighting = existing.GetComponentInChildren<LevelEditorThemeLighting>(true);
-                if (existingLighting != null)
-                {
-                    Plugin.Log.LogInfo($"the theme already put {existing.name} up for {skyboxId}, no need to build a second one");
-                    yield return _host.StartCoroutine(ApplyLighting(existingLighting).WrapToIl2Cpp());
-                    yield break;
-                }
-            }
-
-            if (existing != null)
-            {
-                Plugin.Log.LogInfo($"binning {existing.name}, it's not {skyboxId}");
-                ThemeManager.DisableSceneBackgroundAndLighting();
-                UnityEngine.Object.Destroy(existing);
+                Plugin.Log.LogInfo($"{sceneBg.name} came in with the background scene already, no need to build a second one");
+                ThemeManager._sceneBackgroundAndLighting = sceneBg;
+                yield return _host.StartCoroutine(ApplyLighting(sceneLighting).WrapToIl2Cpp());
+                yield break;
             }
 
             var defs = loader.GetGameMode()?.SkyboxDefinitions;
