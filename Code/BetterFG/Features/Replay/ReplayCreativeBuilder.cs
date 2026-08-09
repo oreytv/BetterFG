@@ -149,6 +149,25 @@ namespace BetterFG.Features.Replay
         {
             if (theme != null) ThemeManager.SetLevelTheme(theme);
 
+            var existing = ThemeManager._sceneBackgroundAndLighting;
+            if (existing != null && theme != null && theme.SkyboxId == skyboxId)
+            {
+                var existingLighting = existing.GetComponentInChildren<LevelEditorThemeLighting>(true);
+                if (existingLighting != null)
+                {
+                    Plugin.Log.LogInfo($"the theme already put {existing.name} up for {skyboxId}, no need to build a second one");
+                    yield return _host.StartCoroutine(ApplyLighting(existingLighting).WrapToIl2Cpp());
+                    yield break;
+                }
+            }
+
+            if (existing != null)
+            {
+                Plugin.Log.LogInfo($"binning {existing.name}, it's not {skyboxId}");
+                ThemeManager.DisableSceneBackgroundAndLighting();
+                UnityEngine.Object.Destroy(existing);
+            }
+
             var defs = loader.GetGameMode()?.SkyboxDefinitions;
             if (defs == null || defs.Definitions == null || defs.Definitions.Length == 0)
             {
@@ -174,14 +193,6 @@ namespace BetterFG.Features.Replay
                 yield break;
             }
 
-            var stale = ThemeManager._sceneBackgroundAndLighting;
-            if (stale != null)
-            {
-                Plugin.Log.LogInfo($"the theme already put {stale.name} up, binning it before {skyboxId} goes in");
-                ThemeManager.DisableSceneBackgroundAndLighting();
-                UnityEngine.Object.Destroy(stale);
-            }
-
             var bg = UnityEngine.Object.Instantiate(handle.Result);
             bg.name = handle.Result.name;
             bg.SetActive(true);
@@ -192,6 +203,11 @@ namespace BetterFG.Features.Replay
                 + (lighting != null ? $", lighting off {lighting.name}" : ", but there's no LIGHTING inside it, so no sun"));
             if (lighting == null) yield break;
 
+            yield return _host.StartCoroutine(ApplyLighting(lighting).WrapToIl2Cpp());
+        }
+
+        IEnumerator ApplyLighting(LevelEditorThemeLighting lighting)
+        {
             var fll = SingletonBehaviour<FraggleLevelLoader>.Instance;
             if (fll == null) { ApplyLightingDirect(lighting); yield break; }
 
