@@ -135,17 +135,22 @@ namespace BetterFG.Customization.Menu
                 bool inTeamContainer = false;
                 bool inPhraseOverlay = false;
                 bool inTileFolder = false;
+                bool inRadialItem = false;
                 while (p != null)
                 {
                     if (p.name.StartsWith("StarPopup_")) inStarPopup = true;
                     if (p.name == "TeamContainer") inTeamContainer = true;
                     if (p.name == "TabContentSocialPhraseOverlay") inPhraseOverlay = true;
                     if (p.name == "Folder Items" || p.name == "Carousel_Items") inTileFolder = true;
+                    if (p.name.StartsWith("CustomiserSubMenu")) inRadialItem = true;
                     if (excludes != null) foreach (var ex in excludes) if (p.name == ex) { inExcluded = true; break; }
                     p = p.parent;
                 }
                 if (inStarPopup || inExcluded || inTeamContainer || inPhraseOverlay) continue;
                 string n = img.gameObject.name;
+                // radial fills belong to RetintRadialItems; sweeping them fought the toggle state and
+                // re-cached our own output as the original, double-tinting on the next pass
+                if (inRadialItem && n == "Background_Fill") continue;
                 // carousel/folder tiles are recoloured by name in ApplyFolderTileColours (Fill->blue,
                 // Selected->cyan); the hue sweep mis-buckets Background_Fill as cyan, so leave both to it.
                 // scoped to the tile subtrees ApplyFolderTileColours actually runs on — skipping the name
@@ -252,7 +257,7 @@ namespace BetterFG.Customization.Menu
         // has to live in those and be matched off the cached true originals, never off our own output
         private readonly Dictionary<int, RadialItemColours> _radialOriginals = new Dictionary<int, RadialItemColours>();
 
-        public void RetintRadialItems(Transform scopeRoot)
+        public void RetintRadialItems(Transform scopeRoot, bool remapLive = false)
         {
             var pal = FgPalette.FromSettings();
             if (!pal.AnyOn) return;
@@ -271,22 +276,30 @@ namespace BetterFG.Customization.Menu
                 Color selected = pal.TryRetint(orig.Selected, out var s) ? new Color(s.r, s.g, s.b, orig.Selected.a) : orig.Selected;
                 Color deselected = pal.TryRetint(orig.Deselected, out var d) ? new Color(d.r, d.g, d.b, orig.Deselected.a) : orig.Deselected;
                 PaintRadialItem(item, selected, deselected);
+
+                if (!remapLive) continue;
+                foreach (var img in item.GetComponentsInChildren<UnityEngine.UI.Image>(true))
+                {
+                    if (img.gameObject.name != "Background_Fill") continue;
+                    Color to;
+                    if (SameRgb(img.color, orig.Selected)) to = selected;
+                    else if (SameRgb(img.color, orig.Deselected)) to = deselected;
+                    else continue;
+
+                    int imgId = img.GetInstanceID();
+                    if (!_fgOriginals.ContainsKey(imgId)) { _fgOriginals[imgId] = img.color; _fgTouchedImages[imgId] = img; }
+                    img.color = new Color(to.r, to.g, to.b, img.color.a);
+                }
             }
         }
+
+        private static bool SameRgb(Color a, Color b) =>
+            Mathf.Abs(a.r - b.r) < 0.004f && Mathf.Abs(a.g - b.g) < 0.004f && Mathf.Abs(a.b - b.b) < 0.004f;
 
         private static void PaintRadialItem(LevelEditor_RadialMenuItemViewModel item, Color selected, Color deselected)
         {
             item._defaultSelectedColor = selected;
             item._defaultDeselectedColor = deselected;
-            item.SelectedColor = selected;
-            item.DeselectedColor = deselected;
-
-            var cb = item._toggle.colors;
-            cb.normalColor = deselected;
-            cb.highlightedColor = selected;
-            cb.pressedColor = selected;
-            cb.selectedColor = selected;
-            item._toggle.colors = cb;
         }
 
         public void RevertForeground()
@@ -385,7 +398,7 @@ namespace BetterFG.Customization.Menu
             {
                 ReapplyForegroundFromSettings(radial.transform, "SettingsBackingSprite", true);
                 ApplyEditorShader(radial.transform);
-                RetintRadialItems(radial.transform);
+                RetintRadialItems(radial.transform, true);
             }
         }
 

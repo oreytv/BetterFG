@@ -734,7 +734,7 @@ namespace BetterFG.Patches.GameStates
     internal static class CreativeBudgetPresenceHub
     {
         [HarmonyPostfix]
-        public static void Postfix() => BetterFG.Services.DiscordPresenceService.Push();
+        public static void Postfix() => BetterFG.Services.DiscordPresenceService.RequestPush();
     }
 
     [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.HandleServerRoundResults))]

@@ -43,6 +43,7 @@ namespace BetterFG.Services
         private static long _replaySizeBytes;
         private static int? _exportPercent;
         private static bool _showSelectorOpen;
+        private static bool _pushPending;
 
         public static void OnShowSelectorTileSeen()
         {
@@ -224,6 +225,18 @@ namespace BetterFG.Services
             _squadSize = 0;
 
             Plugin.Log.LogInfo($"presence round: {_roundName} — session counter {ggsc?.RoundCounterInPlaySession}, GameRules index {cgm?.GameRules?.RoundIndex}");
+            Push();
+        }
+
+        public static void RequestPush()
+        {
+            _pushPending = true;
+        }
+
+        public static void FlushPendingPush()
+        {
+            if (!_pushPending) return;
+            _pushPending = false;
             Push();
         }
 

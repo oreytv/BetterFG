@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using BetterFG.Core;
 using BetterFG.Features.UnityRound.Editor;
+using FG.Common;
 using FGClient.UI.Core;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using UnityEngine;
@@ -29,6 +30,12 @@ namespace BetterFG.UI.Windows.Creative
 
         void Update()
         {
+            Services.DiscordPresenceService.FlushPendingPush();
+
+            var handler = LevelEditorManager.Instance?.GetMultiselectHandler();
+            if (handler == null) { DestroyPrompt(); return; }
+            if (handler.IsPlacingOrCloning) return;
+
             bool shouldPrompt = BatchEditWindow.FeatureEnabled && UnityRoundLoader.InLevelEditor && BatchRecolour.SelectionCount() >= 1;
 
             // turned off while the window's up → close it
@@ -73,13 +80,14 @@ namespace BetterFG.UI.Windows.Creative
         private void OpenWindow()
         {
             if (BatchEditWindow.Instance != null) return;
+            Patches.BatchEditBlockPlacePatch.BlockedAPlace = false;
             var go = new GameObject("BetterFG_BatchEditWindow");
             go.AddComponent<BatchEditWindow>().Configure();
         }
 
         // the window destroys itself on close, so it can't run this itself — we host it. one frame after
-        // the window's gone (AnyOpen already false) fire a single place so the batch-edited selection
-        // commits at its current spot without you clicking off the blocked-attempt backlog.
+        // the window's gone (AnyOpen already false) replay the place the prefix swallowed, so the
+        // batch-edited selection commits at its current spot. only if we actually blocked one.
         public void PlaceAfterFrame()
         {
             StartCoroutine(PlaceNextFrame().WrapToIl2Cpp());
@@ -88,6 +96,8 @@ namespace BetterFG.UI.Windows.Creative
         private IEnumerator PlaceNextFrame()
         {
             yield return null;
+            if (!Patches.BatchEditBlockPlacePatch.BlockedAPlace) yield break;
+            Patches.BatchEditBlockPlacePatch.BlockedAPlace = false;
             var h = Patches.BatchEditBlockPlacePatch.LiveHandler;
             if (h != null) h.PlaceMultiSelection();
         }

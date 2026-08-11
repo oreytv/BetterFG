@@ -18,13 +18,30 @@ namespace BetterFG.Patches
     public class BatchEditBlockPlacePatch
     {
         public static LevelEditorMultiSelectionHandler LiveHandler { get; private set; }
+        public static bool BlockedAPlace { get; set; }
 
         [HarmonyPrefix]
         public static bool Prefix(LevelEditorMultiSelectionHandler __instance)
         {
             LiveHandler = __instance;
-            return !BatchEditWindow.AnyOpen;
+            if (__instance._isPlacingClone) return true;
+            if (!BatchEditWindow.AnyOpen) return true;
+            BlockedAPlace = true;
+            return false;
         }
+    }
+
+    // Batch edits go through the game's own parameter API (SetColour/ApplySurface/TogglePhysics/...), so the
+    // editor records each one as an EditedParameters change. That record starts AND finishes, flushing the
+    // _currentChain the multiselect hold had open — the later PlaceMultiSelection then runs its FinishRecord
+    // against an empty chain and CleanRepeatedChangesInCurrentSnapshot indexes past the end of _historyList.
+    // It throws before the place body clears the placing state, so the selection stays stuck to the reticle.
+    // Our edits carry their own undo stack (BatchEditHistory), so keep them out of the game's list entirely.
+    [HarmonyPatch(typeof(LevelEditorRecordChanges), "RecordAction")]
+    public class BatchEditBlockRecordPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix() => !BatchEditWindow.AnyOpen;
     }
 
     // Multiselect's rigidbody wakes the collider, so the destroy volume eats objects parked under the border
@@ -37,7 +54,14 @@ namespace BetterFG.Patches
             var handler = LevelEditorManager.Instance?.GetMultiselectHandler();
             if (handler == null) return true;
             if (!LevelEditorPlaceableObject.ColliderToPlaceable.TryGetValue(other, out var lepo)) return true;
-            return !handler.ContainsInSelection(lepo, true);
+            if (handler.IsPlacingOrCloning) return false;
+
+            var sel = handler._selectedGameObjects;
+            if (sel != null && sel.Contains(lepo)) return false;
+            var group = handler._selectedGameObjectsGroupMembers;
+            if (group != null && group.Contains(lepo)) return false;
+            var cloned = handler._clonedSelection;
+            return cloned == null || !cloned.Contains(lepo);
         }
     }
 

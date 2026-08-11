@@ -44,6 +44,15 @@ namespace BetterFG.Features.MorePlatformIcon
         public static bool Enabled => feature.enabled;
         public static string[] PlatformIconIds() => (string[])_names.Clone();
 
+        public static bool HasOwnSprite(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            for (int i = 0; i < _names.Length; i++)
+                if (text.IndexOf("name=\"" + _names[i] + "\"", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            return false;
+        }
+
         public static Sprite SpriteForName(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
@@ -311,16 +320,11 @@ namespace BetterFG.Features.MorePlatformIcon
                 var text = row.Find("Panel/Content/Text")?.GetComponent<TextMeshProUGUI>();
                 if (text == null) return;
 
-                if (!On("privatelobby"))
-                {
-                    text.text = NametagIconApplicator.BuildInlinePlatformName(text.text ?? "", "", true);
-                    return;
-                }
-
-                string spriteName = SpriteNameForPlayerKey(playerKey);
+                string spriteName = On("privatelobby") ? SpriteNameForPlayerKey(playerKey) : "";
                 if (string.IsNullOrEmpty(spriteName))
                 {
-                    text.text = NametagIconApplicator.BuildInlinePlatformName(text.text ?? "", "", true);
+                    if (HasOwnSprite(text.text))
+                        text.text = NametagIconApplicator.BuildInlinePlatformName(text.text, "", true);
                     return;
                 }
 
@@ -372,8 +376,8 @@ namespace BetterFG.Features.MorePlatformIcon
                     if (!string.IsNullOrEmpty(spriteName))
                         NametagIconApplicator.ApplyInlinePlatformAsset(text);
                 }
-                if (string.IsNullOrEmpty(spriteName))
-                    text.text = NametagIconApplicator.BuildInlinePlatformName(text.text ?? "", "", true);
+                if (string.IsNullOrEmpty(spriteName) && HasOwnSprite(text.text))
+                    text.text = NametagIconApplicator.BuildInlinePlatformName(text.text, "", true);
 
                 NametagIconApplicator.ApplyLocalInlineName(text, displayName, spriteName, 0.7f, -0.2f);
             }

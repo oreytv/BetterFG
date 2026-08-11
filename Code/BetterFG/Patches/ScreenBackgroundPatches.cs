@@ -257,7 +257,7 @@ namespace BetterFG.Patches
             string exclude = "Generic_UI_CreativeBackground_Prefab_Canvas|SettingsBackingSprite" + (extraExclude != null ? "|" + extraExclude : "");
             inst.ReapplyForegroundFromSettings(vmRoot, exclude, true);
             if (shader) inst.ApplyEditorShader(vmRoot);
-            inst.RetintRadialItems(vmRoot);
+            inst.RetintRadialItems(vmRoot, true);
         }
 
         // main editor screen: its content isn't built at DoFadeIn, so wait a frame. kill any creative-bg
@@ -288,23 +288,15 @@ namespace BetterFG.Patches
         }
     }
 
-    // UpdateButtonState repaints an item's fill to the game's selected/deselected colour on every
-    // cursor move, wiping our tint off the whole radial. re-sweep the radial foreground after it.
     [HarmonyPatch(typeof(LevelEditor_RadialMenuItemViewModel), "UpdateButtonState")]
     internal static class RadialItemUpdateButtonStatePatch
     {
-        [HarmonyPostfix]
-        public static void Postfix(LevelEditor_RadialMenuItemViewModel __instance)
+        [HarmonyPrefix]
+        public static void Prefix(LevelEditor_RadialMenuItemViewModel __instance)
         {
             var inst = MenuCustomizationApplication.Instance;
             if (__instance == null || inst == null) return;
             if (SettingsService.Get(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, "false") != "true") return;
-            var content = __instance.transform.parent;
-            // refreshOriginals must stay false here: RetintRadialItems below already re-derives this
-            // item's selected/deselected colours from its true cached originals every call. passing true
-            // made this sweep treat our own just-applied tint as the "real" colour and retint it again
-            // on every click, drifting further off with each one.
-            inst.ReapplyForegroundFromSettings(content != null ? content : __instance.transform, null, true, false);
             inst.RetintRadialItems(__instance.transform);
         }
     }

@@ -250,7 +250,7 @@ namespace BetterFG.UI.Windows.Creative
 
             y += 4f;
             UGUIShip.CreateButton(root, new Rect(PAD, y, w, 24f),
-                "APPLY", BTN_APPLY, WHITE, FS_SM, new Action(CommitColourEntry));
+                "APPLY", BTN_APPLY, WHITE, FS_SM, new Action(ApplyColour));
         }
 
         // "set to colour" — RGB sliders, live preview onto the whole selection.
@@ -635,6 +635,13 @@ namespace BetterFG.UI.Windows.Creative
                 entry.Snaps.Add(new BatchEditHistory.ObjectSnap { Obj = kv.Key, Colour = kv.Value });
             _colourEntry = entry;
             _colourSessionSelCount = BatchRecolour.SelectionCount();
+        }
+
+        private void ApplyColour()
+        {
+            if (_recolourMode == RecolourMode.SetColour) PreviewColourSet();
+            else PreviewColourModify();
+            CommitColourEntry();
         }
 
         private void PreviewColourSet()

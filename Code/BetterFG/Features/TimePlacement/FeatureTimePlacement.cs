@@ -887,7 +887,7 @@ namespace BetterFG.Features.TimePlacement
             float mugW = MugWidth, mugH = MugHeight;
             float beanX = NamesX + namesXOffset;
             float nameX = beanX + (_rowPortraits.Count > 0 ? _rowPortraits.Count * (mugW + BeanGap) + 4f : 0f);
-            bool widen = !MugshotsSmall && _rowPortraits.Count >= 2;
+            bool widen = !MugshotsSmall && playerKeys != null && playerKeys.Count >= 3;
             float bgScale = RowBgScale * (widen ? GroupBgScale : 1f);
             foreach (var entryGo in _entryPool[index])
             {
