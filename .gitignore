@@ -21,3 +21,4 @@ Code/BetterFG.Installer/payload_src
 Code/BetterFG/Customization/Profiles/
 Code/BetterFG/UI/Windows/ProfilesWindow.cs
 Code/BetterFG/Patches/PatchEAC.cs
+Code/BetterFG.SkinPackager/creator_deploy.txt

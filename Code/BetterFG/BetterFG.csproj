@@ -120,7 +120,7 @@
 	    <SkinPackagerGroupBat>$(MSBuildProjectDirectory)\..\BetterFG.SkinPackager\group_skins.bat</SkinPackagerGroupBat>
 	    <DownloadsDir>$(USERPROFILE)\Downloads</DownloadsDir>
 	  </PropertyGroup>
-	  <MSBuild Projects="$(SkinPackagerProject)" Targets="Build" Properties="Configuration=$(SkinPackagerConfiguration);Platform=AnyCPU" />
+	  <MSBuild Projects="$(SkinPackagerProject)" Targets="Build" Properties="Configuration=$(SkinPackagerConfiguration);Platform=AnyCPU;NoCreatorPrompt=true" />
 	  <MakeDir Directories="$(DownloadsDir)" Condition="'$(CopyBuildsToDownloads)' == 'true' And '$(DownloadsDir)' != '' And !Exists('$(DownloadsDir)')" />
 	  <Copy SourceFiles="$(SkinPackagerOutput)" DestinationFolder="$(DownloadsDir)" OverwriteReadOnlyFiles="true" Condition="'$(CopyBuildsToDownloads)' == 'true' And Exists('$(SkinPackagerOutput)')" />
 	  <Copy SourceFiles="$(SkinPackagerGroupBat)" DestinationFolder="$(DownloadsDir)" OverwriteReadOnlyFiles="true" Condition="'$(CopyBuildsToDownloads)' == 'true' And Exists('$(SkinPackagerGroupBat)')" />
