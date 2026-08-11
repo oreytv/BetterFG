@@ -54,6 +54,11 @@ namespace BetterFG.UI.Windows.Creative
                 OpenWindow();
         }
 
+        void LateUpdate()
+        {
+            Features.CreativeGroups.CreativeGroups.TickGroupDrag();
+        }
+
         private void EnsurePrompt()
         {
             if (_prompt != null && _prompt.IsAlive) return;

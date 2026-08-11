@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using BetterFG.Features.CreativeGroups;
 using BetterFG.Features.CreativeIncrements;
 using BetterFG.Features.UnityRound.Editor;
 using BetterFG.Services;
@@ -35,20 +36,17 @@ namespace BetterFG.Tweaks
         public static CreativeTypeValueTweak Instance { get; private set; }
         void Awake() => Instance = this;
 
-        private const string Prompt = "Write a number";
+        private const string NumberPrompt = "Write a number";
+        private const string NamePrompt = "Write a name";
+        private const int NameLimit = 32;
 
         private ParameterNodeViewModelString _node;
+        private bool _naming;
         private string _typed;
         private string _restore;
 
         void Update()
         {
-            if (!IsEnabled)
-            {
-                if (_node != null) Cancel();
-                return;
-            }
-
             if (_node == null)
             {
                 if (EnterDown() && UnityRoundLoader.InLevelEditor) Begin();
@@ -56,7 +54,8 @@ namespace BetterFG.Tweaks
             }
 
             // the node can go away under us (menu rebuild, object swap, menu closed) while we hold it
-            if (_node == null || !LevelEditorParameterMenuViewModel.IsParametersScreenOpen()) { Cancel(); return; }
+            if (!LevelEditorParameterMenuViewModel.IsParametersScreenOpen()) { Cancel(); return; }
+            if (!IsEnabled && !_naming) { Cancel(); return; }
 
             if (Input.GetKeyDown(KeyCode.Escape)) { Cancel(); return; }
             if (Input.GetMouseButtonDown(0)) { Commit(); return; }
@@ -65,12 +64,13 @@ namespace BetterFG.Tweaks
             {
                 if (c == '\n' || c == '\r') { Commit(); return; }
                 if (c == '\b') { if (_typed.Length > 0) _typed = _typed.Substring(0, _typed.Length - 1); }
+                else if (_naming) { if (c >= ' ' && c != '|' && c != ',' && _typed.Length < NameLimit) _typed += c; }
                 else if (c == ',' || c == '.') { if (_typed.IndexOf('.') < 0) _typed += '.'; }
                 else if (c == '-') { if (_typed.Length == 0) _typed += '-'; }
                 else if (c >= '0' && c <= '9') _typed += c;
             }
 
-            _node.Value = _typed.Length == 0 ? Prompt : _typed;
+            _node.Value = _typed.Length == 0 ? (_naming ? NamePrompt : NumberPrompt) : _typed;
         }
 
         private static bool EnterDown() =>
@@ -81,14 +81,30 @@ namespace BetterFG.Tweaks
             var node = SelectedNode();
             if (node == null) return;
 
+            var data = node.ParamData;
+            if (data.ParamName == CreativeGroups.PickParamName || data.UnmodifiedParamName == CreativeGroups.PickParamName)
+            {
+                if (!CreativeGroups.HasParamGroup) return;
+                Arm(node, true);
+                return;
+            }
+
+            if (!IsEnabled) return;
+
             // only numeric nodes carry a value closure. bail on the rest (bools, colours, buttons) so
             // Enter keeps doing whatever the editor does on them
             if (!Resolve(node, out _, out _, out _, out _)) return;
 
+            Arm(node, false);
+        }
+
+        private void Arm(ParameterNodeViewModelString node, bool naming)
+        {
             _node = node;
+            _naming = naming;
             _typed = "";
             _restore = node.Value;
-            node.Value = Prompt;
+            node.Value = naming ? NamePrompt : NumberPrompt;
             FGInputLockService.SetParamTypeLock(true);
         }
 
@@ -101,6 +117,7 @@ namespace BetterFG.Tweaks
         private void End()
         {
             _node = null;
+            _naming = false;
             _typed = null;
             _restore = null;
             FGInputLockService.SetParamTypeLock(false);
@@ -111,6 +128,19 @@ namespace BetterFG.Tweaks
             var node = _node;
             string typed = _typed;
             if (node == null) { End(); return; }
+
+            if (_naming)
+            {
+                if (string.IsNullOrEmpty(typed) || !CreativeGroups.RenameParamGroup(typed, out string named))
+                { Cancel(); return; }
+
+                node.Value = named;
+                var options = node.ParamData.SelectionItems;
+                int at = node.SelectedOption;
+                if (options != null && at >= 0 && at < options.Count) options[at] = (Il2CppSystem.String)named;
+                End();
+                return;
+            }
 
             if (!float.TryParse(typed, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
             { Cancel(); return; }
