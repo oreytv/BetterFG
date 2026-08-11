@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -7,12 +7,17 @@ using EditorMessageType = UnityEditor.MessageType;
 
 namespace BetterFG.Editor
 {
-    public class SkinPackagerWindow : EditorWindow
+    public partial class SkinPackagerWindow : EditorWindow
     {
         private static SkinPackagerWindow current;
 
         [MenuItem("BettrFG/Skins/Skin Packager")]
-        public static void Open() => GetWindow<SkinPackagerWindow>("Skin Packager");
+        public static void Open()
+        {
+            var w = GetWindow<SkinPackagerWindow>("Skin Packager");
+            w.minSize = new Vector2(620f, 320f);
+            w.position = new Rect(w.position.x, w.position.y, 860f, 400f);
+        }
 
         [MenuItem("GameObject/Add as Bone Offset", false, -200)]
         private static void AddSelectedAsBoneOffset()
@@ -47,20 +52,28 @@ namespace BetterFG.Editor
         private const string PREF_LAST_COVER_DIR = "BetterFG.SkinPackager.LastCoverDir";
         private const string PREF_LAST_CATALOG_DIR = "BetterFG.SkinPackager.LastCatalogDir";
 
+        private const float PAD_X = 44f;
+        private const float PAD_Y = 18f;
+        private const float ROW = 22f;
+
+        private enum Step { Repo, Mode, Source, Details, Cover, Options, Build }
+        private static readonly string[] STEP_TITLES = { "Repository", "Start", "Skin Root", "Details", "Cover Image", "Settings", "Build" };
+
         private enum SkinKind { Costume, Accessory, Item, Plinth }
         private static readonly string[] KIND_LABELS = { "Costume", "Accessory", "Item", "Plinth" };
 
-        private static readonly string[] NOTICES = {
-            "You must make sure that the object/asset name is the same as the bundle name, or else BettrFG will not find your costume asset.",
-            "You must make sure that the object/asset name is the same as the bundle name, or else BettrFG will not find your accessory asset.",
-            "You must make sure that the object/asset name is the same as the bundle name, or else BettrFG will not find your item asset.",
-            "You must make sure that the object/asset name is the same as the bundle name, or else BettrFG will not find your plinth asset.",
-        };
-
+        private Step _step = Step.Repo;
         private SkinKind _kind = SkinKind.Costume;
 
-        private string _bundlePath = "";
-        private string BundleFileName => string.IsNullOrEmpty(_bundlePath) ? "" : Path.GetFileName(_bundlePath);
+        private GameObject _sourceObject;
+        private string _loadedBundleFile = "";
+        private string _loadedDir = "";
+        private bool _keepBundle;
+        private GameObject _bundlePreviewObject;
+
+        private string BundleName => _keepBundle && !string.IsNullOrEmpty(_loadedBundleFile)
+            ? _loadedBundleFile
+            : _sourceObject == null ? "" : SanitizeBundleName(_sourceObject.name);
 
         private string _name = "";
         private string _author = "";
@@ -68,9 +81,11 @@ namespace BetterFG.Editor
         private string _group = "";
         private List<string> _knownGroups = new List<string>();
         private string _newGroup = "";
+        private bool _addingGroup;
+        private bool _groupFieldFocused;
 
-        private bool _keepBase = false;
-        private float _skinScale = 0f;
+        private bool _keepBase;
+        private float _skinScale = 1f;
 
         private float _itemScale = 1f;
         private Transform _leftTransform;
@@ -85,12 +100,6 @@ namespace BetterFG.Editor
         }
         private List<BoneRow> _boneRows = new List<BoneRow>();
 
-        // Build
-        private GameObject _buildPrefab;
-        private string _buildBundleName = "";
-        private BuildTarget _buildTarget = BuildTarget.StandaloneWindows64;
-
-        // Cover is loaded from disk, not from project
         private string _coverPath = "";
         private Texture2D _coverPreview;
         private const int COVER_W = 956;
@@ -98,17 +107,25 @@ namespace BetterFG.Editor
 
         private string _outputDir = "";
         private string _repoRoot = "";
-        private Vector2 _scroll;
         private string _statusMsg = "";
         private EditorMessageType _statusType = EditorMessageType.None;
 
-        private GUIStyle _sectionStyle;
-        private GUIStyle _noticeStyle;
+        private readonly SkinPreview _preview = new SkinPreview();
+        private Vector2 _optionsScroll;
+        private Vector2 _bodyScroll;
+
+        private const float FADE_HALF = 0.5f;
+        private bool _fading;
+        private double _fadeT0;
+        private int _pendingStep = -1;
+
+        private GUIStyle _title, _label, _value, _h2, _wrap, _big, _small, _field, _area, _button, _bigButton, _toolbar;
         private bool _stylesReady;
 
         private void OnEnable()
         {
             current = this;
+            wantsMouseMove = true;
             if (string.IsNullOrEmpty(_repoRoot))
                 _repoRoot = EditorPrefs.GetString(PREF_LAST_CATALOG_DIR, "");
             RefreshGroups();
@@ -117,6 +134,17 @@ namespace BetterFG.Editor
         private void OnDisable()
         {
             if (current == this) current = null;
+            _preview.Cleanup();
+            ClearCards();
+            if (_coverPreview != null) { DestroyImmediate(_coverPreview); _coverPreview = null; }
+            EditorApplication.update -= FadeTick;
+        }
+
+        private void OnSelectionChange()
+        {
+            if (_step == Step.Source && !_fading && Selection.activeGameObject != null)
+                _sourceObject = Selection.activeGameObject;
+            Repaint();
         }
 
         private static SkinPackagerWindow GetOpenWindow()
@@ -129,182 +157,542 @@ namespace BetterFG.Editor
         private void EnsureStyles()
         {
             if (_stylesReady) return;
-            _sectionStyle = new GUIStyle(EditorStyles.helpBox) { padding = new RectOffset(8, 8, 6, 6) };
-            _noticeStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                normal = { textColor = new Color(1f, 0.85f, 0.15f) },
-                fontStyle = FontStyle.Bold,
-                fontSize = 11,
-                padding = new RectOffset(8, 8, 6, 6),
-                wordWrap = true,
-            };
+            bool pro = EditorGUIUtility.isProSkin;
+            Color dim = pro ? new Color(0.60f, 0.62f, 0.66f) : new Color(0.38f, 0.38f, 0.42f);
+            Color bright = pro ? new Color(0.93f, 0.94f, 0.96f) : new Color(0.10f, 0.10f, 0.12f);
+
+            _title = new GUIStyle(EditorStyles.label) { fontSize = 21, fontStyle = FontStyle.Bold, normal = { textColor = bright } };
+            _label = new GUIStyle(EditorStyles.label) { fontSize = 12, normal = { textColor = dim } };
+            _value = new GUIStyle(EditorStyles.label) { fontSize = 13, normal = { textColor = bright } };
+            _h2 = new GUIStyle(EditorStyles.label) { fontSize = 16, fontStyle = FontStyle.Bold, normal = { textColor = bright } };
+            _wrap = new GUIStyle(EditorStyles.label) { fontSize = 12, wordWrap = true, normal = { textColor = dim } };
+            _big = new GUIStyle(EditorStyles.label) { fontSize = 17, alignment = TextAnchor.MiddleCenter, wordWrap = true, normal = { textColor = bright } };
+            _small = new GUIStyle(EditorStyles.label) { fontSize = 12, alignment = TextAnchor.MiddleCenter, wordWrap = true, normal = { textColor = dim } };
+            _field = new GUIStyle(EditorStyles.textField) { fontSize = 13, fixedHeight = 0f, padding = new RectOffset(6, 6, 4, 4) };
+            _area = new GUIStyle(EditorStyles.textArea) { fontSize = 13, fixedHeight = 0f, padding = new RectOffset(6, 6, 4, 4), wordWrap = true };
+            _button = new GUIStyle(GUI.skin.button) { fontSize = 12, fixedHeight = 0f };
+            _bigButton = new GUIStyle(GUI.skin.button) { fontSize = 14, fontStyle = FontStyle.Bold, fixedHeight = 0f };
+            _toolbar = new GUIStyle(GUI.skin.button) { fontSize = 13, fixedHeight = 0f };
             _stylesReady = true;
         }
 
         private void OnGUI()
         {
             EnsureStyles();
-            _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
-            DrawSection("Build Bundle", DrawBuildBundle);
-            DrawSection("Bundle", DrawBundle);
+            if (_fading && Event.current.type == EventType.MouseDown) Event.current.Use();
+            if (Event.current.type == EventType.MouseMove && _step == Step.Mode) Repaint();
 
-            EditorGUI.BeginChangeCheck();
-            _kind = (SkinKind)GUILayout.Toolbar((int)_kind, KIND_LABELS);
-            if (EditorGUI.EndChangeCheck()) _statusMsg = "";
-            GUILayout.Space(4);
+            EditorGUIUtility.labelWidth = 108f;
 
-            GUILayout.Label("⚠  " + NOTICES[(int)_kind], _noticeStyle);
-            GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(PAD_X);
+            GUILayout.BeginVertical();
+            GUILayout.Space(PAD_Y);
 
-            DrawSection("Info", DrawCommon);
-            DrawSection("Group", DrawGroup);
-            if (_kind == SkinKind.Costume) DrawSection("Costume Options", DrawCostume);
-            if (_kind == SkinKind.Item) DrawSection("Item Options", DrawItem);
-            if (_kind == SkinKind.Costume) DrawSection("Bone Offsets", DrawBoneOffsets);
-            DrawSection("Cover Image  (956 x 763 - cropped to fill, no stretch)", DrawCover);
-            DrawSection("Load Existing Skin", DrawLoad);
-            DrawSection("Output", DrawOutput);
+            DrawHeader();
+            DrawBody();
 
             if (!string.IsNullOrEmpty(_statusMsg))
             {
-                GUILayout.Space(4);
+                GUILayout.Space(10);
                 EditorGUILayout.HelpBox(_statusMsg, _statusType);
             }
 
-            GUILayout.Space(8);
-            EditorGUILayout.EndScrollView();
-        }
+            DrawFooter();
 
-        private void DrawSection(string title, Action content)
-        {
-            GUILayout.BeginVertical(_sectionStyle);
-            GUILayout.Label(title, EditorStyles.boldLabel);
-            content();
+            GUILayout.Space(PAD_Y);
             GUILayout.EndVertical();
-            GUILayout.Space(4);
-        }
+            GUILayout.Space(PAD_X);
+            GUILayout.EndHorizontal();
 
-        private void DrawBuildBundle()
-        {
-            EditorGUILayout.HelpBox("Please name the bundle to be the same as the root GameObject.", EditorMessageType.Info);
-            GUILayout.Space(2);
-
-            EditorGUI.BeginChangeCheck();
-            _buildPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab", _buildPrefab, typeof(GameObject), false);
-            if (EditorGUI.EndChangeCheck() && _buildPrefab != null && string.IsNullOrEmpty(_buildBundleName))
-                _buildBundleName = _buildPrefab.name.ToLower();
-
-            _buildBundleName = EditorGUILayout.TextField("Bundle Name", _buildBundleName);
-            _buildTarget = (BuildTarget)EditorGUILayout.EnumPopup("Platform", _buildTarget);
-
-            GUILayout.Space(4);
-            GUI.backgroundColor = new Color(0.25f, 0.55f, 0.9f);
-            if (GUILayout.Button("Build AssetBundle", GUILayout.Height(24))) TryBuildBundle();
-            GUI.backgroundColor = Color.white;
-        }
-
-        private void TryBuildBundle()
-        {
-            if (_buildPrefab == null) { Err("Pick a prefab to build."); return; }
-            if (string.IsNullOrWhiteSpace(_buildBundleName)) { Err("Bundle name is required."); return; }
-
-            string assetPath = AssetDatabase.GetAssetPath(_buildPrefab);
-            if (string.IsNullOrEmpty(assetPath)) { Err("Prefab must be a project asset, not a scene object."); return; }
-
-            var importer = AssetImporter.GetAtPath(assetPath);
-            if (importer == null) { Err("Couldn't get asset importer for that prefab."); return; }
-
-            string prevBundle = importer.assetBundleName;
-            importer.assetBundleName = _buildBundleName.ToLower();
-            importer.SaveAndReimport();
-
-            string outDir = "Assets/StreamingAssets";
-            if (!Directory.Exists(Application.streamingAssetsPath))
-                Directory.CreateDirectory(outDir);
-
-            var builds = new AssetBundleBuild[]
+            if (_fading)
             {
-                new AssetBundleBuild
-                {
-                    assetBundleName = _buildBundleName.ToLower(),
-                    assetNames = new[] { assetPath }
-                }
-            };
-
-            // LZ4 — LZMA (the None default) costs a ~1s decompress stutter in game every time the skin loads
-            var manifest = BuildPipeline.BuildAssetBundles(outDir, builds, BuildAssetBundleOptions.ChunkBasedCompression, _buildTarget);
-
-            importer.assetBundleName = prevBundle;
-            importer.SaveAndReimport();
-            AssetDatabase.Refresh();
-
-            if (manifest == null) { Err("Build failed. Check the console."); return; }
-
-            string builtPath = Path.Combine(Application.streamingAssetsPath, _buildBundleName.ToLower());
-            if (File.Exists(builtPath))
-            {
-                _bundlePath = builtPath;
-                if (string.IsNullOrEmpty(_name)) _name = _buildBundleName;
+                float t = (float)(EditorApplication.timeSinceStartup - _fadeT0);
+                float a = t < FADE_HALF ? t / FADE_HALF : 1f - (t - FADE_HALF) / FADE_HALF;
+                var bg = EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.24f) : new Color(0.76f, 0.76f, 0.78f);
+                bg.a = Mathf.Clamp01(a);
+                EditorGUI.DrawRect(new Rect(0f, 0f, position.width, position.height), bg);
             }
-
-            Ok($"Built -> {builtPath}");
         }
 
-        private void DrawBundle()
+        private void DrawHeader()
         {
             GUILayout.BeginHorizontal();
-            EditorGUILayout.TextField("Bundle File", BundleFileName);
-            if (GUILayout.Button("Browse...", GUILayout.Width(70)))
+            GUILayout.Label(STEP_TITLES[(int)_step], _title);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label($"{(int)_step + 1}/{STEP_TITLES.Length}", _label);
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            var bar = GUILayoutUtility.GetRect(1f, 3f, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(bar, EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.08f) : new Color(0f, 0f, 0f, 0.1f));
+            float done = ((int)_step + 1) / (float)STEP_TITLES.Length;
+            EditorGUI.DrawRect(new Rect(bar.x, bar.y, bar.width * done, bar.height), new Color(0.28f, 0.62f, 0.95f));
+
+            GUILayout.Space(12);
+        }
+
+        private void DrawBody()
+        {
+            GUILayout.BeginVertical();
+
+            if (_step == Step.Options) DrawOptionsStep();
+            else if (_step == Step.Cover) DrawCoverStep();
+            else if (_step == Step.Build) DrawBuildStep();
+            else
             {
-                string picked = EditorUtility.OpenFilePanel("Select AssetBundle", _bundlePath, "");
+                _bodyScroll = EditorGUILayout.BeginScrollView(_bodyScroll);
+                switch (_step)
+                {
+                    case Step.Repo: DrawRepoStep(); break;
+                    case Step.Mode: DrawModeStep(); break;
+                    case Step.Source: DrawSourceStep(); break;
+                    case Step.Details: DrawDetailsStep(); break;
+                }
+                EditorGUILayout.EndScrollView();
+            }
+
+            GUILayout.EndVertical();
+        }
+
+        private void DrawFooter()
+        {
+            GUILayout.Space(12);
+            var line = GUILayoutUtility.GetRect(1f, 1f, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(line, EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.07f) : new Color(0f, 0f, 0f, 0.1f));
+            GUILayout.Space(10);
+
+            GUILayout.BeginHorizontal();
+
+            GUI.enabled = (_step != Step.Repo || _browsing) && !_fading;
+            if (GUILayout.Button("Back", _button, GUILayout.Width(90f), GUILayout.Height(30f)))
+            {
+                if (_menuCard >= 0) _menuCard = -1;
+                else if (_browsing) _browsing = false;
+                else GoTo((Step)((int)_step - 1));
+            }
+            GUI.enabled = true;
+
+            GUILayout.FlexibleSpace();
+
+            if (_step != Step.Build && _step != Step.Mode)
+            {
+                GUI.enabled = CanAdvance() && !_fading;
+                if (GUILayout.Button("Next", _bigButton, GUILayout.Width(120f), GUILayout.Height(30f)))
+                    GoTo((Step)((int)_step + 1));
+                GUI.enabled = true;
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
+        private bool CanAdvance()
+        {
+            switch (_step)
+            {
+                case Step.Repo: return !string.IsNullOrWhiteSpace(_repoRoot) && Directory.Exists(_repoRoot);
+                case Step.Source: return _sourceObject != null || _keepBundle;
+                case Step.Details: return !string.IsNullOrWhiteSpace(_name);
+                default: return true;
+            }
+        }
+
+        private void GoTo(Step step)
+        {
+            if (_fading) return;
+            _statusMsg = "";
+            _pendingStep = (int)step;
+            _fading = true;
+            _fadeT0 = EditorApplication.timeSinceStartup;
+            EditorApplication.update += FadeTick;
+        }
+
+        private void FadeTick()
+        {
+            float t = (float)(EditorApplication.timeSinceStartup - _fadeT0);
+
+            if (t >= FADE_HALF && _pendingStep >= 0)
+            {
+                _step = (Step)_pendingStep;
+                _pendingStep = -1;
+                _bodyScroll = Vector2.zero;
+                _browsing = false;
+                _menuCard = -1;
+                if (_step == Step.Options)
+                {
+                    _preview.SetSource(ResolvePreviewObject());
+                    _preview.SetShowBase(_kind == SkinKind.Costume && _keepBase);
+                }
+            }
+
+            if (t >= FADE_HALF * 2f)
+            {
+                _fading = false;
+                EditorApplication.update -= FadeTick;
+            }
+
+            Repaint();
+        }
+
+        private void DrawRepoStep()
+        {
+            GUILayout.Label("Public skins repo", _label);
+            GUILayout.Space(6);
+
+            GUILayout.BeginHorizontal();
+            EditorGUI.BeginChangeCheck();
+            _repoRoot = EditorGUILayout.TextField(_repoRoot, _field, GUILayout.Height(ROW));
+            if (EditorGUI.EndChangeCheck()) RefreshGroups();
+            if (GUILayout.Button("Browse", _button, GUILayout.Width(90f), GUILayout.Height(ROW)))
+            {
+                string seed = !string.IsNullOrEmpty(_repoRoot) ? _repoRoot : EditorPrefs.GetString(PREF_LAST_CATALOG_DIR, "");
+                string picked = EditorUtility.OpenFilePanel("Select generate_catalog.bat", seed, "bat");
                 if (!string.IsNullOrEmpty(picked))
                 {
-                    _bundlePath = picked;
-                    if (string.IsNullOrEmpty(_name))
-                        _name = Path.GetFileNameWithoutExtension(picked);
-                    Repaint();
+                    _repoRoot = Path.GetDirectoryName(picked);
+                    EditorPrefs.SetString(PREF_LAST_CATALOG_DIR, _repoRoot);
+                    RefreshGroups();
+                    GUI.FocusControl(null);
                 }
             }
             GUILayout.EndHorizontal();
-            EditorGUILayout.HelpBox("Select the built AssetBundle file. Usually has no extension.", EditorMessageType.None);
         }
 
-        private void DrawCommon()
+        private struct SkinCard
         {
-            _name = EditorGUILayout.TextField("Display name", _name);
-            _author = EditorGUILayout.TextField("Author", _author);
-            _description = EditorGUILayout.TextField("Description", _description);
+            public string dir;
+            public string name;
+            public string author;
+            public string type;
+            public string coverPath;
+            public Texture2D cover;
+        }
+        private List<SkinCard> _cards;
+        private bool _browsing;
+        private int _menuCard = -1;
+
+        private void DrawModeStep()
+        {
+            if (!_browsing)
+            {
+                GUILayout.Space(20);
+
+                if (GUILayout.Button("New Skin", _bigButton, GUILayout.Height(56f)))
+                {
+                    ResetForNew();
+                    GoTo(Step.Source);
+                }
+
+                GUILayout.Space(12);
+
+                if (GUILayout.Button("Load Existing", _bigButton, GUILayout.Height(56f)))
+                {
+                    _browsing = true;
+                    RefreshCards();
+                }
+                return;
+            }
+
+            if (_cards == null) RefreshCards();
+
+            if (_menuCard >= 0 && _menuCard < _cards.Count) { DrawCardMenu(); return; }
+
+            if (_cards.Count == 0)
+            {
+                GUILayout.Label("Nothing packed in this repo yet", _small);
+                return;
+            }
+
+            const float TILE_W = 176f;
+            const float GAP = 14f;
+            float coverH = TILE_W * COVER_H / COVER_W;
+            float tileH = coverH + 42f;
+
+            float avail = Mathf.Max(EditorGUIUtility.currentViewWidth - PAD_X * 2f - 20f, TILE_W);
+            int cols = Mathf.Max(1, Mathf.FloorToInt((avail + GAP) / (TILE_W + GAP)));
+            int rows = Mathf.CeilToInt(_cards.Count / (float)cols);
+
+            Rect area = GUILayoutUtility.GetRect(avail, rows * (tileH + GAP) - GAP);
+
+            for (int i = 0; i < _cards.Count; i++)
+            {
+                var r = new Rect(
+                    area.x + (i % cols) * (TILE_W + GAP),
+                    area.y + (i / cols) * (tileH + GAP),
+                    TILE_W, tileH);
+                DrawCard(i, r, coverH);
+            }
         }
 
-        private void DrawGroup()
+        private void DrawCard(int i, Rect r, float coverH)
         {
-            EditorGUILayout.HelpBox("Blank means Unsorted. Grouping only adds metadata, it does not move files.", EditorMessageType.None);
+            var card = _cards[i];
+            var coverRect = new Rect(r.x, r.y, r.width, coverH);
+
+            if (card.cover == null && !string.IsNullOrEmpty(card.coverPath) && r.yMax > -200f && r.yMin < position.height + 200f)
+            {
+                var tex = new Texture2D(2, 2, TextureFormat.RGB24, false);
+                if (tex.LoadImage(File.ReadAllBytes(card.coverPath)))
+                {
+                    card.cover = tex;
+                    _cards[i] = card;
+                }
+                else DestroyImmediate(tex);
+            }
+
+            EditorGUI.DrawRect(coverRect, new Color(0.1f, 0.1f, 0.11f));
+            if (card.cover != null) GUI.DrawTexture(coverRect, card.cover, ScaleMode.ScaleAndCrop);
+
+            bool hover = r.Contains(Event.current.mousePosition);
+            if (hover)
+                EditorGUI.DrawRect(new Rect(coverRect.x, coverRect.yMax - 3f, coverRect.width, 3f), new Color(0.28f, 0.62f, 0.95f));
+
+            GUI.Label(new Rect(r.x, coverRect.yMax + 5f, r.width, 18f), card.name, _value);
+            GUI.Label(new Rect(r.x, coverRect.yMax + 23f, r.width, 16f), $"{card.author}  ·  {card.type}", _label);
+
+            EditorGUIUtility.AddCursorRect(r, MouseCursor.Link);
+
+            if (Event.current.type == EventType.MouseDown && hover)
+            {
+                Event.current.Use();
+                _menuCard = i;
+                _statusMsg = "";
+            }
+        }
+
+        private void DrawCardMenu()
+        {
+            var card = _cards[_menuCard];
+
+            GUILayout.Space(26);
+            GUILayout.Label("What do you want to do with this skin?", _big);
+            GUILayout.Space(10);
+            GUILayout.Label($"{card.name}  ·  {card.author}", _small);
+            GUILayout.Space(28);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+
+            if (GUILayout.Button("Edit", _bigButton, GUILayout.Width(150f), GUILayout.Height(40f)))
+            {
+                string dir = card.dir;
+                _menuCard = -1;
+                if (LoadSkin(dir)) GoTo(Step.Source);
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+                return;
+            }
+
+            GUILayout.Space(14);
+
+            GUI.backgroundColor = new Color(0.78f, 0.24f, 0.24f);
+            if (GUILayout.Button("Delete", _bigButton, GUILayout.Width(150f), GUILayout.Height(40f)))
+            {
+                GUI.backgroundColor = Color.white;
+                DeleteCard(card);
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+                return;
+            }
+            GUI.backgroundColor = Color.white;
+
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+        }
+
+        private void DeleteCard(SkinCard card)
+        {
+            if (!EditorUtility.DisplayDialog("Delete skin",
+                $"Delete \"{card.name}\" from the repo?\n\n{card.dir}\n\nThe folder and everything in it goes from disk. This can't be undone.",
+                "Delete", "Cancel"))
+                return;
+
+            try
+            {
+                Directory.Delete(card.dir, true);
+            }
+            catch (Exception ex)
+            {
+                Err($"couldn't delete {card.name}: {ex.Message}");
+                return;
+            }
+
+            _menuCard = -1;
+            RunCatalogBat();
+            WriteNewCatalog(_repoRoot);
+            RefreshGroups();
+            RefreshCards();
+            Ok($"deleted {card.name}");
+            Debug.Log($"removed skin folder {card.dir} and regenerated the catalog");
+        }
+
+        private void RefreshCards()
+        {
+            ClearCards();
+            _cards = new List<SkinCard>();
+            if (string.IsNullOrWhiteSpace(_repoRoot) || !Directory.Exists(_repoRoot)) return;
+
+            foreach (string category in new[] { "Costumes", "Accessories", "Items", "Plinths" })
+            {
+                string root = Path.Combine(_repoRoot, category);
+                if (!Directory.Exists(root)) continue;
+
+                foreach (string dir in Directory.GetDirectories(root))
+                {
+                    string info = Path.Combine(dir, "info.json");
+                    if (!File.Exists(info)) continue;
+
+                    string json = File.ReadAllText(info);
+                    string cover = Path.Combine(dir, "cover.jpg");
+                    if (!File.Exists(cover)) cover = Path.Combine(dir, "cover.png");
+
+                    _cards.Add(new SkinCard
+                    {
+                        dir = dir,
+                        name = SkinInfoJson.ReadStr(json, "name"),
+                        author = SkinInfoJson.ReadStr(json, "author"),
+                        type = SkinInfoJson.ReadStr(json, "type"),
+                        coverPath = File.Exists(cover) ? cover : "",
+                    });
+                }
+            }
+
+            _cards.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void ClearCards()
+        {
+            if (_cards == null) return;
+            foreach (var c in _cards)
+                if (c.cover != null) DestroyImmediate(c.cover);
+            _cards = null;
+        }
+
+        private void ResetForNew()
+        {
+            _sourceObject = null;
+            _loadedBundleFile = "";
+            _loadedDir = "";
+            _keepBundle = false;
+            _bundlePreviewObject = null;
+            _name = _author = _description = _group = "";
+            _keepBase = false;
+            _skinScale = 1f;
+            _itemScale = 1f;
+            _leftTransform = _rightTransform = null;
+            _boneRows.Clear();
+            _coverPath = "";
+            if (_coverPreview != null) { DestroyImmediate(_coverPreview); _coverPreview = null; }
+            _outputDir = "";
+            _kind = SkinKind.Costume;
+        }
+
+        private void DrawSourceStep()
+        {
+            if (!string.IsNullOrEmpty(_loadedBundleFile))
+            {
+                int mode = _keepBundle ? 0 : 1;
+                int newMode = GUILayout.Toolbar(mode, new[] { "Don't change", "Rebuild from object" }, _toolbar, GUILayout.Height(26f));
+                if (newMode != mode) _keepBundle = newMode == 0;
+                GUILayout.Space(20);
+            }
+
+            if (_keepBundle)
+            {
+                GUILayout.Space(24);
+                GUILayout.Label("Keeping the packed bundle", _big);
+                GUILayout.Space(8);
+                GUILayout.Label(_loadedBundleFile, _small);
+                return;
+            }
+
+            GUILayout.Space(24);
+            GUILayout.Label("Select a GameObject from the Hierarchy window", _big);
+            GUILayout.Space(8);
+            GUILayout.Label("Or a prefab from the Project window", _small);
+            GUILayout.Space(24);
+
+            _sourceObject = (GameObject)EditorGUILayout.ObjectField(_sourceObject, typeof(GameObject), true, GUILayout.Height(ROW));
+
+            if (_sourceObject != null)
+            {
+                GUILayout.Space(16);
+                GUILayout.Label(_sourceObject.name, _big);
+            }
+        }
+
+        private void DrawDetailsStep()
+        {
+            _kind = (SkinKind)GUILayout.Toolbar((int)_kind, KIND_LABELS, _toolbar, GUILayout.Height(26f));
+            GUILayout.Space(14);
+
+            _name = EditorGUILayout.TextField("Display name", _name, _field, GUILayout.Height(ROW));
+            GUILayout.Space(7);
+            _author = EditorGUILayout.TextField("Author", _author, _field, GUILayout.Height(ROW));
+            GUILayout.Space(7);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Description", _label, GUILayout.Width(EditorGUIUtility.labelWidth - 2f));
+            _description = EditorGUILayout.TextArea(_description, _area, GUILayout.Height(42f));
+            GUILayout.EndHorizontal();
+            GUILayout.Space(7);
+
+            if (_addingGroup)
+            {
+                GUI.SetNextControlName("bfgNewGroup");
+                _newGroup = EditorGUILayout.TextField("Group", _newGroup, _field, GUILayout.Height(ROW));
+
+                if (!_groupFieldFocused)
+                {
+                    EditorGUI.FocusTextInControl("bfgNewGroup");
+                    _groupFieldFocused = true;
+                }
+
+                var e = Event.current;
+                if (e.type == EventType.KeyDown)
+                {
+                    if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter) { CommitNewGroup(); e.Use(); }
+                    else if (e.keyCode == KeyCode.Escape) { _addingGroup = false; _groupFieldFocused = false; _newGroup = ""; e.Use(); }
+                }
+                return;
+            }
 
             var labels = new List<string> { "Unsorted" };
             labels.AddRange(_knownGroups);
+            labels.Add("Add new...");
+
             int selected = 0;
             for (int i = 0; i < _knownGroups.Count; i++)
                 if (string.Equals(_knownGroups[i], _group, StringComparison.OrdinalIgnoreCase))
                     selected = i + 1;
-            int picked = EditorGUILayout.Popup("Group", selected, labels.ToArray());
-            _group = picked == 0 ? "" : _knownGroups[picked - 1];
 
-            GUILayout.Space(4);
-            GUILayout.Label("Add new group", EditorStyles.miniBoldLabel);
-            GUILayout.BeginHorizontal();
-            _newGroup = EditorGUILayout.TextField(_newGroup);
-            if (GUILayout.Button("Add", GUILayout.Width(70)) && !string.IsNullOrWhiteSpace(_newGroup))
+            int picked = EditorGUILayout.Popup("Group", selected, labels.ToArray(), GUILayout.Height(ROW));
+            if (picked == labels.Count - 1)
             {
-                _group = _newGroup.Trim();
-                if (!_knownGroups.Exists(g => string.Equals(g, _group, StringComparison.OrdinalIgnoreCase)))
-                {
-                    _knownGroups.Add(_group);
-                    _knownGroups.Sort(StringComparer.OrdinalIgnoreCase);
-                }
+                _addingGroup = true;
+                _groupFieldFocused = false;
                 _newGroup = "";
             }
-            GUILayout.EndHorizontal();
+            else _group = picked == 0 ? "" : _knownGroups[picked - 1];
+        }
+
+        private void CommitNewGroup()
+        {
+            string g = (_newGroup ?? "").Trim();
+            if (g.Length > 0)
+            {
+                _group = g;
+                if (!_knownGroups.Exists(x => string.Equals(x, g, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _knownGroups.Add(g);
+                    _knownGroups.Sort(StringComparer.OrdinalIgnoreCase);
+                }
+            }
+            _newGroup = "";
+            _addingGroup = false;
+            _groupFieldFocused = false;
+            GUI.FocusControl(null);
         }
 
         private void RefreshGroups()
@@ -325,82 +713,193 @@ namespace BetterFG.Editor
             }
             _knownGroups = new List<string>(found);
             _knownGroups.Sort(StringComparer.OrdinalIgnoreCase);
+            ClearCards();
         }
 
-        private void DrawCostume()
+        private void DrawCoverStep()
         {
-            _keepBase = EditorGUILayout.Toggle("Keep Fall Guy on application", _keepBase);
-            _skinScale = EditorGUILayout.FloatField("Skin Scale (0 = off)", _skinScale);
+            Rect area = GUILayoutUtility.GetRect(10f, 10f, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+
+            float h = Mathf.Min(area.height, area.width * COVER_H / COVER_W);
+            float w = h * COVER_W / COVER_H;
+            var box = new Rect(area.x + (area.width - w) * 0.5f, area.y + (area.height - h) * 0.5f, w, h);
+
+            EditorGUI.DrawRect(box, new Color(0.1f, 0.1f, 0.11f));
+            if (_coverPreview != null) GUI.DrawTexture(box, _coverPreview, ScaleMode.ScaleAndCrop);
+            else GUI.Label(box, "No cover picked", _small);
+
+            GUILayout.Space(10);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(_coverPreview == null ? "Choose image" : "Replace image", _button, GUILayout.Height(30f)))
+            {
+                string seed = !string.IsNullOrEmpty(_coverPath) ? _coverPath : EditorPrefs.GetString(PREF_LAST_COVER_DIR, "");
+                string pickedFile = EditorUtility.OpenFilePanel("Select Cover Image", seed, "png,jpg,jpeg");
+                if (!string.IsNullOrEmpty(pickedFile) && File.Exists(pickedFile))
+                {
+                    _coverPath = pickedFile;
+                    EditorPrefs.SetString(PREF_LAST_COVER_DIR, Path.GetDirectoryName(pickedFile));
+                    LoadCoverPreview(pickedFile);
+                }
+            }
+            if (_coverPreview != null && GUILayout.Button("Clear", _button, GUILayout.Width(80f), GUILayout.Height(30f)))
+            {
+                _coverPath = "";
+                DestroyImmediate(_coverPreview);
+                _coverPreview = null;
+            }
+            GUILayout.EndHorizontal();
         }
 
-        private void DrawItem()
+        private void LoadCoverPreview(string path)
         {
-            _itemScale = EditorGUILayout.FloatField("Scale of item gameobject", _itemScale);
-            GUILayout.Space(6);
-            GUILayout.Label("Left Hand", EditorStyles.miniBoldLabel);
-            _leftTransform = (Transform)EditorGUILayout.ObjectField("Transform", _leftTransform, typeof(Transform), true);
-            GUILayout.Space(4);
-            GUILayout.Label("Right Hand", EditorStyles.miniBoldLabel);
-            _rightTransform = (Transform)EditorGUILayout.ObjectField("Transform", _rightTransform, typeof(Transform), true);
+            if (_coverPreview != null) { DestroyImmediate(_coverPreview); _coverPreview = null; }
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (tex.LoadImage(File.ReadAllBytes(path))) _coverPreview = tex;
+            else DestroyImmediate(tex);
+        }
+
+        private void DrawOptionsStep()
+        {
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical(GUILayout.Width(230f));
+            _optionsScroll = EditorGUILayout.BeginScrollView(_optionsScroll);
+
+            if (_kind == SkinKind.Costume)
+            {
+                EditorGUI.BeginChangeCheck();
+                _keepBase = EditorGUILayout.ToggleLeft("Keep Fall Guy underneath", _keepBase, _label);
+                if (EditorGUI.EndChangeCheck()) _preview.SetShowBase(_keepBase);
+                GUILayout.Space(14);
+                GUILayout.Label("Skin scale", _label);
+                GUILayout.Space(4);
+                _skinScale = EditorGUILayout.Slider(_skinScale, 0.1f, 4f);
+                GUILayout.Space(18);
+                DrawBoneOffsets();
+            }
+            else if (_kind == SkinKind.Item)
+            {
+                GUILayout.Label("Item scale", _label);
+                GUILayout.Space(4);
+                _itemScale = EditorGUILayout.Slider(_itemScale, 0.1f, 4f);
+                GUILayout.Space(16);
+                GUILayout.Label("Left hand", _label);
+                GUILayout.Space(4);
+                _leftTransform = (Transform)EditorGUILayout.ObjectField(_leftTransform, typeof(Transform), true, GUILayout.Height(ROW));
+                GUILayout.Space(14);
+                GUILayout.Label("Right hand", _label);
+                GUILayout.Space(4);
+                _rightTransform = (Transform)EditorGUILayout.ObjectField(_rightTransform, typeof(Transform), true, GUILayout.Height(ROW));
+            }
+
+            EditorGUILayout.EndScrollView();
+            GUILayout.EndVertical();
+
+            GUILayout.Space(14);
+
+            Rect view = GUILayoutUtility.GetRect(10f, 10f, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+            _preview.Draw(view, _kind == SkinKind.Costume ? _skinScale : _itemScale);
+
+            GUILayout.EndHorizontal();
         }
 
         private void DrawBoneOffsets()
         {
-            EditorGUILayout.HelpBox(
-                "If you edited the position of Fall Guys armature's bones, please reference the Transforms of each bone you modified, this will make BettrFG respect the edits.",
-                EditorMessageType.Info);
-            GUILayout.Space(2);
+            GUILayout.Label("Bone offsets", _label);
+            GUILayout.Space(6);
 
             GUILayout.BeginHorizontal();
-            _boneSearch = EditorGUILayout.TextField("Search", _boneSearch);
-            if (GUILayout.Button("x", GUILayout.Width(22)))
-                _boneSearch = "";
+            _boneSearch = EditorGUILayout.TextField(_boneSearch, _field, GUILayout.Height(ROW));
+            if (GUILayout.Button("x", _button, GUILayout.Width(24f), GUILayout.Height(ROW))) { _boneSearch = ""; GUI.FocusControl(null); }
             GUILayout.EndHorizontal();
 
+            GUILayout.Space(6);
             GUILayout.BeginHorizontal();
-            GUI.enabled = Selection.activeTransform != null;
-            if (GUILayout.Button("Add All From Selection", GUILayout.Width(150)))
-                AddBoneOffsetsRecursive(Selection.activeTransform);
+            GUI.enabled = ResolvePreviewObject() != null;
+            if (GUILayout.Button("Add all", _button, GUILayout.Height(24f))) AddAllBones();
             GUI.enabled = true;
-            if (GUILayout.Button("Clear All", GUILayout.Width(90)))
-            {
-                _boneRows.Clear();
-                Ok("Cleared all bone offsets");
-            }
+            if (GUILayout.Button("Clear", _button, GUILayout.Width(60f), GUILayout.Height(24f))) _boneRows.Clear();
             GUILayout.EndHorizontal();
-            GUILayout.Space(4);
+
+            GUILayout.Space(8);
+            DrawBoneDropArea();
+            GUILayout.Space(8);
 
             for (int i = 0; i < _boneRows.Count; i++)
             {
                 if (!BoneMatchesSearch(_boneRows[i])) continue;
 
-                GUILayout.BeginHorizontal();
                 var row = _boneRows[i];
-                var pickedBone = (Transform)EditorGUILayout.ObjectField(row.bone, typeof(Transform), true);
-                if (pickedBone != row.bone)
+                GUILayout.BeginHorizontal();
+
+                if (row.bone == null && !string.IsNullOrWhiteSpace(row.boneName))
                 {
-                    row.bone = pickedBone;
-                    if (pickedBone != null)
+                    GUILayout.Label(row.boneName + "  (not in scene)", _label, GUILayout.Height(ROW));
+                }
+                else
+                {
+                    var pickedBone = (Transform)EditorGUILayout.ObjectField(row.bone, typeof(Transform), true, GUILayout.Height(ROW));
+                    if (pickedBone != row.bone)
                     {
-                        row.boneName = pickedBone.name;
-                        row.localPos = pickedBone.localPosition;
+                        row.bone = pickedBone;
+                        if (pickedBone != null) row.boneName = pickedBone.name;
+                        _boneRows[i] = row;
                     }
                 }
-                if (GUILayout.Button("x", GUILayout.Width(22))) { _boneRows.RemoveAt(i); GUILayout.EndHorizontal(); break; }
-                _boneRows[i] = row;
-                GUILayout.EndHorizontal();
 
-                EditorGUI.indentLevel++;
-                row.boneName = EditorGUILayout.TextField("Bone", row.boneName ?? "");
-                row.localPos = EditorGUILayout.Vector3Field("Local Pos", row.localPos);
-                _boneRows[i] = row;
-                EditorGUI.indentLevel--;
-                GUILayout.Space(2);
+                if (GUILayout.Button("x", _button, GUILayout.Width(24f), GUILayout.Height(ROW))) { _boneRows.RemoveAt(i); GUILayout.EndHorizontal(); break; }
+                GUILayout.EndHorizontal();
+                GUILayout.Space(3);
+            }
+        }
+
+        private void DrawBoneDropArea()
+        {
+            Rect drop = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+            bool over = drop.Contains(Event.current.mousePosition);
+            bool dragging = DragAndDrop.objectReferences.Length > 0;
+
+            EditorGUI.DrawRect(drop, over && dragging
+                ? new Color(0.28f, 0.62f, 0.95f, 0.25f)
+                : (EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.05f) : new Color(0f, 0f, 0f, 0.06f)));
+            GUI.Label(drop, "Drag bones here", _small);
+
+            var e = Event.current;
+            if ((e.type == EventType.DragUpdated || e.type == EventType.DragPerform) && over)
+            {
+                DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+                if (e.type == EventType.DragPerform)
+                {
+                    DragAndDrop.AcceptDrag();
+                    foreach (var o in DragAndDrop.objectReferences)
+                    {
+                        var t = o as Transform;
+                        if (t == null && o is GameObject go) t = go.transform;
+                        if (t != null) AddBoneOffset(t);
+                    }
+                }
+                e.Use();
+            }
+        }
+
+        private void AddAllBones()
+        {
+            var root = ResolvePreviewObject();
+            var bones = new List<Transform>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.rootBone != null && !bones.Contains(smr.rootBone)) bones.Add(smr.rootBone);
+                foreach (var b in smr.bones)
+                    if (b != null && !bones.Contains(b)) bones.Add(b);
             }
 
-            GUILayout.Space(2);
-            if (GUILayout.Button("+ Add Row", GUILayout.Width(90)))
-                _boneRows.Add(new BoneRow());
+            if (bones.Count == 0)
+            {
+                Err($"no skinned bones under {root.name} - nothing to add");
+                return;
+            }
+
+            foreach (var b in bones) AddBoneOffset(b);
         }
 
         private void AddBoneOffset(Transform bone)
@@ -416,482 +915,20 @@ namespace BetterFG.Editor
                     row.boneName = bone.name;
                     row.localPos = bone.localPosition;
                     _boneRows[i] = row;
-                    Ok($"Updated bone offset -> {bone.name}");
                     return;
                 }
             }
 
-            _boneRows.Add(new BoneRow
-            {
-                bone = bone,
-                boneName = bone.name,
-                localPos = bone.localPosition
-            });
-            Ok($"Added bone offset -> {bone.name}");
+            _boneRows.Add(new BoneRow { bone = bone, boneName = bone.name, localPos = bone.localPosition });
         }
 
-        private void AddBoneOffsetsRecursive(Transform root)
-        {
-            if (root == null) return;
-            AddBoneOffsetsRecursiveInner(root);
-            Ok($"Added bone offsets from {root.name}");
-        }
-
-        private void AddBoneOffsetsRecursiveInner(Transform bone)
-        {
-            if (bone == null) return;
-            if (BoneMatchesSearch(bone.name))
-                AddBoneOffset(bone);
-
-            for (int i = 0; i < bone.childCount; i++)
-                AddBoneOffsetsRecursiveInner(bone.GetChild(i));
-        }
-
-        private bool BoneMatchesSearch(BoneRow row)
-        {
-            return BoneMatchesSearch(row.bone != null ? row.bone.name : row.boneName);
-        }
+        private bool BoneMatchesSearch(BoneRow row) => BoneMatchesSearch(row.bone != null ? row.bone.name : row.boneName);
 
         private bool BoneMatchesSearch(string boneName)
         {
             if (string.IsNullOrWhiteSpace(_boneSearch)) return true;
             if (string.IsNullOrWhiteSpace(boneName)) return false;
             return boneName.IndexOf(_boneSearch, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private void DrawCover()
-        {
-            GUILayout.BeginHorizontal();
-            EditorGUILayout.TextField("Image File", string.IsNullOrEmpty(_coverPath) ? "" : Path.GetFileName(_coverPath));
-            if (GUILayout.Button("Browse...", GUILayout.Width(70)))
-            {
-                string seed = !string.IsNullOrEmpty(_coverPath)
-                    ? _coverPath
-                    : EditorPrefs.GetString(PREF_LAST_COVER_DIR, "");
-                string picked = EditorUtility.OpenFilePanel("Select Cover Image", seed, "png,jpg,jpeg");
-                if (!string.IsNullOrEmpty(picked) && File.Exists(picked))
-                {
-                    _coverPath = picked;
-                    EditorPrefs.SetString(PREF_LAST_COVER_DIR, Path.GetDirectoryName(picked));
-                    LoadCoverPreview(picked);
-                    Repaint();
-                }
-            }
-            if (!string.IsNullOrEmpty(_coverPath) && GUILayout.Button("x", GUILayout.Width(22)))
-            {
-                _coverPath = "";
-                if (_coverPreview != null) { DestroyImmediate(_coverPreview); _coverPreview = null; }
-                Repaint();
-            }
-            GUILayout.EndHorizontal();
-
-            if (_coverPreview != null)
-            {
-                GUILayout.Space(4);
-
-                const float previewW = 200f;
-                const float previewH = 159f;
-
-                float texAspect = (float)_coverPreview.width / _coverPreview.height;
-                float boxAspect = previewW / previewH;
-
-                Rect outer = GUILayoutUtility.GetRect(previewW, previewH, GUILayout.ExpandWidth(false));
-                outer.x = (EditorGUIUtility.currentViewWidth - previewW) * 0.5f;
-
-                float drawW, drawH;
-                if (texAspect > boxAspect)
-                {
-                    drawW = previewW;
-                    drawH = previewW / texAspect;
-                }
-                else
-                {
-                    drawH = previewH;
-                    drawW = previewH * texAspect;
-                }
-
-                var drawRect = new Rect(
-                    outer.x + (previewW - drawW) * 0.5f,
-                    outer.y + (previewH - drawH) * 0.5f,
-                    drawW,
-                    drawH
-                );
-
-                EditorGUI.DrawRect(outer, new Color(0.1f, 0.1f, 0.1f));
-                GUI.DrawTexture(drawRect, _coverPreview, ScaleMode.StretchToFill);
-            }
-        }
-
-        private void LoadCoverPreview(string path)
-        {
-            if (_coverPreview != null) { DestroyImmediate(_coverPreview); _coverPreview = null; }
-            byte[] bytes = File.ReadAllBytes(path);
-            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (tex.LoadImage(bytes))
-                _coverPreview = tex;
-            else
-                DestroyImmediate(tex);
-        }
-
-        private void DrawLoad()
-        {
-            EditorGUILayout.HelpBox("Use this to add an existing packed skin folder to edit it. It will read info.json and re-fills all fields.", EditorMessageType.None);
-            GUILayout.Space(2);
-            GUI.backgroundColor = new Color(0.6f, 0.4f, 0.9f);
-            if (GUILayout.Button("Load Skin Folder.....", GUILayout.Height(24))) TryLoad();
-            GUI.backgroundColor = Color.white;
-        }
-
-        private void TryLoad()
-        {
-            string dir = EditorUtility.OpenFolderPanel("Select skin folder", _outputDir, "");
-            if (string.IsNullOrEmpty(dir)) return;
-
-            string infoPath = Path.Combine(dir, "info.json");
-            if (!File.Exists(infoPath)) { Err("No info.json found in that folder"); return; }
-
-            try
-            {
-                string json = File.ReadAllText(infoPath);
-
-                _name = SkinInfoJson.ReadStr(json, "name");
-                _author = SkinInfoJson.ReadStr(json, "author");
-                _description = SkinInfoJson.ReadStr(json, "description");
-                _group = SkinInfoJson.ReadStr(json, "group");
-                string file = SkinInfoJson.ReadStr(json, "file");
-                string type = SkinInfoJson.ReadStr(json, "type");
-
-                switch (type)
-                {
-                    case "accessory": _kind = SkinKind.Accessory; break;
-                    case "item": _kind = SkinKind.Item; break;
-                    case "plinth": _kind = SkinKind.Plinth; break;
-                    default: _kind = SkinKind.Costume; break;
-                }
-
-                if (!string.IsNullOrEmpty(file))
-                {
-                    string bp = Path.Combine(dir, file);
-                    if (File.Exists(bp)) _bundlePath = bp;
-                }
-
-                if (_kind == SkinKind.Costume)
-                {
-                    _keepBase = SkinInfoJson.ReadBool(json, "keepBase");
-                    _skinScale = SkinInfoJson.ReadFloat(json, "skinScale");
-                    _boneRows = SkinInfoJson.ReadBoneOffsets(json);
-                    RebindBoneRowsFromScene();
-                }
-                else _boneRows.Clear();
-
-                if (_kind == SkinKind.Item)
-                {
-                    _itemScale = SkinInfoJson.ReadFloat(json, "scale", 1f);
-                    RebindItemTransformsFromScene(
-                        SkinInfoJson.ReadItemBoneName(json, "left"),
-                        SkinInfoJson.ReadItemBoneName(json, "right"));
-                }
-                else
-                {
-                    _leftTransform = null;
-                    _rightTransform = null;
-                }
-
-                _outputDir = dir;
-
-                // If loaded from inside the public skins repo (…/<Kind>/<folder>),
-                // back-fill the repo root so re-packing targets the same place.
-                var parent = Directory.GetParent(dir);
-                var grandparent = parent?.Parent;
-                if (grandparent != null &&
-                    File.Exists(Path.Combine(grandparent.FullName, "select generate_catalog.bat")))
-                {
-                    _repoRoot = grandparent.FullName;
-                    RefreshGroups();
-                }
-
-                string coverPath = Path.Combine(dir, "cover.jpg");
-                if (!File.Exists(coverPath)) coverPath = Path.Combine(dir, "cover.png");
-                if (File.Exists(coverPath))
-                {
-                    _coverPath = coverPath;
-                    LoadCoverPreview(coverPath);
-                }
-
-                Ok($"Loaded <- {dir}");
-            }
-            catch (Exception ex) { Err($"Load failed: {ex.Message}"); }
-        }
-
-        private void DrawOutput()
-        {
-            EditorGUILayout.HelpBox(
-                "Select the public skins repo's generate_catalog.bat. The skin is placed in the right subfolder (Costumes / Accessories / Items / Plinths) automatically, named after the bundle file. The catalog is regenerated after packing.",
-                EditorMessageType.Info);
-            GUILayout.Space(2);
-
-            GUILayout.BeginHorizontal();
-            EditorGUI.BeginChangeCheck();
-            _repoRoot = EditorGUILayout.TextField("Repo Folder", _repoRoot);
-            if (EditorGUI.EndChangeCheck()) RefreshGroups();
-            if (GUILayout.Button("generate_catalog.bat...", GUILayout.Width(160)))
-            {
-                string seed = !string.IsNullOrEmpty(_repoRoot)
-                    ? _repoRoot
-                    : EditorPrefs.GetString(PREF_LAST_CATALOG_DIR, "");
-                string picked = EditorUtility.OpenFilePanel("Select generate_catalog.bat", seed, "bat");
-                if (!string.IsNullOrEmpty(picked))
-                {
-                    _repoRoot = Path.GetDirectoryName(picked);
-                    EditorPrefs.SetString(PREF_LAST_CATALOG_DIR, _repoRoot);
-                    RefreshGroups();
-                }
-            }
-            GUILayout.EndHorizontal();
-
-            string dest = ComputeDestDir();
-            if (!string.IsNullOrEmpty(dest))
-                EditorGUILayout.LabelField("Will pack to", dest, EditorStyles.miniLabel);
-
-            GUILayout.Space(6);
-            GUI.backgroundColor = new Color(0.25f, 0.7f, 0.35f);
-            if (GUILayout.Button("Pack Skin", GUILayout.Height(28))) TryPack();
-            GUI.backgroundColor = Color.white;
-        }
-
-        private static string KindFolder(SkinKind k)
-        {
-            switch (k)
-            {
-                case SkinKind.Costume: return "Costumes";
-                case SkinKind.Accessory: return "Accessories";
-                case SkinKind.Item: return "Items";
-                case SkinKind.Plinth: return "Plinths";
-                default: return "Costumes";
-            }
-        }
-
-        private string ComputeDestDir()
-        {
-            if (string.IsNullOrWhiteSpace(_repoRoot) || string.IsNullOrEmpty(BundleFileName)) return "";
-            return Path.Combine(_repoRoot, KindFolder(_kind), BundleFileName);
-        }
-
-        private void TryPack()
-        {
-            _statusMsg = "";
-
-            if (string.IsNullOrWhiteSpace(_bundlePath) || !File.Exists(_bundlePath)) { Err("Select a valid bundle file first."); return; }
-            if (string.IsNullOrWhiteSpace(_name)) { Err("Name is required."); return; }
-            if (string.IsNullOrWhiteSpace(_repoRoot) || !Directory.Exists(_repoRoot)) { Err("Select the repo's generate_catalog.bat first."); return; }
-
-            string dest = ComputeDestDir();
-
-            try
-            {
-                Directory.CreateDirectory(dest);
-                _outputDir = dest;
-                File.Copy(_bundlePath, Path.Combine(dest, BundleFileName), overwrite: true);
-                WriteInfoJson();
-                WriteCover();
-                RunCatalogBat();
-                WriteNewCatalog(_repoRoot);
-                Ok($"Packed -> {dest}");
-            }
-            catch (Exception ex) { Err($"Pack failed: {ex.Message}"); }
-        }
-
-        private void RunCatalogBat()
-        {
-            string bat = Path.Combine(_repoRoot, "generate_catalog.bat");
-            if (!File.Exists(bat)) return;
-
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = bat,
-                WorkingDirectory = _repoRoot,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using (var p = System.Diagnostics.Process.Start(psi))
-                p.WaitForExit();
-        }
-
-        // writes catalog2.json alongside the repo's flat catalog.json. this is the whole point of the
-        // per-repo file: the mod pulls the entire skin list in one request off catalog2.json instead
-        // of fetching every folder's info.json separately (which got the user rate-limited by github
-        // raw). we do it here in C# rather than relying on the repo's bat, so every repo — even old
-        // ones whose generate_catalog.bat predates this — gets catalog2.json the next time anyone
-        // packs. each entry is the folder's info.json copied verbatim with a "path" field prepended,
-        // so the mod parses it through the exact same path as a live info.json fetch.
-        private static void WriteNewCatalog(string repoRoot)
-        {
-            if (string.IsNullOrWhiteSpace(repoRoot) || !Directory.Exists(repoRoot)) return;
-
-            var entries = new List<string>();
-            foreach (string category in new[] { "Costumes", "Accessories", "Items", "Plinths", "Emotes" })
-            {
-                string root = Path.Combine(repoRoot, category);
-                if (!Directory.Exists(root)) continue;
-                foreach (string dir in Directory.GetDirectories(root))
-                {
-                    string info = Path.Combine(dir, "info.json");
-                    if (!File.Exists(info)) continue;
-                    string body = File.ReadAllText(info).Trim();
-                    int open = body.IndexOf('{');
-                    int close = body.LastIndexOf('}');
-                    if (open < 0 || close <= open) continue;
-                    // trim both ends: a trailing newline before the source '}' would otherwise land
-                    // between our inner text and the next field's comma, e.g. "]\n, group" — legal
-                    // whitespace but ugly, and it stacks up across entries. also drop a trailing comma
-                    // some info.json files carry before their closing brace.
-                    string inner = body.Substring(open + 1, close - open - 1).Trim().TrimEnd(',').Trim();
-                    string path = category + "/" + new DirectoryInfo(dir).Name;
-                    string pathField = "\"path\": \"" + path.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-                    string obj = inner.Length == 0 ? "{ " + pathField + " }" : "{ " + pathField + ", " + inner + " }";
-                    entries.Add(obj);
-                }
-            }
-
-            var sb = new System.Text.StringBuilder();
-            sb.Append('[');
-            for (int i = 0; i < entries.Count; i++)
-            {
-                if (i > 0) sb.Append(',');
-                sb.Append('\n');
-                sb.Append(entries[i]);
-            }
-            if (entries.Count > 0) sb.Append('\n');
-            sb.Append(']');
-            File.WriteAllText(Path.Combine(repoRoot, "catalog2.json"), sb.ToString(), new System.Text.UTF8Encoding(false));
-        }
-
-        private void WriteInfoJson()
-        {
-            var bones = new List<(string, Vector3)>();
-            foreach (var r in _boneRows)
-            {
-                string boneName = r.bone != null ? r.bone.name : r.boneName;
-                Vector3 localPos = r.bone != null ? r.bone.localPosition : r.localPos;
-                if (!string.IsNullOrWhiteSpace(boneName))
-                    bones.Add((boneName, localPos));
-            }
-
-            SkinInfoJson.Write(_outputDir, BundleFileName, _name, _author, _description, _group, KindStr(_kind),
-                keepBase: _keepBase, skinScale: _skinScale,
-                itemScale: _itemScale,
-                leftBoneName: _leftTransform != null ? _leftTransform.name : null,
-                rightBoneName: _rightTransform != null ? _rightTransform.name : null,
-                leftPos: _leftTransform != null ? _leftTransform.localPosition : Vector3.zero,
-                leftRot: _leftTransform != null ? _leftTransform.localEulerAngles : Vector3.zero,
-                rightPos: _rightTransform != null ? _rightTransform.localPosition : Vector3.zero,
-                rightRot: _rightTransform != null ? _rightTransform.localEulerAngles : Vector3.zero,
-                boneOffsets: bones);
-        }
-
-        private void RebindBoneRowsFromScene()
-        {
-            for (int i = 0; i < _boneRows.Count; i++)
-            {
-                var row = _boneRows[i];
-                row.bone = FindSceneTransform(row.boneName);
-                _boneRows[i] = row;
-            }
-        }
-
-        private void RebindItemTransformsFromScene(string leftBoneName, string rightBoneName)
-        {
-            _leftTransform = FindSceneTransform(leftBoneName);
-            _rightTransform = FindSceneTransform(rightBoneName);
-        }
-
-        private static Transform FindSceneTransform(string boneName)
-        {
-            if (string.IsNullOrWhiteSpace(boneName)) return null;
-
-            var all = Resources.FindObjectsOfTypeAll<Transform>();
-            for (int i = 0; i < all.Length; i++)
-            {
-                var t = all[i];
-                if (t == null) continue;
-                if (EditorUtility.IsPersistent(t)) continue;
-                if (string.Equals(t.name, boneName, StringComparison.Ordinal))
-                    return t;
-            }
-
-            for (int i = 0; i < all.Length; i++)
-            {
-                var t = all[i];
-                if (t == null) continue;
-                if (EditorUtility.IsPersistent(t)) continue;
-                if (string.Equals(t.name, boneName, StringComparison.OrdinalIgnoreCase))
-                    return t;
-            }
-
-            return null;
-        }
-
-        private void WriteCover()
-        {
-            if (string.IsNullOrEmpty(_coverPath) || !File.Exists(_coverPath)) return;
-
-            byte[] srcBytes = File.ReadAllBytes(_coverPath);
-            var src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!src.LoadImage(srcBytes)) { DestroyImmediate(src); return; }
-
-            float srcAspect = (float)src.width / src.height;
-            float dstAspect = (float)COVER_W / COVER_H;
-
-            int cropX, cropY, cropW, cropH;
-            if (srcAspect > dstAspect)
-            {
-                cropH = src.height;
-                cropW = Mathf.RoundToInt(src.height * dstAspect);
-                cropX = (src.width - cropW) / 2;
-                cropY = 0;
-            }
-            else
-            {
-                cropW = src.width;
-                cropH = Mathf.RoundToInt(src.width / dstAspect);
-                cropX = 0;
-                cropY = (src.height - cropH) / 2;
-            }
-
-            Color[] cropped = src.GetPixels(cropX, cropY, cropW, cropH);
-            DestroyImmediate(src);
-
-            var tmp = new Texture2D(cropW, cropH, TextureFormat.RGB24, false);
-            tmp.SetPixels(cropped);
-            tmp.Apply();
-
-            var rt = RenderTexture.GetTemporary(COVER_W, COVER_H, 0, RenderTextureFormat.ARGB32);
-            rt.filterMode = FilterMode.Bilinear;
-            Graphics.Blit(tmp, rt);
-            DestroyImmediate(tmp);
-
-            var prev = RenderTexture.active;
-            RenderTexture.active = rt;
-            var final = new Texture2D(COVER_W, COVER_H, TextureFormat.RGB24, false);
-            final.ReadPixels(new Rect(0, 0, COVER_W, COVER_H), 0, 0);
-            final.Apply();
-            RenderTexture.active = prev;
-            RenderTexture.ReleaseTemporary(rt);
-
-            File.WriteAllBytes(Path.Combine(_outputDir, "cover.jpg"), final.EncodeToJPG(92));
-            DestroyImmediate(final);
-        }
-
-        private static string KindStr(SkinKind k)
-        {
-            switch (k)
-            {
-                case SkinKind.Costume: return "costume";
-                case SkinKind.Accessory: return "accessory";
-                case SkinKind.Item: return "item";
-                case SkinKind.Plinth: return "plinth";
-                default: return "costume";
-            }
         }
 
         private void Ok(string msg) { _statusMsg = msg; _statusType = EditorMessageType.Info; Repaint(); }
