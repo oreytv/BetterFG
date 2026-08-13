@@ -108,10 +108,6 @@ namespace BetterFG.Patches.BettrFGRounds
         }
     }
 
-    // AbortGrab/AbortMantling are only patched while a unity round is live. a permanent prefix
-    // that returns true off-round recurses through il2cpp_runtime_invoke (the "original" call
-    // re-enters the detour) and stack-overflows the game, so instead the hooks are installed on
-    // round instantiate and removed on shutdown/reset, and the prefix always skips the original
     internal static class UnityRoundAbortHooks
     {
         static Harmony _harmony;

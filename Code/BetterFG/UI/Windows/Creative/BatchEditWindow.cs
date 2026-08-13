@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BetterFG.Features.CreativeIncrements;
+using BetterFG.Features.CreativeText;
 using LevelEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -32,7 +33,7 @@ namespace BetterFG.UI.Windows.Creative
 
         protected override float WindowWidth => 310f;
         protected override float WindowHeight => 340f;
-        protected override string WindowTitle => "Batch Edit";
+        protected override string WindowTitle => TextOnly ? "Text" : "Batch Edit";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg_2.png";
         protected override string BgHoverResourceName => "BetterFG.assets.ui.windows.generalbg_2_hover.png";
         protected override bool DraggableFromTitle => true;
@@ -46,8 +47,9 @@ namespace BetterFG.UI.Windows.Creative
         private static readonly Color BTN_ARROW = new Color(0.28f, 0.28f, 0.34f, 1f);
         private static readonly Color HINT_COL = new Color(1f, 1f, 1f, 0.55f);
         private static readonly Color OK_COL = new Color(0.55f, 0.85f, 0.55f, 1f);
+        private static readonly Color STEP_COL = new Color(0.55f, 0.75f, 1f, 0.9f);
 
-        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics", "Link" };
+        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics", "Link", "Text" };
         // built-ins first, then whatever external DLLs registered (usually none). rebuilt each open so a
         // plugin that registers after the window's first build still shows up next time it opens.
         private string[] Subtabs()
@@ -97,15 +99,37 @@ namespace BetterFG.UI.Windows.Creative
 
         private Text _countLabel;
         private Text _statusLabel;
+        private Text _textCountLabel;
+        private Text _textSizeLabel;
+        private Text _textDetailLabel;
 
         // ── api ───────────────────────────────────────────────────────────────
+
+        // the carousel's TEXT entry opens the window on its Text page alone: no other subtab, no
+        // selection to act on, so the carousel arrows and the selection auto-close are both off.
+        public static bool TextOnly { get; private set; }
+        private const int TEXT_SUBTAB = 5;
+
+        public static void OpenTextTool()
+        {
+            if (Instance != null)
+            {
+                if (!TextOnly) Instance.Close();
+                else return;
+            }
+            TextOnly = true;
+            Patches.BatchEditBlockPlacePatch.BlockedAPlace = false;
+            var go = new GameObject("BetterFG_TextToolWindow");
+            go.AddComponent<BatchEditWindow>().Configure();
+        }
 
         public void Configure()
         {
             Instance = this;
             AnyOpen = true;
+            if (TextOnly) _subtab = TEXT_SUBTAB;
             // selected a controller? that's what you came here for — land on Link, not Recolour
-            if (BatchLink.Controller() != null) _subtab = 4;
+            else if (BatchLink.Controller() != null) _subtab = 4;
             SetAnchorPosition(new Vector2(560f, 30f));
             ShowWindow();
             RebuildContent();
@@ -117,6 +141,7 @@ namespace BetterFG.UI.Windows.Creative
             BatchScale.BakeOwnerScale(); // hand the editor's multiselect owner back unscaled
             if (Instance == this) Instance = null;
             AnyOpen = false;
+            TextOnly = false;
             // commit the selection ourselves a frame after close (AnyOpen is false by then, so our own
             // block prefix lets it through) — saves you clicking off the backlog of blocked place attempts.
             CreativeSelectionWatcher.Instance?.PlaceAfterFrame();
@@ -127,6 +152,7 @@ namespace BetterFG.UI.Windows.Creative
         {
             if (Instance == this) Instance = null;
             AnyOpen = false;
+            TextOnly = false;
             // window closing — let the shown extra tear down its world overlay.
             if (_activeExtra != null)
             {
@@ -147,6 +173,7 @@ namespace BetterFG.UI.Windows.Creative
 
             if (_subtab == 1) UpdateScaleRowsDim(); // pivot can appear/vanish live in "from selected"
 
+            if (TextOnly) return; // nothing selected to watch, the close button is the only way out
             int sel = BatchRecolour.SelectionCount();
             if (sel == 0) { Close(); return; }
             // selection changed mid-edit → checkpoint the pending recolour (its snapshot is now stale)
@@ -196,17 +223,25 @@ namespace BetterFG.UI.Windows.Creative
 
             // ── carousel header: ‹  Style  › ──
             float arrow = 22f;
-            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, arrow, 22f),
-                "‹", BTN_ARROW, WHITE, FS_BODY, new Action(() => CycleSubtab(-1)));
-            MakeLabel(contentRoot, new Rect(PAD + arrow, y, w - arrow * 2f, 22f),
-                subtabs[_subtab], FS_BODY, WHITE, TextAnchor.MiddleCenter);
-            UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - arrow, y, arrow, 22f),
-                "›", BTN_ARROW, WHITE, FS_BODY, new Action(() => CycleSubtab(+1)));
-            y += 26f;
+            if (TextOnly)
+            {
+                MakeLabel(contentRoot, new Rect(PAD, y, w, 22f), subtabs[_subtab], FS_BODY, WHITE, TextAnchor.MiddleCenter);
+                y += 26f;
+            }
+            else
+            {
+                UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, arrow, 22f),
+                    "‹", BTN_ARROW, WHITE, FS_BODY, new Action(() => CycleSubtab(-1)));
+                MakeLabel(contentRoot, new Rect(PAD + arrow, y, w - arrow * 2f, 22f),
+                    subtabs[_subtab], FS_BODY, WHITE, TextAnchor.MiddleCenter);
+                UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - arrow, y, arrow, 22f),
+                    "›", BTN_ARROW, WHITE, FS_BODY, new Action(() => CycleSubtab(+1)));
+                y += 26f;
 
-            _countLabel = MakeLabel(contentRoot, new Rect(PAD, y, w - 24f, 14f),
-                CountText(), FS_SM, new Color(1f, 1f, 1f, 0.72f));
-            y += 18f;
+                _countLabel = MakeLabel(contentRoot, new Rect(PAD, y, w - 24f, 14f),
+                    CountText(), FS_SM, new Color(1f, 1f, 1f, 0.72f));
+                y += 18f;
+            }
 
             MakeSeparator(contentRoot, new Rect(PAD, y, w, 1f));
             y += 6f;
@@ -218,6 +253,7 @@ namespace BetterFG.UI.Windows.Creative
                 case 2: BuildMaterial(contentRoot, w, ref y); break;
                 case 3: BuildPhysics(contentRoot, w, ref y); break;
                 case 4: BuildLink(contentRoot, w, ref y); break;
+                case 5: BuildText(contentRoot, w, ref y); break;
                 default: BuildExtra(contentRoot, w, ref y); break;
             }
 
@@ -591,6 +627,134 @@ namespace BetterFG.UI.Windows.Creative
             SetStatus(n > 0 ? $"unlinked {n} object(s)" : "none of the selection was linked to it", n > 0 ? OK_COL : HINT_COL);
         }
 
+        // ── text subtab ──────────────────────────────────────────────────────
+
+        private void BuildText(RectTransform root, float w, ref float y)
+        {
+            MakeLabel(root, new Rect(PAD, y, w, 14f), "1  WHAT SHOULD IT SAY", FS_SM, STEP_COL);
+            y += 17f;
+            var field = UGUIShip.CreateInputField(root, new Rect(PAD, y, w, 24f), "type your text", null, WHITE, FS_BODY);
+            UGUIShip.SetInputText(field, CreativeText.Text);
+            field.onEndEdit.AddListener(new Action<string>(v =>
+            {
+                CreativeText.Text = v;
+                CreativeText.Invalidate();
+                RefreshTextCount();
+            }));
+            y += 32f;
+
+            MakeLabel(root, new Rect(PAD, y, w, 14f), "2  FONT", FS_SM, STEP_COL);
+            y += 17f;
+            var fonts = CreativeText.FontOptions();
+            var labels = new List<string>();
+            foreach (var f in fonts) labels.Add(f.Display);
+            var dropdown = UGUIShip.CreateDropdown(root, new Rect(PAD, y, w - 46f, 24f), labels, CreativeText.FontIndex(),
+                new Action<int>(i =>
+                {
+                    if (i < 0 || i >= fonts.Count) return;
+                    CreativeText.FontChoice = fonts[i].Path;
+                    CreativeText.Invalidate();
+                    RefreshTextCount();
+                }), FS_SM, 150f, w - 46f);
+            CreativeTextFontRows.Watch(this, dropdown, fonts);
+            UGUIShip.CreateButton(root, new Rect(PAD + w - 42f, y, 42f, 24f), "FILE", BTN_STEP, WHITE, FS_SM,
+                new Action(PickTextFont));
+            y += 32f;
+
+            MakeLabel(root, new Rect(PAD, y, w, 14f), "3  MADE OUT OF", FS_SM, STEP_COL);
+            y += 17f;
+            float half = (w - 6f) * 0.5f;
+            bool sticker = CreativeText.Sticker;
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 24f), "STICKERS",
+                sticker ? BTN_APPLY : BTN_ARROW, WHITE, FS_BODY,
+                new Action(() => { CreativeText.Sticker = true; CreativeText.Invalidate(); RebuildContent(); }));
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 24f), "BLOCKS",
+                sticker ? BTN_ARROW : BTN_APPLY, WHITE, FS_BODY,
+                new Action(() => { CreativeText.Sticker = false; CreativeText.Invalidate(); RebuildContent(); }));
+            y += 32f;
+
+            _textSizeLabel = MakeLabel(root, new Rect(PAD, y, w, 14f), "", FS_SM, STEP_COL);
+            y += 17f;
+            UGUIShip.CreateSlider(root, PAD, y, w, "", Norm(CreativeText.Height, CreativeText.MinHeight, CreativeText.MaxHeight),
+                16f, 4f, FS_SM,
+                new Action<float>(v =>
+                {
+                    CreativeText.Height = Denorm(v, CreativeText.MinHeight, CreativeText.MaxHeight);
+                    RefreshTextCount();
+                }), STEP_COL, null, false);
+            y += 26f;
+
+            _textDetailLabel = MakeLabel(root, new Rect(PAD, y, w, 14f), "", FS_SM, STEP_COL);
+            y += 17f;
+            UGUIShip.CreateSlider(root, PAD, y, w, "", Norm(CreativeText.Quality, CreativeText.MinQuality, CreativeText.MaxQuality),
+                16f, 4f, FS_SM,
+                new Action<float>(v =>
+                {
+                    CreativeText.Quality = Denorm(v, CreativeText.MinQuality, CreativeText.MaxQuality);
+                    CreativeText.Invalidate();
+                    RefreshTextCount();
+                }), STEP_COL, null, false);
+            y += 26f;
+
+            var placeBtn = UGUIShip.CreateButton(root, new Rect(PAD, y, w, 30f), "", BTN_APPLY, WHITE, FS_BODY,
+                new Action(PlaceText));
+            _textCountLabel = placeBtn.GetComponentInChildren<Text>();
+            RefreshTextCount();
+            y += 34f;
+        }
+
+        private static float Norm(int v, int lo, int hi) => (v - lo) / (float)(hi - lo);
+
+        private static int Denorm(float v, int lo, int hi) => Mathf.RoundToInt(Mathf.Lerp(lo, hi, v));
+
+        private void RefreshTextCount()
+        {
+            if (_textSizeLabel != null)
+                _textSizeLabel.text = $"4  SIZE  —  {CreativeText.Height} UNITS TALL";
+
+            if (_textDetailLabel != null)
+            {
+                int usable = CreativeText.UsableQuality();
+                _textDetailLabel.text = usable > 0 && CreativeText.Quality > usable
+                    ? $"5  DETAIL  —  {CreativeText.Quality}, ONLY {usable} FITS THIS SIZE"
+                    : $"5  DETAIL  —  {CreativeText.Quality}";
+            }
+
+            if (_textCountLabel == null) return;
+            int n = CreativeText.PlannedObjects(out string note);
+            _textCountLabel.text = n > 0
+                ? (note != null ? $"{n}+ OBJECTS, {note.ToUpperInvariant()}" : $"PLACE {n} OBJECTS")
+                : $"NOTHING TO PLACE ({note ?? "empty"})";
+        }
+
+        private void PickTextFont()
+        {
+            WinDialogs.PickFile("Pick a font (.ttf / .otf)", new Action<string>(path =>
+            {
+                if (string.IsNullOrEmpty(path)) return;
+                CreativeText.FontChoice = path;
+                CreativeText.Invalidate();
+                RebuildContent();
+            }), "Fonts\0*.ttf;*.otf\0All Files\0*.*\0");
+        }
+
+        // dropping the text hands you its middle piece already picked up, so the very next move drags the
+        // whole group (CreativeGroups carries the rest along) — nothing to multi-select by hand.
+        private void PlaceText()
+        {
+            int n = CreativeText.Place(out string note, out var middle);
+            if (n <= 0)
+            {
+                RefreshTextCount();
+                SetStatus(note.Length > 0 ? note : "nothing placed", HINT_COL);
+                return;
+            }
+
+            Plugin.Log.LogInfo($"text down ({note}), handing you {(middle != null ? middle.name : "nothing")} to drag it by");
+            if (middle != null) middle.SelectObject();
+            Close();
+        }
+
         // ── registered extra subtab ──────────────────────────────────────────
 
         // hands the external module a context and lets it lay out its own body from y downward. index into
@@ -677,7 +841,8 @@ namespace BetterFG.UI.Windows.Creative
         {
             CommitColourEntry(); // leaving Recolour checkpoints any pending edit
             int len = Subtabs().Length;
-            _subtab = (_subtab + d + len) % len;
+            do _subtab = (_subtab + d + len) % len;
+            while (_subtab == TEXT_SUBTAB);
             RebuildContent();
         }
 

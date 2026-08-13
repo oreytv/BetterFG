@@ -1,3 +1,5 @@
+using FG.Common;
+using FG.Common.Fraggle;
 using HarmonyLib;
 using LevelEditor;
 
@@ -70,6 +72,14 @@ namespace BetterFG.Features.CreativeGroups
         [HarmonyPostfix]
         public static void Postfix([HarmonyArgument(0)] LevelEditorPlaceableObject lepo, ref string __result)
             => CreativeGroups.DecorateHistoryName(lepo, ref __result);
+    }
+
+    [HarmonyPatch(typeof(LevelEditorManagerUI), nameof(LevelEditorManagerUI.OnSavedLevelEvent))]
+    internal static class CreativeGroupLevelSavedPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix([HarmonyArgument(0)] LevelEditorLevelSavedEvent saveLevelEvent)
+            => CreativeGroups.OnLevelSaved(saveLevelEvent);
     }
 
     [HarmonyPatch(typeof(LevelEditorParameterMenuViewModel), "BuildParameterEntries")]

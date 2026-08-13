@@ -1,8 +1,11 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Features.UnityRound.Editor;
 using FG.Common;
+using FG.Common.Fraggle;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using LevelEditor;
@@ -16,6 +19,7 @@ namespace BetterFG.Features.CreativeGroups
         public const string ActiveParamName = "Group Enabled";
         public const string PickParamName = "Group";
         private static readonly Color OutlineColour = new Color(0.35f, 0.85f, 1f, 1f);
+        private static readonly Color OffOutlineColour = new Color(0.55f, 0.55f, 0.58f, 1f);
 
         private sealed class Group
         {
@@ -30,6 +34,8 @@ namespace BetterFG.Features.CreativeGroups
         private static readonly Dictionary<string, int> _index = new Dictionary<string, int>();
         private static string _code;
         private static int _nextId = 1;
+        private static bool _dirty;
+        private static bool _pendingWrite;
 
         private static readonly Dictionary<string, LevelEditorPlaceableObject> _byGuid
             = new Dictionary<string, LevelEditorPlaceableObject>();
@@ -89,8 +95,14 @@ namespace BetterFG.Features.CreativeGroups
             if (string.IsNullOrEmpty(_code) && _groups.Count > 0)
             {
                 _code = code;
-                Save();
-                Plugin.Log.LogInfo($"level finally has a share code, bound {_groups.Count} group(s) to {code}");
+                if (_pendingWrite)
+                {
+                    Save();
+                    _pendingWrite = false;
+                    _dirty = false;
+                }
+                Plugin.Log.LogInfo($"level finally has a share code, {_groups.Count} group(s) bound to {code}"
+                    + (_dirty ? ", still only in memory until the next level save" : ""));
                 return;
             }
 
@@ -108,6 +120,8 @@ namespace BetterFG.Features.CreativeGroups
             _byGuid.Clear();
             _indexedCount = -1;
             _nextId = 1;
+            _dirty = false;
+            _pendingWrite = false;
         }
 
         private static void Load()
@@ -182,6 +196,32 @@ namespace BetterFG.Features.CreativeGroups
             }
         }
 
+        public static void OnLevelSaved(LevelEditorLevelSavedEvent evt)
+        {
+            var result = evt.Results;
+            if (result != LevelEditorSavedEvent.Result.No_Error
+                && result != LevelEditorSavedEvent.Result.Thumbnail_Save_Failed
+                && result != LevelEditorSavedEvent.Result.Thumbnail_Load_Failed)
+            {
+                Plugin.Log.LogWarning($"level save came back {result}, hanging on to the group changes rather than writing them");
+                return;
+            }
+
+            EnsureLevel();
+            if (string.IsNullOrEmpty(_code))
+            {
+                _pendingWrite = true;
+                Plugin.Log.LogInfo("level saved before it had a share code, groups go down as soon as one turns up");
+                return;
+            }
+
+            if (!_dirty && !_pendingWrite) return;
+            Save();
+            _dirty = false;
+            _pendingWrite = false;
+            Plugin.Log.LogInfo($"{_groups.Count} group(s) saved with {_code}{(evt.autoSave ? " (autosave)" : "")}");
+        }
+
         public static int GroupIdOf(LevelEditorPlaceableObject obj)
         {
             EnsureLevel();
@@ -226,7 +266,7 @@ namespace BetterFG.Features.CreativeGroups
             EnsureLevel();
             if (!_groups.TryGetValue(id, out var g) || g.Active == active) return;
             g.Active = active;
-            Save();
+            _dirty = true;
             Plugin.Log.LogInfo($"group {id} ({g.Name}) is {(active ? "back on" : "off, its objects move on their own now")}");
         }
 
@@ -236,13 +276,44 @@ namespace BetterFG.Features.CreativeGroups
             return id != 0 && IsActive(id) ? id : 0;
         }
 
+        public static int CreateGroup(string name, List<LevelEditorPlaceableObject> objs)
+        {
+            EnsureLevel();
+            var g = new Group { Id = _nextId++ };
+            string clean = CleanName(name);
+            g.Name = string.IsNullOrEmpty(clean) ? "Group " + g.Id : clean;
+
+            foreach (var o in objs)
+            {
+                string guid = GuidOf(o);
+                if (guid == null) continue;
+                DetachGuid(guid);
+                g.Guids.Add(guid);
+                _index[guid] = g.Id;
+            }
+
+            if (g.Guids.Count == 0)
+            {
+                _nextId--;
+                Plugin.Log.LogWarning($"asked for a group called {g.Name} but none of the {objs.Count} object(s) had a guid yet");
+                return 0;
+            }
+
+            _groups[g.Id] = g;
+            _byGuid.Clear();
+            _indexedCount = -1;
+            _dirty = true;
+            Plugin.Log.LogInfo($"group {g.Id} '{g.Name}' made out of {g.Guids.Count} object(s)");
+            return g.Id;
+        }
+
         public static void Rename(int id, string name)
         {
             EnsureLevel();
             if (!_groups.TryGetValue(id, out var g)) return;
             string clean = CleanName(name);
             g.Name = string.IsNullOrEmpty(clean) ? "Group " + id : clean;
-            Save();
+            _dirty = true;
             Plugin.Log.LogInfo($"group {id} is called {g.Name} now");
         }
 
@@ -304,7 +375,11 @@ namespace BetterFG.Features.CreativeGroups
             int id = GroupIdOf(obj);
             if (id == 0) return;
 
-            var settings = new OutlineSettings { OutlineColor = OutlineColour, Animate = false };
+            var settings = new OutlineSettings
+            {
+                OutlineColor = IsActive(id) ? OutlineColour : OffOutlineColour,
+                Animate = false
+            };
             var sel = LevelEditorMultiSelectionHandler.Selection();
             foreach (var m in Members(id))
             {
@@ -778,7 +853,8 @@ namespace BetterFG.Features.CreativeGroups
             _paramGroup = dest != null ? dest.Id : 0;
             OnHover(target);
             RefreshInfoPanel();
-            Save();
+            RebuildParamRows(target);
+            _dirty = true;
 
             if (dest != null) Plugin.Log.LogInfo($"{guids.Count} object(s) into {dest.Name}, {dest.Guids.Count} in there now");
             else Plugin.Log.LogInfo($"{guids.Count} object(s) out of their group");
@@ -790,6 +866,23 @@ namespace BetterFG.Features.CreativeGroups
             if (id == 0) return;
             SetActive(id, on);
             if (!on) EndDrag("group switched off");
+            OnHover(_pickTarget);
+            RefreshInfoPanel();
+            RebuildParamRows(_pickTarget);
+        }
+
+        private static void RebuildParamRows(LevelEditorPlaceableObject target)
+        {
+            if (target == null || !LevelEditorParameterMenuViewModel.IsParametersScreenOpen()) return;
+            UI.Windows.Creative.CreativeSelectionWatcher.Instance.StartCoroutine(RebuildNextFrame(target).WrapToIl2Cpp());
+        }
+
+        private static IEnumerator RebuildNextFrame(LevelEditorPlaceableObject target)
+        {
+            yield return null;
+            if (target == null || !LevelEditorParameterMenuViewModel.IsParametersScreenOpen()) yield break;
+            var vm = LevelEditorParameterMenuViewModel._instance;
+            LevelEditorParameterMenuViewModel.UpdateParametersScreen(target, vm.SelectedIndex);
         }
 
         private static void OnScaleParamChanged(float value)
@@ -816,7 +909,7 @@ namespace BetterFG.Features.CreativeGroups
                 m.Position = pivot + (m.Position - pivot) * rel;
             }
 
-            if (_groups.TryGetValue(id, out var g)) { g.Scale = value; Save(); }
+            if (_groups.TryGetValue(id, out var g)) { g.Scale = value; _dirty = true; }
             Plugin.Log.LogInfo($"group {id} x{rel:0.###} (now {value:0.##}), {members.Count} objects around {pivot}");
         }
     }

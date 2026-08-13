@@ -91,6 +91,32 @@ namespace BetterFG.UI.Windows.Creative
             return null;
         }
 
+        public static LevelEditorRangeParameter GetRangeParam(LevelEditorPlaceableObject obj)
+        {
+            if (obj == null) return null;
+            var handlers = obj.GetComponentsInChildren<LevelEditorPlaceableParameterHandler>(true);
+            if (handlers == null) return null;
+            for (int i = 0; i < handlers.Length; i++)
+            {
+                var r = handlers[i]?.TryCast<LevelEditorRangeParameter>();
+                if (r != null) return r;
+            }
+            return null;
+        }
+
+        public static LevelEditorDecalScaleParameter GetDecalScaleParam(LevelEditorPlaceableObject obj)
+        {
+            if (obj == null) return null;
+            var handlers = obj.GetComponentsInChildren<LevelEditorPlaceableParameterHandler>(true);
+            if (handlers == null) return null;
+            for (int i = 0; i < handlers.Length; i++)
+            {
+                var d = handlers[i]?.TryCast<LevelEditorDecalScaleParameter>();
+                if (d != null) return d;
+            }
+            return null;
+        }
+
         // read the object's CURRENT colour/surface/visibility/collision into `into`, but only for the
         // fields `template` carries — used to build an inverse snapshot for redo (see BatchEditHistory).
         public static void SnapCurrent(LevelEditorPlaceableObject obj,
