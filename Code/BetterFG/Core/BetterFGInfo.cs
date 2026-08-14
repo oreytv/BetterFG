@@ -13,7 +13,7 @@ namespace BetterFG.Core
 
         public static string Version => MyPluginInfo.PLUGIN_VERSION;
 
-        public static string WatermarkLine1 => "Made by oreyre (oreytv)";
+        public static string WatermarkLine1 => "Made by oreyre9000";
         // the "BettrFG" name is rendered as the logo image (see AddWatermarkLogoLine);
         // this is the rest of the line that follows it.
         public static string WatermarkLine2 => IsPublicRelease

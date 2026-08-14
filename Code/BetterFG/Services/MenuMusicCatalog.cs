@@ -13,7 +13,7 @@ namespace BetterFG.Services
     public static class MenuMusicCatalog
     {
         private const string RELEASE_API =
-            "https://api.github.com/repos/oreytv/BettrFG/releases/tags/music";
+            "https://api.github.com/repos/oreyre9000/BettrFG/releases/tags/music";
 
         public struct Track
         {

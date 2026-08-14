@@ -121,7 +121,7 @@ namespace BetterFG.Network
         }
 
         /// <summary>
-        /// Looks up by full key (e.g. xb1_oreytv) or clean name (e.g. oreytv).
+        /// Looks up by full key (e.g. xb1_oreyre9000) or clean name (e.g. oreyre9000).
         /// </summary>
         public static PlayerRemoteProfile TryGet(string key)
         {

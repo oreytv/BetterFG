@@ -5,7 +5,7 @@ namespace BetterFG.Installer
     {
         public const string DisplayName = "BettrFG";
         public const string InstallerName = "BettrFG Installer";
-        public const string RepoOwner = "oreytv";
+        public const string RepoOwner = "oreyre9000";
         public const string RepoName = "BettrFG";
         public const string BepInExAssetName = "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.755.zip";
         public const string BepInExDownloadUrl = "https://builds.bepinex.dev/projects/bepinex_be/755/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.755%2B3fab71a.zip";

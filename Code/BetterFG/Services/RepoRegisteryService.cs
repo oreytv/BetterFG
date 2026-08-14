@@ -9,7 +9,7 @@ namespace BetterFG.Services
 {
     public class SkinRepo
     {
-        public string githubUrl;   // e.g. https://github.com/oreytv/BetterFGPublicSkins
+        public string githubUrl;   // e.g. https://github.com/oreyre9000/BetterFGPublicSkins
         public string author;      // parsed from url
         public string repoName;    // parsed from url
         public bool isDefault;     // can't be removed
@@ -34,8 +34,8 @@ namespace BetterFG.Services
         public event Action<SkinRepo, Texture2D> OnCoverLoaded;
         public event Action OnFeaturedLoaded;
 
-        public const string DEFAULT_GITHUB_URL = "https://github.com/oreytv/BetterFGPublicSkins";
-        public const string FEATURED_JSON_URL = "https://raw.githubusercontent.com/oreytv/BettrFG/main/featured.json";
+        public const string DEFAULT_GITHUB_URL = "https://github.com/oreyre9000/BetterFGPublicSkins";
+        public const string FEATURED_JSON_URL = "https://raw.githubusercontent.com/oreyre9000/BettrFG/main/featured.json";
         public const long MAX_BUNDLE_BYTES = 4_048_576; // temu 4 MB
 
         private const string SETTINGS_KEY = "repos.list";
@@ -80,7 +80,7 @@ namespace BetterFG.Services
             return Instance?.Active?.RawBase ?? DEFAULT_RAW;
         }
 
-        public const string DEFAULT_RAW = "https://raw.githubusercontent.com/oreytv/BetterFGPublicSkins/main";
+        public const string DEFAULT_RAW = "https://raw.githubusercontent.com/oreyre9000/BetterFGPublicSkins/main";
 
         public void FetchCover(SkinRepo repo)
         {

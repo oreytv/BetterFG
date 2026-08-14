@@ -50,7 +50,7 @@ namespace BetterFG.Network
         public string type;
         public string source;
         public string localPath;
-        public string repoUrl; // raw base URL, e.g. https://raw.githubusercontent.com/oreytv/BetterFGPublicSkins/main
+        public string repoUrl; // raw base URL, e.g. https://raw.githubusercontent.com/oreyre9000/BetterFGPublicSkins/main
     }
 
     public class PlayerRemoteProfile

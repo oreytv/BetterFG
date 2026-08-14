@@ -19,8 +19,8 @@ namespace BetterFG.UI
     {
         public BetterFGUpdateWindow(IntPtr ptr) : base(ptr) { }
 
-        private const string API_URL = "https://api.github.com/repos/oreytv/BettrFG/releases/latest";
-        private const string INSTALLER_URL = "https://github.com/oreytv/BettrFG/releases/tag/installer";
+        private const string API_URL = "https://api.github.com/repos/oreyre9000/BettrFG/releases/latest";
+        private const string INSTALLER_URL = "https://github.com/oreyre9000/BettrFG/releases/tag/installer";
 
         private const float W = 560f;
         private const float H = 300f;
