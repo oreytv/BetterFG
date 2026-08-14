@@ -209,6 +209,7 @@ namespace BetterFG.Features.Replay
             foreach (var c in root.GetComponentsInChildren<NPCAI>(true)) if (c != null) act(c);
             foreach (var c in root.GetComponentsInChildren<MPGNetObject>(true)) if (c != null) act(c);
             foreach (var c in root.GetComponentsInChildren<Levels.ProceduralGeneration.COMMON_RandomSegmentGeneration>(true)) if (c != null) act(c);
+            foreach (var c in root.GetComponentsInChildren<VfxSnowballScaleDynamic>(true)) if (c != null) act(c);
         }
     }
 
