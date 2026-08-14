@@ -633,6 +633,9 @@ namespace BetterFG.Features.Replay
                         _tracked[kvp.Key] = tracked;
                         _beanOwners[beanId] = kvp.Key;
                         if (found != null) _animBeans[found.GetInstanceID()] = fgcc;
+
+                        var accessory = fgcc.GetComponentInChildren<Levels.Tag.TailTagAccessory>(true);
+                        if (accessory != null) CaptureTailState(accessory, accessory.AccessoryEnabled);
                     }
 
                     int sh = 0;

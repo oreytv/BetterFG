@@ -1454,33 +1454,7 @@ namespace BetterFG.UI.Tab
         }
 
         private static TMPro.TextMeshProUGUI ReplaceTextWithTmp(Text src, string text, TMPro.TMP_FontAsset font)
-        {
-            if (src == null || font == null) return null;
-            var go = src.gameObject;
-            var align = src.alignment;
-            // hide the underlying UGUI label hard — clearing .text isn't enough because other code
-            // (the dropdown's own onToggle callback) writes the label back into it, which would
-            // re-render in the default font on top of our TMP overlay.
-            src.enabled = false;
-
-            var tmpGo = new GameObject("TmpLabel");
-            tmpGo.transform.SetParent(go.transform, false);
-            var trt = tmpGo.AddComponent<RectTransform>();
-            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
-            trt.offsetMin = trt.offsetMax = Vector2.zero;
-            var tmp = tmpGo.AddComponent<TMPro.TextMeshProUGUI>();
-            tmp.font = font;
-            tmp.text = text;
-            tmp.fontSize = src.fontSize + 2; // TMP looks slightly smaller at the same px
-            tmp.color = src.color;
-            tmp.raycastTarget = false;
-            tmp.alignment = align == TextAnchor.MiddleRight ? TMPro.TextAlignmentOptions.MidlineRight
-                : align == TextAnchor.MiddleCenter ? TMPro.TextAlignmentOptions.Center
-                : TMPro.TextAlignmentOptions.MidlineLeft;
-            // never let the font sweep replace these previews with the user's chosen font.
-            FontReplacementService.Protect(tmp);
-            return tmp;
-        }
+            => UGUIShip.ReplaceTextWithTmp(src, text, font);
 
         private void OnAddFontEntry()
         {

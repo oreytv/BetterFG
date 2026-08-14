@@ -307,6 +307,72 @@ namespace BetterFG.Features.CreativeGroups
             return g.Id;
         }
 
+        public static List<int> Ids()
+        {
+            EnsureLevel();
+            return new List<int>(_groups.Keys);
+        }
+
+        public static int LinkSelection(int id, string name, out int landed)
+        {
+            landed = 0;
+            EnsureLevel();
+            var sel = LevelEditorMultiSelectionHandler.Selection();
+            if (sel == null || sel.Count == 0) return 0;
+
+            var objs = new List<LevelEditorPlaceableObject>();
+            foreach (var o in sel) objs.Add(o);
+
+            if (!_groups.TryGetValue(id, out var g))
+            {
+                landed = CreateGroup(name, objs);
+                return landed == 0 ? 0 : MemberCount(landed);
+            }
+
+            string clean = CleanName(name);
+            if (!string.IsNullOrEmpty(clean) && clean != g.Name) Rename(g.Id, clean);
+
+            int moved = 0;
+            foreach (var o in objs)
+            {
+                string guid = GuidOf(o);
+                if (guid == null) continue;
+                if (_index.TryGetValue(guid, out int had) && had == g.Id) continue;
+                DetachGuid(guid);
+                g.Guids.Add(guid);
+                _index[guid] = g.Id;
+                moved++;
+            }
+
+            landed = g.Id;
+            if (moved == 0) { Plugin.Log.LogInfo($"all {objs.Count} of those are already in {g.Name}"); return 0; }
+            _dirty = true;
+            Plugin.Log.LogInfo($"{moved} more into {g.Name}, {g.Guids.Count} in there now");
+            return moved;
+        }
+
+        public static int UnlinkSelection()
+        {
+            EnsureLevel();
+            var sel = LevelEditorMultiSelectionHandler.Selection();
+            if (sel == null || sel.Count == 0) return 0;
+
+            int loose = 0;
+            foreach (var o in sel)
+            {
+                string guid = GuidOf(o);
+                if (guid == null || !_index.ContainsKey(guid)) continue;
+                DetachGuid(guid);
+                loose++;
+            }
+            if (loose == 0) return 0;
+
+            _dirty = true;
+            ClearOutline();
+            Plugin.Log.LogInfo($"{loose} object(s) on their own again");
+            return loose;
+        }
+
         public static void Rename(int id, string name)
         {
             EnsureLevel();
@@ -454,28 +520,45 @@ namespace BetterFG.Features.CreativeGroups
         }
 
         private static LevelEditorPlaceableObject _dragObj;
+        private static string _dragGuid;
         private static GameObject _dragHolder;
         private static readonly List<LevelEditorPlaceableObject> _dragRiders = new List<LevelEditorPlaceableObject>();
+        private static readonly List<string> _dragRiderGuids = new List<string>();
         private static readonly List<Transform> _dragParents = new List<Transform>();
         private static readonly List<Collider> _dragMuted = new List<Collider>();
         private static readonly List<Vector3> _dragRiderStartPos = new List<Vector3>();
         private static readonly List<Quaternion> _dragRiderStartRot = new List<Quaternion>();
-        private static Vector3 _dragHeldStartPos;
+        private sealed class RiderParts
+        {
+            public Vector3[] PlacedPos;
+            public Quaternion[] PlacedRot;
+            public Vector3[] PartPos;
+            public Quaternion[] PartRot;
+            public Il2CppArrayBase<Rigidbody> Bodies;
+            public Vector3[] BodyPos;
+            public Quaternion[] BodyRot;
+        }
+
+        private static readonly List<RiderParts> _dragRiderParts = new List<RiderParts>();
         private static Quaternion _dragHeldStartRot;
         private static Vector3 _dragHeldStartWorld;
+        private static Vector3 _dragStartReticle;
+        private static Vector3 _dragLastShift;
 
-        private static readonly bool DragTrace = false;
+        private const int SettleFrames = 12;
         private static int _dragMissing;
-        private static int _dragFrame;
 
         public static void TickGroupDrag()
         {
+            var lem = LevelEditorManager.Instance;
+
             if (LevelEditorMultiSelectionHandler.MultiSelectActive) { EndDrag("multiselect took over"); return; }
 
-            var held = LevelEditorManager.Instance?.GetReticleBase()?.SelectedObject;
+            var rb = lem?.GetReticleBase();
+            var held = rb?.SelectedObject;
             if (held == null)
             {
-                if (_dragObj != null && ++_dragMissing < 4) return;
+                if (_dragObj != null && lem != null && (++_dragMissing < SettleFrames || lem.IsRestoring)) return;
                 EndDrag("nothing in hand");
                 return;
             }
@@ -488,34 +571,36 @@ namespace BetterFG.Features.CreativeGroups
             if (_dragObj == null || _dragObj.Pointer != held.Pointer)
             {
                 EndDrag("different object picked up");
-                StartDrag(held, ht, id);
+                StartDrag(held, ht, id, rb);
                 return;
             }
             if (_dragHolder == null) return;
 
-            _dragHolder.transform.SetPositionAndRotation(ht.position, ht.rotation);
-
-            if (!DragTrace) return;
-            if (++_dragFrame % 4 != 0) return;
-            var r0 = _dragRiders[0];
-            if (r0 == null) return;
-            var rt = r0.transform;
-            Plugin.Log.LogInfo($"drag f{_dragFrame} held {ht.position} rider tf {rt.position} lepo {r0.Position} "
-                + $"parent {(rt.parent != null ? rt.parent.name : "none")} snapped {r0.IsSnapped}");
+            Vector3 byReticle = rb.ReticlePosition - _dragStartReticle;
+            _dragLastShift = byReticle.sqrMagnitude > 0.0001f
+                ? byReticle
+                : ht.position - _dragHeldStartWorld;
+            _dragHolder.transform.SetPositionAndRotation(_dragHeldStartWorld + _dragLastShift, ht.rotation);
+            PoseAnimatedParts(_dragLastShift, ht.rotation * Quaternion.Inverse(_dragHeldStartRot));
         }
 
-        private static void StartDrag(LevelEditorPlaceableObject held, Transform ht, int id)
+        private static void StartDrag(LevelEditorPlaceableObject held, Transform ht, int id, FGClient.LevelEditorStateReticleBase rb)
         {
             _dragObj = held;
+            _dragGuid = GuidOf(held);
             _dragMissing = 0;
-            _dragFrame = 0;
+            _dragStartReticle = rb.ReticlePosition;
+            _dragLastShift = Vector3.zero;
             foreach (var m in Members(id))
-                if (m.Pointer != held.Pointer) _dragRiders.Add(m);
+            {
+                if (m.Pointer == held.Pointer) continue;
+                _dragRiders.Add(m);
+                _dragRiderGuids.Add(GuidOf(m));
+            }
             if (_dragRiders.Count == 0) return;
 
             _dragHolder = new GameObject("BettrFG_GroupDrag");
             _dragHolder.transform.SetPositionAndRotation(ht.position, ht.rotation);
-            _dragHeldStartPos = held.Position;
             _dragHeldStartRot = ht.rotation;
             _dragHeldStartWorld = ht.position;
 
@@ -526,6 +611,40 @@ namespace BetterFG.Features.CreativeGroups
                 _dragRiderStartPos.Add(t.position);
                 _dragRiderStartRot.Add(t.rotation);
                 t.SetParent(_dragHolder.transform, true);
+
+                var bases = m.activeObjectBases;
+                int n = bases == null ? 0 : bases.Length;
+                var bodies = m.GetComponentsInChildren<Rigidbody>(true);
+                int nb = bodies == null ? 0 : bodies.Length;
+
+                var snap = new RiderParts
+                {
+                    PlacedPos = new Vector3[n],
+                    PlacedRot = new Quaternion[n],
+                    PartPos = new Vector3[n],
+                    PartRot = new Quaternion[n],
+                    Bodies = bodies,
+                    BodyPos = new Vector3[nb],
+                    BodyRot = new Quaternion[nb]
+                };
+                for (int k = 0; k < n; k++)
+                {
+                    var b = bases[k];
+                    if (b == null) continue;
+                    snap.PlacedPos[k] = b._placedPosition;
+                    snap.PlacedRot[k] = b._placedRotation;
+                    var bt = b.transform;
+                    snap.PartPos[k] = bt.position;
+                    snap.PartRot[k] = bt.rotation;
+                }
+                for (int k = 0; k < nb; k++)
+                {
+                    var body = bodies[k];
+                    if (body == null) continue;
+                    snap.BodyPos[k] = body.position;
+                    snap.BodyRot[k] = body.rotation;
+                }
+                _dragRiderParts.Add(snap);
 
                 var cols = m.UnityColliders;
                 if (cols == null) continue;
@@ -545,49 +664,97 @@ namespace BetterFG.Features.CreativeGroups
             var held = _dragObj;
             _dragObj = null;
             _dragMissing = 0;
-            if (_dragRiders.Count == 0 && _dragHolder == null) return;
+            if (_dragRiders.Count == 0 && _dragHolder == null) { _dragGuid = null; return; }
 
-            bool reverted = held != null
-                && (held.Position - _dragHeldStartPos).sqrMagnitude < 0.0001f
-                && Quaternion.Angle(held.transform.rotation, _dragHeldStartRot) < 0.05f;
+            _indexedCount = -1;
+            var anchor = held == null ? Resolve(_dragGuid) : held;
 
-            Plugin.Log.LogInfo($"group drag done ({why}), putting {_dragRiders.Count} back"
-                + (reverted ? " where they started, the move got cancelled" : ""));
-
-            GroupMove move = null;
-            if (!reverted && held != null)
+            Vector3 nowPos = _dragHeldStartWorld;
+            Quaternion nowRot = _dragHeldStartRot;
+            if (anchor != null)
             {
-                var hat = held.transform;
-                move = new GroupMove
-                {
-                    Anchor = held,
-                    BeforePos = _dragHeldStartWorld,
-                    BeforeRot = _dragHeldStartRot,
-                    AfterPos = hat.position,
-                    AfterRot = hat.rotation
-                };
+                var at = anchor.transform;
+                nowPos = at.position;
+                nowRot = at.rotation;
             }
+
+            Quaternion spin = nowRot * Quaternion.Inverse(_dragHeldStartRot);
+            bool still = (nowPos - _dragHeldStartWorld).sqrMagnitude < 0.0001f
+                && Quaternion.Angle(nowRot, _dragHeldStartRot) < 0.05f;
+
+            Vector3 shift = still ? Vector3.zero : _dragLastShift;
+
+            Plugin.Log.LogInfo(still
+                ? $"group drag done ({why}), anchor never left {_dragHeldStartWorld}, {_dragRiders.Count} put back"
+                : $"group drag done ({why}), anchor {_dragHeldStartWorld} -> {nowPos}, shifting {_dragRiders.Count} by {shift}");
+
+            GroupMove move = still ? null : new GroupMove
+            {
+                AnchorGuid = _dragGuid,
+                BeforePos = _dragHeldStartWorld,
+                BeforeRot = _dragHeldStartRot,
+                AfterPos = nowPos,
+                AfterRot = nowRot
+            };
 
             for (int i = 0; i < _dragRiders.Count; i++)
             {
                 var m = _dragRiders[i];
-                if (m == null) continue;
-                var t = m.transform;
-                t.SetParent(i < _dragParents.Count ? _dragParents[i] : null, true);
-                if (reverted && i < _dragRiderStartPos.Count)
-                    t.SetPositionAndRotation(_dragRiderStartPos[i], _dragRiderStartRot[i]);
-                m.Position = t.position;
-                var rd = m.RotationData;
-                if (rd != null) rd.CurrentRotation = t.rotation.eulerAngles;
-
-                if (move != null)
+                if (m == null) m = Resolve(_dragRiderGuids[i]);
+                if (m == null)
                 {
-                    move.Riders.Add(m);
-                    move.RiderBeforePos.Add(_dragRiderStartPos[i]);
-                    move.RiderBeforeRot.Add(_dragRiderStartRot[i]);
-                    move.RiderAfterPos.Add(t.position);
-                    move.RiderAfterRot.Add(t.rotation);
+                    Plugin.Log.LogWarning($"rider {_dragRiderGuids[i]} vanished during the drag, it stays wherever it is");
+                    continue;
                 }
+
+                var t = m.transform;
+                if (_dragHolder != null && t.parent == _dragHolder.transform)
+                    t.SetParent(_dragParents[i], true);
+
+                Vector3 p = still
+                    ? _dragRiderStartPos[i]
+                    : _dragHeldStartWorld + shift + spin * (_dragRiderStartPos[i] - _dragHeldStartWorld);
+                Quaternion r = still ? _dragRiderStartRot[i] : spin * _dragRiderStartRot[i];
+                t.SetPositionAndRotation(p, r);
+                m.Position = p;
+                m.NonSnappedPosition = p;
+                var rd = m.RotationData;
+                if (rd != null) rd.CurrentRotation = r.eulerAngles;
+
+                var snap = _dragRiderParts[i];
+                var bases = m.activeObjectBases;
+                if (bases != null)
+                {
+                    for (int k = 0; k < bases.Length && k < snap.PlacedPos.Length; k++)
+                    {
+                        var b = bases[k];
+                        if (b == null) continue;
+                        b._placedPosition = Restore(snap.PlacedPos[k], shift, spin, still);
+                        b._placedRotation = still ? snap.PlacedRot[k] : spin * snap.PlacedRot[k];
+
+                        _settleParts.Add(b.transform);
+                        _settlePos.Add(Restore(snap.PartPos[k], shift, spin, still));
+                        _settleRot.Add(still ? snap.PartRot[k] : spin * snap.PartRot[k]);
+                    }
+                }
+
+                if (snap.Bodies != null)
+                {
+                    for (int k = 0; k < snap.Bodies.Length && k < snap.BodyPos.Length; k++)
+                    {
+                        var body = snap.Bodies[k];
+                        if (body == null) continue;
+                        body.position = Restore(snap.BodyPos[k], shift, spin, still);
+                        body.rotation = still ? snap.BodyRot[k] : spin * snap.BodyRot[k];
+                    }
+                }
+
+                if (move == null) continue;
+                move.Riders.Add(_dragRiderGuids[i]);
+                move.RiderBeforePos.Add(_dragRiderStartPos[i]);
+                move.RiderBeforeRot.Add(_dragRiderStartRot[i]);
+                move.RiderAfterPos.Add(p);
+                move.RiderAfterRot.Add(r);
             }
 
             if (move != null && move.Riders.Count > 0)
@@ -599,20 +766,38 @@ namespace BetterFG.Features.CreativeGroups
             foreach (var c in _dragMuted)
                 if (c != null) c.enabled = true;
 
+            if (_settleParts.Count > 0)
+            {
+                UI.Windows.Creative.CreativeSelectionWatcher.Instance.StartCoroutine(
+                    SettleAnimatedParts(new List<Transform>(_settleParts), new List<Vector3>(_settlePos),
+                        new List<Quaternion>(_settleRot)).WrapToIl2Cpp());
+                _settleParts.Clear();
+                _settlePos.Clear();
+                _settleRot.Clear();
+            }
+
+            _dragGuid = null;
             _dragMuted.Clear();
             _dragRiders.Clear();
+            _dragRiderGuids.Clear();
             _dragParents.Clear();
             _dragRiderStartPos.Clear();
             _dragRiderStartRot.Clear();
-            if (_dragHolder != null) { UnityEngine.Object.Destroy(_dragHolder); _dragHolder = null; }
+            _dragRiderParts.Clear();
+            if (_dragHolder != null)
+            {
+                _dragHolder.transform.DetachChildren();
+                UnityEngine.Object.Destroy(_dragHolder);
+                _dragHolder = null;
+            }
         }
 
         private sealed class GroupMove
         {
-            public LevelEditorPlaceableObject Anchor;
+            public string AnchorGuid;
             public Vector3 BeforePos, AfterPos;
             public Quaternion BeforeRot, AfterRot;
-            public readonly List<LevelEditorPlaceableObject> Riders = new List<LevelEditorPlaceableObject>();
+            public readonly List<string> Riders = new List<string>();
             public readonly List<Vector3> RiderBeforePos = new List<Vector3>();
             public readonly List<Quaternion> RiderBeforeRot = new List<Quaternion>();
             public readonly List<Vector3> RiderAfterPos = new List<Vector3>();
@@ -622,20 +807,96 @@ namespace BetterFG.Features.CreativeGroups
         private const int MoveMemory = 64;
         private static readonly List<GroupMove> _moves = new List<GroupMove>();
 
+        private static Vector3 Restore(Vector3 start, Vector3 shift, Quaternion spin, bool still) =>
+            still ? start : _dragHeldStartWorld + shift + spin * (start - _dragHeldStartWorld);
+
+        private static void PoseAnimatedParts(Vector3 shift, Quaternion spin)
+        {
+            for (int i = 0; i < _dragRiders.Count && i < _dragRiderParts.Count; i++)
+            {
+                var m = _dragRiders[i];
+                if (m == null) continue;
+                var bases = m.activeObjectBases;
+                if (bases == null) continue;
+
+                var snap = _dragRiderParts[i];
+                for (int k = 0; k < bases.Length && k < snap.PartPos.Length; k++)
+                {
+                    var b = bases[k];
+                    if (b == null) continue;
+                    b.transform.SetPositionAndRotation(
+                        _dragHeldStartWorld + shift + spin * (snap.PartPos[k] - _dragHeldStartWorld),
+                        spin * snap.PartRot[k]);
+                }
+            }
+        }
+
+        private static readonly List<Transform> _settleParts = new List<Transform>();
+        private static readonly List<Vector3> _settlePos = new List<Vector3>();
+        private static readonly List<Quaternion> _settleRot = new List<Quaternion>();
+
+        private static IEnumerator SettleAnimatedParts(List<Transform> parts, List<Vector3> pos, List<Quaternion> rot)
+        {
+            for (int f = 0; f < 6; f++) yield return null;
+
+            int nudged = 0;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                var t = parts[i];
+                if (t == null) continue;
+                if ((t.position - pos[i]).sqrMagnitude < 0.0001f) continue;
+                t.SetPositionAndRotation(pos[i], rot[i]);
+                nudged++;
+            }
+            if (nudged > 0) Plugin.Log.LogInfo($"{nudged} animated part(s) dragged back onto the group move");
+        }
+
+        private static void ShiftActiveBases(LevelEditorPlaceableObject m, Vector3 delta)
+        {
+            if (delta.sqrMagnitude < 0.0001f) return;
+
+            var bases = m.activeObjectBases;
+            if (bases != null)
+            {
+                for (int i = 0; i < bases.Length; i++)
+                {
+                    var b = bases[i];
+                    if (b == null) continue;
+                    b._placedPosition += delta;
+                }
+            }
+
+            var bodies = m.GetComponentsInChildren<Rigidbody>(true);
+            if (bodies == null) return;
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                var body = bodies[i];
+                if (body == null) continue;
+                body.position += delta;
+            }
+        }
+
         private static bool SittingAt(Transform t, Vector3 pos, Quaternion rot) =>
             (t.position - pos).sqrMagnitude < 0.0001f && Quaternion.Angle(t.rotation, rot) < 0.05f;
 
         public static void OnUndoRedoSettled()
         {
             if (_moves.Count == 0) return;
+            if (_dragObj != null)
+            {
+                Plugin.Log.LogInfo("undo/redo landed mid-drag, leaving the riders alone until it's put down");
+                return;
+            }
 
+            _indexedCount = -1;
             int replayed = 0, back = 0;
             for (int i = _moves.Count - 1; i >= 0; i--)
             {
                 var mv = _moves[i];
-                if (mv.Anchor == null) { _moves.RemoveAt(i); continue; }
+                var anchor = Resolve(mv.AnchorGuid);
+                if (anchor == null) { _moves.RemoveAt(i); continue; }
 
-                var at = mv.Anchor.transform;
+                var at = anchor.transform;
                 bool undone = SittingAt(at, mv.BeforePos, mv.BeforeRot);
                 bool redone = SittingAt(at, mv.AfterPos, mv.AfterRot);
                 if (undone == redone) continue;
@@ -646,12 +907,14 @@ namespace BetterFG.Features.CreativeGroups
 
                 for (int r = 0; r < mv.Riders.Count; r++)
                 {
-                    var m = mv.Riders[r];
+                    var m = Resolve(mv.Riders[r]);
                     if (m == null) continue;
                     var t = m.transform;
                     if (SittingAt(t, pos[r], rot[r])) continue;
+                    ShiftActiveBases(m, pos[r] - t.position);
                     t.SetPositionAndRotation(pos[r], rot[r]);
                     m.Position = pos[r];
+                    m.NonSnappedPosition = pos[r];
                     var rd = m.RotationData;
                     if (rd != null) rd.CurrentRotation = rot[r].eulerAngles;
                     moved = true;

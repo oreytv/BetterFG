@@ -937,6 +937,34 @@ namespace BetterFG.Customization.Player
             return map;
         }
 
+        public static bool IsTeamColourId(string colourId) =>
+            !string.IsNullOrEmpty(colourId) && colourId.IndexOf("team_colours", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        public static ColourOption ResolveColourOption(string colourId, int teamId)
+        {
+            if (string.IsNullOrEmpty(colourId)) return null;
+            var cm = CustomisationManager.Instance;
+
+            if (IsTeamColourId(colourId))
+            {
+                if (cm == null) return null;
+                int team = teamId;
+                if (team < 0 && int.TryParse(StripIdPrefix(colourId), out int fromId)) team = fromId - 1;
+
+                var teamOpt = team >= 0 ? cm.GetDefaultColourOptionWithId(team) : null;
+                if (teamOpt == null) Plugin.Log.LogWarning($"team colour {colourId} (team {team}) didn't resolve, that bean keeps its own colour");
+                return teamOpt;
+            }
+
+            if (GetColourLookup().TryGetValue(colourId, out var loaded) && loaded != null) return loaded;
+            if (cm == null) return null;
+
+            string bare = StripIdPrefix(colourId, out string full);
+            var opt = cm.GetColourOptionWithId(bare, false) ?? cm.GetColourOptionWithId(full, false);
+            if (opt == null) Plugin.Log.LogWarning($"colour {colourId} not in the catalog");
+            return opt;
+        }
+
         private static Dictionary<string, SkinPatternOption> GetPatternLookup()
         {
             if (_patternByIdCache != null && Time.realtimeSinceStartup - _patternCacheStamp < CACHE_TTL) return _patternByIdCache;
@@ -1002,7 +1030,6 @@ namespace BetterFG.Customization.Player
             if (cm == null) { Plugin.Log.LogWarning("no CustomisationManager at menu enter, cosmetics not restored"); gameCosmeticsRestoring = false; yield break; }
 
             var chosen = new List<CostumeOption>();
-            ColourOption foundColour = null;
             SkinPatternOption foundPattern = null;
             FaceplateOption foundFaceplate = null;
 
@@ -1012,12 +1039,7 @@ namespace BetterFG.Customization.Player
                 if (opt != null) chosen.Add(opt);
                 else Plugin.Log.LogWarning($"costume {id} not in the catalog, skipping it");
             }
-            if (!string.IsNullOrEmpty(colourId))
-            {
-                string bare = StripIdPrefix(colourId, out string full);
-                foundColour = cm.GetColourOptionWithId(bare, false) ?? cm.GetColourOptionWithId(full, false);
-                if (foundColour == null) Plugin.Log.LogWarning($"colour {colourId} not in the catalog");
-            }
+            var foundColour = ResolveColourOption(colourId, -1);
             if (!string.IsNullOrEmpty(patternId))
             {
                 string bare = StripIdPrefix(patternId, out string full);
@@ -1049,13 +1071,13 @@ namespace BetterFG.Customization.Player
         // state - this is for other players' beans via the profiles feature.
         // onDone runs AFTER the costumes + colour land, so callers can apply skin textures then
         // (otherwise the costume meshes don't exist yet and texture matching finds nothing).
-        public void ApplyProfileCosmeticsToBean(string rawIds, string colourId, string patternId, string faceplateId, GameObject bean, Action onDone = null)
+        public void ApplyProfileCosmeticsToBean(string rawIds, string colourId, string patternId, string faceplateId, GameObject bean, Action onDone = null, int teamId = -1)
         {
             if (bean == null) return;
-            StartCoroutine(ApplyProfileCosmeticsToBeanCoroutine(rawIds, colourId, patternId, faceplateId, bean, onDone).WrapToIl2Cpp());
+            StartCoroutine(ApplyProfileCosmeticsToBeanCoroutine(rawIds, colourId, patternId, faceplateId, bean, onDone, teamId).WrapToIl2Cpp());
         }
 
-        private IEnumerator ApplyProfileCosmeticsToBeanCoroutine(string rawIds, string colourId, string patternId, string faceplateId, GameObject bean, Action onDone)
+        private IEnumerator ApplyProfileCosmeticsToBeanCoroutine(string rawIds, string colourId, string patternId, string faceplateId, GameObject bean, Action onDone, int teamId)
         {
             yield return new WaitForSeconds(1f);
             if (bean == null) yield break;
@@ -1065,7 +1087,6 @@ namespace BetterFG.Customization.Player
                 if (!string.IsNullOrEmpty(id)) wanted.Add(id);
 
             var chosen = new List<CostumeOption>();
-            ColourOption foundColour = null;
             SkinPatternOption foundPattern = null;
             FaceplateOption foundFaceplate = null;
 
@@ -1075,7 +1096,7 @@ namespace BetterFG.Customization.Player
                 foreach (var id in wanted)
                     if (costumes.TryGetValue(id, out var opt) && opt != null) chosen.Add(opt);
             }
-            if (!string.IsNullOrEmpty(colourId)) GetColourLookup().TryGetValue(colourId, out foundColour);
+            var foundColour = ResolveColourOption(colourId, teamId);
             if (!string.IsNullOrEmpty(patternId)) GetPatternLookup().TryGetValue(patternId, out foundPattern);
             if (!string.IsNullOrEmpty(faceplateId)) GetFaceplateLookup().TryGetValue(faceplateId, out foundFaceplate);
 
@@ -1108,7 +1129,12 @@ namespace BetterFG.Customization.Player
         private void ApplyProfileColourPattern(FallguyCustomisationHandler fgch, ColourOption colour, SkinPatternOption pattern, FaceplateOption faceplate)
         {
             if (fgch == null) return;
-            if (colour != null) { try { fgch.UpdateColourOption(colour); } catch (Exception ex) { Plugin.Log.LogWarning("Profiles: colour: " + ex.Message); } }
+            if (colour != null)
+            {
+                try { fgch.UpdateColourOption(colour); } catch (Exception ex) { Plugin.Log.LogWarning("Profiles: colour: " + ex.Message); }
+                var team = colour.TryCast<TeamColourOption>();
+                if (team != null) { try { fgch.SetCostumeTeamColours(team.costumeTintColour); } catch (Exception ex) { Plugin.Log.LogWarning("Profiles: team tint: " + ex.Message); } }
+            }
             if (pattern != null) { try { pattern.LoadBlocking(); } catch { } try { fgch.UpdatePatternTexture(pattern); } catch (Exception ex) { Plugin.Log.LogWarning("Profiles: pattern: " + ex.Message); } }
             if (faceplate != null) { try { fgch.UpdateFaceplateColours(faceplate); } catch (Exception ex) { Plugin.Log.LogWarning("Profiles: faceplate: " + ex.Message); } }
         }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using BetterFG.Customization.Menu;
 using BetterFG.Services;
 using FallGuysLib.Players;
 using UnityEngine;
@@ -612,6 +613,51 @@ namespace BetterFG.UI
                 buttonLabel, btnColor, Color.white, UIScale.FS_SM, action);
 
             return totalH;
+        }
+
+        public static TMPro.TextMeshProUGUI ReplaceTextWithTmp(Text src, string text, TMPro.TMP_FontAsset font)
+        {
+            if (src == null || font == null) return null;
+
+            var keep = src.color;
+            if (keep.a <= 0.001f) keep.a = 1f;
+            var clear = new Color(keep.r, keep.g, keep.b, 0f);
+
+            var existing = src.transform.Find("TmpLabel");
+            if (existing != null)
+            {
+                var already = existing.GetComponent<TMPro.TextMeshProUGUI>();
+                if (already != null)
+                {
+                    already.font = font;
+                    already.text = text;
+                    already.color = keep;
+                    existing.gameObject.SetActive(true);
+                    src.color = clear;
+                    return already;
+                }
+            }
+
+            var align = src.alignment;
+            src.color = clear;
+
+            var tmpGo = new GameObject("TmpLabel");
+            tmpGo.transform.SetParent(src.gameObject.transform, false);
+            var trt = tmpGo.AddComponent<RectTransform>();
+            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+            trt.offsetMin = trt.offsetMax = Vector2.zero;
+            var tmp = tmpGo.AddComponent<TMPro.TextMeshProUGUI>();
+            tmp.font = font;
+            tmp.text = text;
+            tmp.fontSize = src.fontSize + 2; // TMP looks slightly smaller at the same px
+            tmp.color = keep;
+            tmp.raycastTarget = false;
+            tmp.alignment = align == TextAnchor.MiddleRight ? TMPro.TextAlignmentOptions.MidlineRight
+                : align == TextAnchor.MiddleCenter ? TMPro.TextAlignmentOptions.Center
+                : TMPro.TextAlignmentOptions.MidlineLeft;
+            // never let the font sweep replace these previews with the user's chosen font.
+            FontReplacementService.Protect(tmp);
+            return tmp;
         }
 
         // non-interactive image. give it a rect (or just width/height) and a texture; aspect-fits

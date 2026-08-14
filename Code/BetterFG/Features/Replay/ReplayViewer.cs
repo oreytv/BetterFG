@@ -752,6 +752,9 @@ namespace BetterFG.Features.Replay
                 _tail.Attach(p.playerId, bean);
             }
 
+            if (_rec.tailEvents.Count > 0)
+                Plugin.Log.LogInfo($"{_rec.tailEvents.Count} tail events, {_tail.AttachedCount} of {_tracks.Count} beans wired up for them");
+
             SpawnGhostBeans();
 
             _speech = new ReplaySpeechPlayer(_rec, transform);
@@ -780,6 +783,7 @@ namespace BetterFG.Features.Replay
                 {
                     playerId = 0x80000000u + (uint)i,
                     name = ghost.name,
+                    teamId = localP.teamId,
                     colour = localP.colour,
                     pattern = localP.pattern,
                     costumeTop = localP.costumeTop,
@@ -905,7 +909,8 @@ namespace BetterFG.Features.Replay
                 Worn(p.bfgPattern, p.pattern, "gamepattern:"),
                 Worn(p.bfgFaceplate, p.faceplate, "gamefaceplate:"),
                 bean,
-                onDone);
+                onDone,
+                p.teamId);
         }
 
         static string Worn(string bfgId, string rosterId, string tag) =>

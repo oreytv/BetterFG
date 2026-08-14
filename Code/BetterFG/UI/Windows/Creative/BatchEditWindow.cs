@@ -5,6 +5,7 @@ using BetterFG.Features.CreativeText;
 using LevelEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using Groups = BetterFG.Features.CreativeGroups.CreativeGroups;
 
 namespace BetterFG.UI.Windows.Creative
 {
@@ -49,7 +50,7 @@ namespace BetterFG.UI.Windows.Creative
         private static readonly Color OK_COL = new Color(0.55f, 0.85f, 0.55f, 1f);
         private static readonly Color STEP_COL = new Color(0.55f, 0.75f, 1f, 0.9f);
 
-        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics", "Link", "Text" };
+        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics", "Link", "Text", "Group" };
         // built-ins first, then whatever external DLLs registered (usually none). rebuilt each open so a
         // plugin that registers after the window's first build still shows up next time it opens.
         private string[] Subtabs()
@@ -97,6 +98,9 @@ namespace BetterFG.UI.Windows.Creative
 
         private int _weightIndex;
 
+        private int _groupPick;
+        private InputField _groupNameField;
+
         private Text _countLabel;
         private Text _statusLabel;
         private Text _textCountLabel;
@@ -139,6 +143,7 @@ namespace BetterFG.UI.Windows.Creative
         {
             CommitPending(); // don't lose a pending recolour/scale on close
             BatchScale.BakeOwnerScale(); // hand the editor's multiselect owner back unscaled
+            CreativeText.HidePreview();
             if (Instance == this) Instance = null;
             AnyOpen = false;
             TextOnly = false;
@@ -170,6 +175,17 @@ namespace BetterFG.UI.Windows.Creative
 
             float dt = Time.unscaledDeltaTime;
             foreach (var h in _scaleHold) h?.Tick(dt);
+
+            if (_subtab == TEXT_SUBTAB)
+            {
+                if (_textCountDue && Time.unscaledTime - _textCountAt >= 0.3f)
+                {
+                    _textCountDue = false;
+                    RefreshTextLabels();
+                }
+                CreativeText.ShowPreview();
+            }
+            else CreativeText.HidePreview();
 
             if (_subtab == 1) UpdateScaleRowsDim(); // pivot can appear/vanish live in "from selected"
 
@@ -254,6 +270,7 @@ namespace BetterFG.UI.Windows.Creative
                 case 3: BuildPhysics(contentRoot, w, ref y); break;
                 case 4: BuildLink(contentRoot, w, ref y); break;
                 case 5: BuildText(contentRoot, w, ref y); break;
+                case 6: BuildGroup(contentRoot, w, ref y); break;
                 default: BuildExtra(contentRoot, w, ref y); break;
             }
 
@@ -707,7 +724,17 @@ namespace BetterFG.UI.Windows.Creative
 
         private static int Denorm(float v, int lo, int hi) => Mathf.RoundToInt(Mathf.Lerp(lo, hi, v));
 
+        private float _textCountAt;
+        private bool _textCountDue;
+
         private void RefreshTextCount()
+        {
+            _textCountDue = true;
+            _textCountAt = Time.unscaledTime;
+            RefreshTextLabels();
+        }
+
+        private void RefreshTextLabels()
         {
             if (_textSizeLabel != null)
                 _textSizeLabel.text = $"4  SIZE  —  {CreativeText.Height} UNITS TALL";
@@ -721,6 +748,8 @@ namespace BetterFG.UI.Windows.Creative
             }
 
             if (_textCountLabel == null) return;
+            if (_textCountDue) { _textCountLabel.text = "WORKING IT OUT..."; return; }
+
             int n = CreativeText.PlannedObjects(out string note);
             _textCountLabel.text = n > 0
                 ? (note != null ? $"{n}+ OBJECTS, {note.ToUpperInvariant()}" : $"PLACE {n} OBJECTS")
@@ -753,6 +782,82 @@ namespace BetterFG.UI.Windows.Creative
             Plugin.Log.LogInfo($"text down ({note}), handing you {(middle != null ? middle.name : "nothing")} to drag it by");
             if (middle != null) middle.SelectObject();
             Close();
+        }
+
+        // ── group subtab ─────────────────────────────────────────────────────
+
+        private void BuildGroup(RectTransform root, float w, ref float y)
+        {
+            var ids = Groups.Ids();
+            if (_groupPick == 0) _groupPick = Groups.SelectionGroupId();
+            if (_groupPick != 0 && !ids.Contains(_groupPick)) _groupPick = 0;
+
+            MakeLabel(root, new Rect(PAD, y, w, 14f), "group name", FS_SM, STEP_COL);
+            y += 17f;
+
+            float ddW = 28f;
+            _groupNameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w - ddW - 4f, 24f),
+                "name this group", null, WHITE, FS_BODY);
+            UGUIShip.SetInputText(_groupNameField, _groupPick != 0 ? Groups.NameOf(_groupPick) : "");
+
+            var labels = new List<string> { "new group" };
+            int selected = 0;
+            for (int i = 0; i < ids.Count; i++)
+            {
+                labels.Add(Groups.Label(ids[i]));
+                if (ids[i] == _groupPick) selected = i + 1;
+            }
+
+            var pick = UGUIShip.CreateDropdown(root, new Rect(PAD + w - ddW, y, ddW, 24f), labels, selected,
+                new Action<int>(i =>
+                {
+                    _groupPick = i > 0 && i <= ids.Count ? ids[i - 1] : 0;
+                    UGUIShip.SetInputText(_groupNameField, _groupPick != 0 ? Groups.NameOf(_groupPick) : "");
+                }), FS_SM, 150f, w);
+            ArrowCaption(pick);
+            y += 30f;
+
+            float half = (w - 6f) * 0.5f;
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "LINK", BTN_APPLY, WHITE, FS_BODY,
+                new Action(DoGroupLink));
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "UNLINK", BTN_STEP, WHITE, FS_BODY,
+                new Action(DoGroupUnlink));
+            y += 34f;
+
+            MakeLabel(root, new Rect(PAD, y, w, 48f),
+                "grouped objects get picked, dragged and undone together — click one and the rest come with it",
+                FS_SM, HINT_COL, TextAnchor.UpperLeft);
+            y += 52f;
+        }
+
+        private static void ArrowCaption(Dropdown dd)
+        {
+            var cap = dd.captionText;
+            cap.text = "▾";
+            cap.alignment = TextAnchor.MiddleCenter;
+            cap.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var rt = cap.rectTransform;
+            rt.offsetMin = new Vector2(0f, 2f);
+            rt.offsetMax = new Vector2(0f, -2f);
+            dd.captionText = null;
+        }
+
+        private void DoGroupLink()
+        {
+            int n = Groups.LinkSelection(_groupPick, _groupNameField.text, out int landed);
+            if (landed != 0) _groupPick = landed;
+            RebuildContent();
+            SetStatus(n > 0 ? $"{n} object(s) into {Groups.NameOf(_groupPick)}" : "already all in that group",
+                n > 0 ? OK_COL : HINT_COL);
+        }
+
+        private void DoGroupUnlink()
+        {
+            int n = Groups.UnlinkSelection();
+            _groupPick = 0;
+            RebuildContent();
+            SetStatus(n > 0 ? $"{n} object(s) out of their group" : "none of the selection was grouped",
+                n > 0 ? OK_COL : HINT_COL);
         }
 
         // ── registered extra subtab ──────────────────────────────────────────

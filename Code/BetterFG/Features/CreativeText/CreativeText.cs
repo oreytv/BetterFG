@@ -15,7 +15,7 @@ namespace BetterFG.Features.CreativeText
     public static class CreativeText
     {
         public const int MinQuality = 20;
-        public const int MaxQuality = 300;
+        public const int MaxQuality = 600;
         public const int MaxObjects = 2000;
 
         public const int MinHeight = 4;
@@ -105,9 +105,22 @@ namespace BetterFG.Features.CreativeText
         private static bool IsFontFile(string choice) =>
             !string.IsNullOrEmpty(choice) && (choice.IndexOf('\\') >= 0 || choice.IndexOf('/') >= 0);
 
-        private static TMP_FontAsset ResolveFont()
+        private static readonly Dictionary<string, TMP_FontAsset> _fontCache =
+            new Dictionary<string, TMP_FontAsset>(StringComparer.OrdinalIgnoreCase);
+
+        public static TMP_FontAsset FontAssetFor(string choice)
         {
-            string choice = FontChoice;
+            if (string.IsNullOrEmpty(choice)) return null;
+            if (_fontCache.TryGetValue(choice, out var cached)) return cached;
+            var built = BuildFont(choice);
+            _fontCache[choice] = built;
+            return built;
+        }
+
+        private static TMP_FontAsset ResolveFont() => FontAssetFor(FontChoice) ?? BuildFont("");
+
+        private static TMP_FontAsset BuildFont(string choice)
+        {
             if (IsFontFile(choice))
             {
                 var built = FontReplacementService.BuildPreview(new FontOverride { fontPath = choice });
@@ -153,7 +166,22 @@ namespace BetterFG.Features.CreativeText
             {
                 var pod = pods[i];
                 if (pod == null || pod.name != want) continue;
-                var prefab = pod.GetDefaultObject();
+
+                GameObject prefab = null;
+                var sizes = pod.GetObjectSizes();
+                if (sizes != null && sizes.Count > 0)
+                {
+                    var smallest = sizes[0];
+                    for (int s = 1; s < sizes.Count; s++)
+                        if ((int)sizes[s] < (int)smallest) smallest = sizes[s];
+
+                    var variant = pod.GetObjectVariant(smallest);
+                    if (variant != null) prefab = variant.Prefab;
+                    Plugin.Log.LogInfo($"{pod.name} comes in {sizes.Count} size(s), taking {smallest} — "
+                        + "the scale step is a fraction of the object's own size, so a smaller one draws finer text");
+                }
+
+                if (prefab == null) prefab = pod.GetDefaultObject();
                 if (prefab == null) continue;
 
                 if (sticker) _stickerPrefab = prefab; else _blockPrefab = prefab;
@@ -188,9 +216,11 @@ namespace BetterFG.Features.CreativeText
 
         private static string PlanKey() => $"{Text}|{FontChoice}|{Quality}|{(Sticker ? "s" : "f")}";
 
-        private static TextPlan CurrentPlan()
+        private static TextPlan CurrentPlan() => PlanFor(Quality);
+
+        private static TextPlan PlanFor(int quality)
         {
-            string key = PlanKey();
+            string key = $"{Text}|{FontChoice}|{quality}|{(Sticker ? "s" : "f")}";
             if (_plan != null && _plan.Key == key) return _plan;
 
             var plan = new TextPlan { Key = key };
@@ -206,7 +236,7 @@ namespace BetterFG.Features.CreativeText
             if (prefab == null) { plan.Problem = Sticker ? "no sticker object" : "no block object"; return plan; }
             plan.Squares = prefab.GetComponentInChildren<LevelEditorScaleParameter>(true) == null;
 
-            if (!Rasterise(font, text, Quality, out bool[] cells, out int cols, out int rows))
+            if (!Rasterise(font, text, quality, out bool[] cells, out int cols, out int rows))
             {
                 plan.Problem = "nothing rendered";
                 return plan;
@@ -237,28 +267,53 @@ namespace BetterFG.Features.CreativeText
             return Mathf.Max(1, Mathf.FloorToInt(Height / _smallestPiece));
         }
 
-        public static int Place(out string status) => Place(out status, out _);
+        private sealed class TextLayout
+        {
+            public TextPlan Plan;
+            public GameObject Prefab;
+            public Vector3 Size;
+            public Vector3 RendererSize;
+            public Vector3 RightAxis;
+            public Vector3 UpAxis;
+            public Vector3 SpinAxis;
+            public int Right;
+            public int Up;
+            public float Cell;
+            public float Flat;
+            public bool CanStretch;
+            public bool HasDecalScale;
+            public Vector3 MinScale;
+            public float Step;
+            public Vector3 BaseScale;
+        }
 
-        public static int Place(out string status, out LevelEditorPlaceableObject middle)
+        private static void PieceScale(TextLayout l, Piece piece, out float fRight, out float fUp)
+        {
+            fRight = l.Cell * piece.Size.x / l.Size[l.Right];
+            fUp = l.Cell * piece.Size.y / l.Size[l.Up];
+        }
+
+        private static Vector3 PieceOffset(TextLayout l, Piece piece) =>
+            l.RightAxis * ((piece.Centre.x - l.Plan.Cols * 0.5f) * l.Cell)
+            + l.UpAxis * ((piece.Centre.y - l.Plan.Rows * 0.5f) * l.Cell);
+
+        private static TextLayout BuildLayout(out string status)
         {
             status = "";
-            middle = null;
-            var mgr = LevelEditorManager.Instance;
-            if (mgr == null) { status = "not in the editor"; return 0; }
 
             var plan = CurrentPlan();
-            if (plan.Problem != null) { status = plan.Problem; return 0; }
+            if (plan.Problem != null) { status = plan.Problem; return null; }
             if (plan.Capped)
             {
                 status = $"{plan.Pieces.Count}+ objects, over the {MaxObjects} cap";
-                return 0;
+                return null;
             }
 
             var prefab = TemplatePrefab();
             if (prefab == null)
             {
                 status = Sticker ? "no sticker object found" : "no block object found";
-                return 0;
+                return null;
             }
 
             var probe = UnityEngine.Object.Instantiate(prefab);
@@ -276,6 +331,7 @@ namespace BetterFG.Features.CreativeText
             // inflated size is what left the long axis short.
             Vector3 size = Vector3.zero;
             var minScale = Vector3.zero;
+            float step = 0f;
             bool measured = false;
             if (probeLepo != null)
             {
@@ -290,7 +346,11 @@ namespace BetterFG.Features.CreativeText
 
                 var probeScale = probeLepo._levelEditorScaleParameter;
                 var probeValues = probeScale != null ? probeScale._values : null;
-                if (probeValues != null) minScale = probeValues.GetMinimunScale();
+                if (probeValues != null)
+                {
+                    minScale = probeValues.GetMinimunScale();
+                    step = probeValues.ParameterScaleToUnitsMultiplier;
+                }
             }
 
             Vector3 rendererSize = Vector3.zero;
@@ -320,13 +380,13 @@ namespace BetterFG.Features.CreativeText
             {
                 status = "template isn't a placeable";
                 Plugin.Log.LogWarning($"{prefab.name} has no LevelEditorPlaceableObject on it, nothing to place");
-                return 0;
+                return null;
             }
             if (!measured || size.x + size.y + size.z <= 0.0001f)
             {
                 status = "couldn't measure the template";
                 Plugin.Log.LogWarning($"{prefab.name} has no renderer bounds to go on, giving up on the text");
-                return 0;
+                return null;
             }
 
             int normal = Sticker ? (size.x <= size.y && size.x <= size.z ? 0 : (size.y <= size.z ? 1 : 2)) : 1;
@@ -334,39 +394,102 @@ namespace BetterFG.Features.CreativeText
             int up = normal == 1 ? 2 : 1;
 
             float height = Height;
-            float cell = height / plan.Rows;
             float smallestPiece = Mathf.Max(size[right] * minScale[right], size[up] * minScale[up]);
             _smallestPiece = smallestPiece;
-            if (smallestPiece > cell + 0.0001f)
-                Plugin.Log.LogWarning($"{prefab.name} won't go under {smallestPiece:0.##} a piece but the cells are {cell:0.###}, "
-                    + $"so {plan.Rows} rows won't fit in {height} units and the strokes will run fat. "
-                    + $"{Mathf.FloorToInt(height / smallestPiece)} rows is all this size can actually draw");
+
+            float cell = height / plan.Rows;
             var rightAxis = Vector3.zero; rightAxis[right] = 1f;
             var upAxis = Vector3.zero; upAxis[up] = 1f;
 
+            return new TextLayout
+            {
+                Plan = plan,
+                Prefab = prefab,
+                Size = size,
+                RendererSize = rendererSize,
+                RightAxis = rightAxis,
+                UpAxis = upAxis,
+                SpinAxis = Vector3.Cross(rightAxis, upAxis),
+                Right = right,
+                Up = up,
+                Cell = cell,
+                Flat = Mathf.Max(size[right], size[up]),
+                CanStretch = canStretch,
+                HasDecalScale = hasDecalScale,
+                MinScale = minScale,
+                Step = step,
+                BaseScale = prefab.transform.localScale,
+            };
+        }
+
+        private static void ApplyPieceScale(LevelEditorPlaceableObject lepo, TextLayout l, Piece piece, ref int clamped)
+        {
+            float wantLong = l.Cell * piece.Size.x;
+            float wantThick = l.Cell * piece.Size.y;
+
+            if (l.CanStretch)
+            {
+                var sp = lepo._levelEditorScaleParameter;
+                if (sp == null) return;
+
+                var before = sp.CurrentScale;
+                var want = before;
+                PieceScale(l, piece, out float fRight, out float fUp);
+                want[l.Right] *= fRight;
+                want[l.Up] *= fUp;
+
+                var values = sp._values;
+                sp.SetScale(want, true);
+
+                if (!_probedScale)
+                {
+                    _probedScale = true;
+                    Plugin.Log.LogInfo($"scale probe on {l.Prefab.name}: collider size {l.Size}, renderer size {l.RendererSize}, "
+                        + $"want {wantLong:0.##} long, before {before} -> asked {want} -> param {sp.CurrentScale}, "
+                        + $"transform {lepo.transform.localScale}, "
+                        + (values == null
+                            ? "_values is null"
+                            : $"values {values.GetCurrentScale()}, min {values.GetMinimunScale()} max {values.GetMaximumScale()}, units x{values.ParameterScaleToUnitsMultiplier}"));
+                }
+            }
+            else if (l.HasDecalScale)
+            {
+                var dp = BatchTargets.GetDecalScaleParam(lepo);
+                if (dp == null) return;
+
+                float want = dp.CurrentVal * wantLong / l.Flat;
+                float got = Mathf.Clamp(want, dp._minVal, dp._maxVal);
+                if (Mathf.Abs(want - got) > 0.0001f) clamped++;
+                dp.SetValue(got);
+            }
+        }
+
+        public static int Place(out string status) => Place(out status, out _);
+
+        public static int Place(out string status, out LevelEditorPlaceableObject middle)
+        {
+            middle = null;
+            var mgr = LevelEditorManager.Instance;
+            if (mgr == null) { status = "not in the editor"; return 0; }
+
+            var l = BuildLayout(out status);
+            if (l == null) return 0;
+
+            var plan = l.Plan;
             var reticle = mgr.GetReticleGameObject();
             var origin = reticle != null ? reticle.transform.position : Vector3.zero;
 
-            var spinAxis = Vector3.Cross(rightAxis, upAxis);
             var placed = new List<LevelEditorPlaceableObject>();
             bool ranOut = false;
             int clamped = 0;
 
-            float flat = Mathf.Max(size[right], size[up]);
-
             for (int i = 0; i < plan.Pieces.Count && !ranOut; i++)
             {
                 var piece = plan.Pieces[i];
-                float cx = piece.Centre.x - plan.Cols * 0.5f;
-                float cy = piece.Centre.y - plan.Rows * 0.5f;
-                var anchor = origin + rightAxis * (cx * cell) + upAxis * (cy * cell);
-                var rot = Quaternion.AngleAxis(piece.Angle, spinAxis);
-                var along = rot * rightAxis;
+                var anchor = origin + PieceOffset(l, piece);
+                var rot = Quaternion.AngleAxis(piece.Angle, l.SpinAxis);
 
-                float wantLong = cell * piece.Size.x;
-                float wantThick = cell * piece.Size.y;
-
-                var go = UnityEngine.Object.Instantiate(prefab);
+                var go = UnityEngine.Object.Instantiate(l.Prefab);
                 go.transform.SetPositionAndRotation(anchor, rot);
                 var lepo = go.GetComponent<LevelEditorPlaceableObject>();
 
@@ -386,54 +509,7 @@ namespace BetterFG.Features.CreativeText
                 var range = BatchTargets.GetRangeParam(lepo);
                 if (range != null) range.SetRangeIndex(SquareShape(range));
 
-                if (canStretch)
-                {
-                    var sp = lepo._levelEditorScaleParameter;
-                    if (sp != null)
-                    {
-                        var before = sp.CurrentScale;
-                        var want = before;
-                        want[right] *= wantLong / size[right];
-                        want[up] *= wantThick / size[up];
-
-                        var values = sp._values;
-                        if (values != null)
-                        {
-                            // the scale param moves in fixed steps, so anything in between gets snapped
-                            // on the way back out of a save. land on a step here instead.
-                            float step = values.ParameterScaleToUnitsMultiplier;
-                            if (step > 0.0001f)
-                            {
-                                var lo = values.GetMinimunScale();
-                                want[right] = Mathf.Max(lo[right], Mathf.Round(want[right] / step) * step);
-                                want[up] = Mathf.Max(lo[up], Mathf.Round(want[up] / step) * step);
-                            }
-                        }
-                        sp.SetScale(want, true);
-
-                        if (!_probedScale)
-                        {
-                            _probedScale = true;
-                            Plugin.Log.LogInfo($"scale probe on {prefab.name}: collider size {size}, renderer size {rendererSize}, "
-                                + $"want {wantLong:0.##} long, before {before} -> asked {want} -> param {sp.CurrentScale}, "
-                                + $"transform {go.transform.localScale}, "
-                                + (values == null
-                                    ? "_values is null"
-                                    : $"values {values.GetCurrentScale()}, min {values.GetMinimunScale()} max {values.GetMaximumScale()}, units x{values.ParameterScaleToUnitsMultiplier}"));
-                        }
-                    }
-                }
-                else if (hasDecalScale)
-                {
-                    var dp = BatchTargets.GetDecalScaleParam(lepo);
-                    if (dp != null)
-                    {
-                        float want = dp.CurrentVal * wantLong / flat;
-                        float got = Mathf.Clamp(want, dp._minVal, dp._maxVal);
-                        if (Mathf.Abs(want - got) > 0.0001f) clamped++;
-                        dp.SetValue(got);
-                    }
-                }
+                ApplyPieceScale(lepo, l, piece, ref clamped);
 
                 lepo.Position = anchor;
 
@@ -444,6 +520,12 @@ namespace BetterFG.Features.CreativeText
                 LevelEditorPlaceableObject.RegisterAllCollidersForPlaceable(lepo);
                 lepo.CorrectColliders();
                 lepo.BuildColliderBounds();
+
+                PieceScale(l, piece, out float fRight, out float fUp);
+                var exact = l.BaseScale;
+                exact[l.Right] *= fRight;
+                exact[l.Up] *= fUp;
+                go.transform.localScale = exact;
 
                 placed.Add(lepo);
             }
@@ -470,17 +552,92 @@ namespace BetterFG.Features.CreativeText
             status = $"{placed.Count} placed" + (ranOut ? ", budget ran out" : "");
 
             Plugin.Log.LogInfo($"'{Text}' at quality {plan.Rows} -> {placed.Count} object(s) from {plan.Pieces.Count} "
-                + $"{(plan.Squares ? "squares" : "strokes")} of {prefab.name}, {plan.Coverage * 100f:0.#}% of the glyphs covered, "
-                + $"cell {cell:0.###}, axes {right}/{up} spin {spinAxis}, group {group}"
+                + $"{(plan.Squares ? "squares" : "strokes")} of {l.Prefab.name}, {plan.Coverage * 100f:0.#}% of the glyphs covered, "
+                + $"cell {l.Cell:0.###}, axes {l.Right}/{l.Up} spin {l.SpinAxis}, group {group}"
                 + (clamped > 0 ? $", {clamped} came back shorter than asked" : "")
                 + (ranOut ? ", budget ran dry partway" : ""));
             return placed.Count;
         }
 
-        private const int AngleSteps = 12;
+        private static GameObject _ghost;
+        private static string _ghostKey;
+        private static string _ghostPending;
+        private static float _ghostPendingAt;
+        private const float PreviewSettle = 0.3f;
+
+        public static void ShowPreview()
+        {
+            var mgr = LevelEditorManager.Instance;
+            if (mgr == null) { HidePreview(); return; }
+
+            string key = $"{PlanKey()}|{Height}";
+            if (_ghostKey != key)
+            {
+                if (_ghostPending != key) { _ghostPending = key; _ghostPendingAt = Time.unscaledTime; }
+                else if (Time.unscaledTime - _ghostPendingAt >= PreviewSettle) BuildGhost(key);
+            }
+
+            if (_ghost == null) return;
+            var reticle = mgr.GetReticleGameObject();
+            if (reticle != null) _ghost.transform.position = reticle.transform.position;
+        }
+
+        private static void BuildGhost(string key)
+        {
+            HidePreview();
+            _ghostKey = key;
+
+            var l = BuildLayout(out _);
+            if (l == null) return;
+
+            float started = Time.realtimeSinceStartup;
+
+            var template = UnityEngine.Object.Instantiate(l.Prefab);
+            template.SetActive(false);
+            foreach (var mb in template.GetComponentsInChildren<MonoBehaviour>(true))
+                UnityEngine.Object.DestroyImmediate(mb);
+            foreach (var col in template.GetComponentsInChildren<Collider>(true))
+                UnityEngine.Object.DestroyImmediate(col);
+
+            _ghost = new GameObject("BettrFG_TextPreview");
+            var baseScale = template.transform.localScale;
+            var plan = l.Plan;
+
+            for (int i = 0; i < plan.Pieces.Count; i++)
+            {
+                var piece = plan.Pieces[i];
+                var go = UnityEngine.Object.Instantiate(template);
+                var t = go.transform;
+                t.SetParent(_ghost.transform, false);
+                t.localPosition = PieceOffset(l, piece);
+                t.localRotation = Quaternion.AngleAxis(piece.Angle, l.SpinAxis);
+
+                PieceScale(l, piece, out float fRight, out float fUp);
+                var s = baseScale;
+                s[l.Right] *= fRight;
+                s[l.Up] *= fUp;
+                t.localScale = s;
+                go.SetActive(true);
+            }
+
+            UnityEngine.Object.Destroy(template);
+            Plugin.Log.LogInfo($"text ghost for '{Text}': {plan.Pieces.Count} pieces of {l.Prefab.name} "
+                + $"in {(Time.realtimeSinceStartup - started) * 1000f:0}ms");
+        }
+
+        public static void HidePreview()
+        {
+            if (_ghost != null) UnityEngine.Object.Destroy(_ghost);
+            _ghost = null;
+            _ghostKey = null;
+            _ghostPending = null;
+        }
+
+        private const int AngleSteps = 24;
         private const int SpanSamples = 5;
         private const float LeaveUncovered = 0.005f;
-        private const float Bleed = 1f;
+        private const float Bleed = 0.35f;
+        private const float MaxStrokeAspect = 5f;
 
         private static int SquareShape(LevelEditorRangeParameter range)
         {
@@ -586,6 +743,9 @@ namespace BetterFG.Features.CreativeText
 
                 float radBest = bestAngle * Mathf.Deg2Rad;
                 var bestDir = new Vector2(Mathf.Cos(radBest), Mathf.Sin(radBest));
+
+                bestLen = Mathf.Min(bestLen, bestThick * MaxStrokeAspect);
+
                 var size2 = new Vector2(bestLen + Bleed, bestThick + Bleed);
 
                 if (plan.Squares)
@@ -653,7 +813,7 @@ namespace BetterFG.Features.CreativeText
                     if (px < 0 || py < 0 || px >= cols || py >= rows) continue;
                     if (cells[py * cols + px]) hits++;
                 }
-                if (hits < SpanSamples - 1) break;
+                if (hits < SpanSamples) break;
                 reach = step;
             }
             return reach;

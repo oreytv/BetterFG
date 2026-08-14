@@ -222,6 +222,7 @@ namespace BetterFG.Features.Replay
         const int MAX_NODES = 25000;
         const int FRAME_BUDGET = 2500000;
         const int VERIFY_MASK = 15;
+        internal const float SCROLL_Q = 2048f;
 
         class Node
         {
@@ -240,6 +241,8 @@ namespace BetterFG.Features.Replay
             public Levels.Obstacles.COMMON_BlastBall blast;
             public LevelEditorDestructibleObjectResponder dest;
             public Levels.TextureUVImageRenderer uv;
+            public Levels.Obstacles.COMMON_ConveyorBelt conv;
+            public Levels.Obstacles.LevelEditorCommonConveyorBelt convLe;
             public int blastState;
             public bool holdPending;
             public float holdTime;
@@ -260,6 +263,7 @@ namespace BetterFG.Features.Replay
         static readonly Dictionary<int, Levels.Obstacles.COMMON_BlastBall> _blastAt = new Dictionary<int, Levels.Obstacles.COMMON_BlastBall>();
         static readonly Dictionary<int, LevelEditorDestructibleObjectResponder> _destAt = new Dictionary<int, LevelEditorDestructibleObjectResponder>();
         static readonly Dictionary<int, Levels.TextureUVImageRenderer> _uvAt = new Dictionary<int, Levels.TextureUVImageRenderer>();
+        static readonly Dictionary<int, Behaviour> _convAt = new Dictionary<int, Behaviour>();
         static ReplayRecording _rec;
         static int _frames;
         static int _subtree;
@@ -340,6 +344,7 @@ namespace BetterFG.Features.Replay
             _blastAt.Clear();
             _destAt.Clear();
             _uvAt.Clear();
+            _convAt.Clear();
         }
 
         static void Discover()
@@ -368,6 +373,10 @@ namespace BetterFG.Features.Replay
                     var uvRenderers = root.GetComponentsInChildren<Levels.TextureUVImageRenderer>(true);
                     foreach (var c in uvRenderers)
                         if (c != null) _uvAt[c.transform.GetInstanceID()] = c;
+                    foreach (var c in root.GetComponentsInChildren<Levels.Obstacles.COMMON_ConveyorBelt>(true))
+                        if (c != null) _convAt[c.transform.GetInstanceID()] = c;
+                    foreach (var c in root.GetComponentsInChildren<Levels.Obstacles.LevelEditorCommonConveyorBelt>(true))
+                        if (c != null) _convAt[c.transform.GetInstanceID()] = c;
 
                     var anims = root.GetComponentsInChildren<Animator>(true);
                     foreach (var c in anims) if (c != null) _animAt[c.transform.GetInstanceID()] = c;
@@ -435,6 +444,8 @@ namespace BetterFG.Features.Replay
             foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.COMMON_BlastBall>(true)) if (c != null) _blastAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<LevelEditorDestructibleObjectResponder>(true)) if (c != null) _destAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<Levels.TextureUVImageRenderer>(true)) if (c != null) _uvAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.COMMON_ConveyorBelt>(true)) if (c != null) _convAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.LevelEditorCommonConveyorBelt>(true)) if (c != null) _convAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<Animator>(true)) if (c != null) _animAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<LevelEditorPlaceableObject>(true)) if (c != null) _placeableAt[c.transform.GetInstanceID()] = c;
 
@@ -479,7 +490,8 @@ namespace BetterFG.Features.Replay
             _blastAt.TryGetValue(id, out var blast);
             _destAt.TryGetValue(id, out var dest);
             _uvAt.TryGetValue(id, out var uv);
-            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, spawned, t);
+            _convAt.TryGetValue(id, out var conveyor);
+            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, conveyor, spawned, t);
             _subtree++;
 
             string sep = path.Length > 0 ? "/" : "";
@@ -495,7 +507,7 @@ namespace BetterFG.Features.Replay
         }
 
         static Node Add(ReplayObject data, Transform tf, Animator anim, Levels.Obstacles.COMMON_BlastBall blast,
-            LevelEditorDestructibleObjectResponder dest, Levels.TextureUVImageRenderer uv, bool world, float t)
+            LevelEditorDestructibleObjectResponder dest, Levels.TextureUVImageRenderer uv, Behaviour conveyor, bool world, float t)
         {
             var go = tf.gameObject;
             var node = new Node
@@ -514,30 +526,17 @@ namespace BetterFG.Features.Replay
             if (world) tf.GetPositionAndRotation(out node.pos, out node.rot);
             else tf.GetLocalPositionAndRotation(out node.pos, out node.rot);
 
-            node.blast = blast;
-            if (blast != null)
+            if (blast != null) node.blast = blast;
+            else if (dest != null) node.dest = dest;
+            else if (uv != null) node.uv = uv;
+            else if (conveyor != null)
             {
-                node.blastState = (int)blast._state;
+                node.conv = conveyor.TryCast<Levels.Obstacles.COMMON_ConveyorBelt>();
+                if (node.conv == null) node.convLe = conveyor.TryCast<Levels.Obstacles.LevelEditorCommonConveyorBelt>();
+            }
+
+            if (ReadState(node, out node.blastState))
                 data.states.Add(new ReplayObjectState { t = t, state = node.blastState });
-            }
-            else
-            {
-                node.dest = dest;
-                if (dest != null)
-                {
-                    node.blastState = dest._isDestroyed ? 0 : dest._hitsLeftToDestroy;
-                    data.states.Add(new ReplayObjectState { t = t, state = node.blastState });
-                }
-                else
-                {
-                    node.uv = uv;
-                    if (uv != null)
-                    {
-                        node.blastState = ReadUV(uv);
-                        data.states.Add(new ReplayObjectState { t = t, state = node.blastState });
-                    }
-                }
-            }
 
             if (node.hasAnim && anim.isActiveAndEnabled)
             {
@@ -567,6 +566,17 @@ namespace BetterFG.Features.Replay
             _nodes.Add(node);
             _rec.worldObjects.Add(data);
             return node;
+        }
+
+        static bool ReadState(Node node, out int state)
+        {
+            state = 0;
+            if (node.blast is not null && node.blast.m_CachedPtr != IntPtr.Zero) { state = (int)node.blast._state; return true; }
+            if (node.dest is not null && node.dest.m_CachedPtr != IntPtr.Zero) { state = node.dest._isDestroyed ? 0 : node.dest._hitsLeftToDestroy; return true; }
+            if (node.uv is not null && node.uv.m_CachedPtr != IntPtr.Zero) { state = ReadUV(node.uv); return true; }
+            if (node.conv is not null && node.conv.m_CachedPtr != IntPtr.Zero) { state = Mathf.RoundToInt(node.conv._visualPositionNormalised * SCROLL_Q); return true; }
+            if (node.convLe is not null && node.convLe.m_CachedPtr != IntPtr.Zero) { state = Mathf.RoundToInt(node.convLe._currentScroll * SCROLL_Q); return true; }
+            return false;
         }
 
         static int ReadUV(Levels.TextureUVImageRenderer uv)
@@ -708,32 +718,10 @@ namespace BetterFG.Features.Replay
 
             bool verify = (++node.visits & VERIFY_MASK) == 0;
 
-            if (node.blast is not null && node.blast.m_CachedPtr != IntPtr.Zero)
+            if (ReadState(node, out int channel) && channel != node.blastState)
             {
-                int blastState = (int)node.blast._state;
-                if (blastState != node.blastState)
-                {
-                    node.blastState = blastState;
-                    node.data.states.Add(new ReplayObjectState { t = t, state = blastState });
-                }
-            }
-            else if (node.dest is not null && node.dest.m_CachedPtr != IntPtr.Zero)
-            {
-                int hits = node.dest._isDestroyed ? 0 : node.dest._hitsLeftToDestroy;
-                if (hits != node.blastState)
-                {
-                    node.blastState = hits;
-                    node.data.states.Add(new ReplayObjectState { t = t, state = hits });
-                }
-            }
-            else if (node.uv is not null && node.uv.m_CachedPtr != IntPtr.Zero)
-            {
-                int packed = ReadUV(node.uv);
-                if (packed != node.blastState)
-                {
-                    node.blastState = packed;
-                    node.data.states.Add(new ReplayObjectState { t = t, state = packed });
-                }
+                node.blastState = channel;
+                node.data.states.Add(new ReplayObjectState { t = t, state = channel });
             }
 
             Vector3 pos;
@@ -827,6 +815,8 @@ namespace BetterFG.Features.Replay
             public Levels.Obstacles.COMMON_BlastBall blast;
             public LevelEditorDestructibleObjectResponder dest;
             public Levels.TextureUVImageRenderer uv;
+            public Levels.Obstacles.COMMON_ConveyorBelt conv;
+            public Levels.Obstacles.LevelEditorCommonConveyorBelt convLe;
             public bool world;
             public int cursor;
             public int stateCursor;
@@ -963,6 +953,8 @@ namespace BetterFG.Features.Replay
                     blast = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.COMMON_BlastBall>() : null,
                     dest = obj.states.Count > 0 ? tf.GetComponent<LevelEditorDestructibleObjectResponder>() : null,
                     uv = obj.states.Count > 0 ? tf.GetComponent<Levels.TextureUVImageRenderer>() : null,
+                    conv = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.COMMON_ConveyorBelt>() : null,
+                    convLe = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.LevelEditorCommonConveyorBelt>() : null,
                     world = !string.IsNullOrEmpty(obj.prefab),
                     active = tf.gameObject.activeSelf,
                     spawned = spawned,
@@ -1072,6 +1064,7 @@ namespace BetterFG.Features.Replay
                     if (live.blast != null) DriveBlastBall(live, time);
                     else if (live.dest != null) DriveDestructible(live, time, live.tf.position);
                     else if (live.uv != null) DriveTileImage(live, time);
+                    else DriveConveyor(live, time);
                     continue;
                 }
 
@@ -1119,6 +1112,7 @@ namespace BetterFG.Features.Replay
                 if (live.blast != null) DriveBlastBall(live, time);
                 else if (live.dest != null) DriveDestructible(live, time, pos);
                 else if (live.uv != null) DriveTileImage(live, time);
+                else DriveConveyor(live, time);
 
                 if (live.anim == null || a.stateHash == 0 || live.anim.runtimeAnimatorController == null) continue;
                 live.anim.Play(a.stateHash, 0, animTime);
@@ -1217,6 +1211,39 @@ namespace BetterFG.Features.Replay
 
             ReplayTileUV.Unpack(states[want].state, out float u, out float v);
             live.uv.SetImage(u, v);
+        }
+
+        void DriveConveyor(Live live, float time)
+        {
+            if (live.conv == null && live.convLe == null) return;
+
+            var states = live.data.states;
+            if (states.Count == 0) return;
+
+            int c = live.stateCursor;
+            if (c < 0 || c >= states.Count || states[c].t > time) c = 0;
+            while (c + 1 < states.Count && states[c + 1].t <= time) c++;
+            live.stateCursor = c;
+
+            float scroll = states[c].state / ReplayWorldRecorder.SCROLL_Q;
+            if (c + 1 < states.Count)
+            {
+                float next = states[c + 1].state / ReplayWorldRecorder.SCROLL_Q;
+                float den = states[c + 1].t - states[c].t;
+                if (den > 0f && Mathf.Abs(next - scroll) <= 0.5f)
+                    scroll = Mathf.Lerp(scroll, next, Mathf.Clamp01((time - states[c].t) / den));
+            }
+
+            if (live.conv != null)
+            {
+                live.conv._visualPositionNormalised = scroll;
+                live.conv.ScrollConveyorVisuals();
+            }
+            else
+            {
+                live.convLe._currentScroll = scroll;
+                live.convLe.ScrollConveyorVisuals();
+            }
         }
 
         void Pin(Rigidbody rb)
@@ -1408,8 +1435,7 @@ namespace BetterFG.Features.Replay
 
         readonly ReplayRecording _rec;
         readonly List<Track> _tracks = new List<Track>();
-        GameObject _prefabCache;
-        bool _prefabSearched;
+        bool _moaned;
 
         public ReplayTailPlayer(ReplayRecording rec)
         {
@@ -1418,42 +1444,31 @@ namespace BetterFG.Features.Replay
 
         public void Attach(uint playerId, GameObject bean)
         {
-            if (string.IsNullOrEmpty(_rec.tailPrefab) || bean == null) return;
+            if (_rec.tailEvents.Count == 0) return;
 
-            Transform bone = null;
-            foreach (var t in bean.GetComponentsInChildren<Transform>(true))
-                if (t.name == _rec.tailBoneName) { bone = t; break; }
-            if (bone == null) return;
-
-            var prefab = FindTailPrefab();
-            if (prefab == null) return;
-
-            var clone = UnityEngine.Object.Instantiate(prefab, bone);
-            clone.name = "BettrFG_ReplayTail";
-            clone.transform.SetLocalPositionAndRotation(_rec.tailLocalPos, _rec.tailLocalRot);
-            clone.transform.localScale = _rec.tailLocalScale;
-            foreach (var c in clone.GetComponentsInChildren<Levels.Tag.TagAccessory>(true)) UnityEngine.Object.Destroy(c);
-            foreach (var c in clone.GetComponentsInChildren<Collider>(true)) UnityEngine.Object.Destroy(c);
-            clone.SetActive(false);
-
-            _tracks.Add(new Track { playerId = playerId, tail = clone.transform });
-        }
-
-        GameObject FindTailPrefab()
-        {
-            if (_prefabSearched) return _prefabCache;
-            _prefabSearched = true;
-
-            foreach (var candidate in Resources.FindObjectsOfTypeAll<GameObject>())
+            var accessory = bean.GetComponentInChildren<Levels.Tag.TailTagAccessory>(true);
+            if (accessory == null)
             {
-                if (candidate == null || ReplayWorldPath.BaseName(candidate.name) != _rec.tailPrefab) continue;
-                _prefabCache = candidate;
-                if (!candidate.scene.IsValid()) break;
+                if (!_moaned)
+                {
+                    Plugin.Log.LogWarning($"replay bean has no TailTagAccessory on it, so the {_rec.tailEvents.Count} tail events in this replay have nothing to show");
+                    _moaned = true;
+                }
+                return;
             }
-            if (_prefabCache == null)
-                Plugin.Log.LogWarning($"no '{_rec.tailPrefab}' anywhere in memory, tails won't show in this replay");
-            return _prefabCache;
+
+            var root = accessory.gameObject;
+            var tail = accessory._tail;
+            UnityEngine.Object.Destroy(accessory);
+
+            if (tail == null) tail = root;
+            else root.SetActive(true);
+            tail.SetActive(false);
+
+            _tracks.Add(new Track { playerId = playerId, tail = tail.transform });
         }
+
+        public int AttachedCount => _tracks.Count;
 
         public void Apply(float time)
         {

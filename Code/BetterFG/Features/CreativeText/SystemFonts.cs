@@ -49,13 +49,53 @@ namespace BetterFG.Features.CreativeText
             return _fonts;
         }
 
+        private static Dictionary<string, string> _osNames;
+
+        private static string OsName(string family)
+        {
+            if (_osNames == null)
+            {
+                _osNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var installed = Font.GetOSInstalledFontNames();
+                for (int i = 0; installed != null && i < installed.Length; i++)
+                {
+                    var n = installed[i];
+                    if (!string.IsNullOrEmpty(n)) _osNames[n] = n;
+                }
+                Plugin.Log.LogInfo($"unity says {_osNames.Count} OS fonts are installed"
+                    + (_osNames.Count > 0 ? "" : ", so nothing can be previewed by name"));
+            }
+
+            if (_osNames.TryGetValue(family, out var exact)) return exact;
+            foreach (var kv in _osNames)
+                if (kv.Key.StartsWith(family, StringComparison.OrdinalIgnoreCase)) return kv.Value;
+            return null;
+        }
+
+        private static bool _osFontApiDead;
+
         public static Font Preview(SystemFont font)
         {
-            if (font == null) return null;
+            if (font == null || _osFontApiDead) return null;
             if (_previews.TryGetValue(font.Family, out var cached)) return cached;
+
             Font made = null;
-            try { made = Font.CreateDynamicFontFromOSFont(font.Family, 16); }
-            catch (Exception ex) { Plugin.Log.LogDebug($"no OS font for {font.Family}: {ex.Message}"); }
+            try
+            {
+                made = Font.CreateDynamicFontFromOSFont(font.Family, 16);
+                if (made == null)
+                {
+                    string osName = OsName(font.Family);
+                    if (osName != null) made = Font.CreateDynamicFontFromOSFont(osName, 16);
+                }
+            }
+            catch (Exception ex)
+            {
+                _osFontApiDead = true;
+                Plugin.Log.LogWarning($"CreateDynamicFontFromOSFont is stripped out of this build ({ex.Message}), "
+                    + "so no legacy Font can be built for any system font. not asking again");
+            }
+
             _previews[font.Family] = made;
             return made;
         }
