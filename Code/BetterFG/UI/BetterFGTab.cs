@@ -105,6 +105,12 @@ namespace BetterFG.UI
 
         public virtual string TabTitle => "Tab";
 
+        protected virtual string TitleDisplay => TabTitle;
+        private Text _titleLabel;
+        protected void RefreshTitle() => _titleLabel.text = TitleDisplay.ToUpper();
+
+        protected virtual float TitleYOffset => 0f;
+
         public float TabWidth { get; set; } = UIScale.TAB_W;
         public float TabHeight { get; set; } = UIScale.TAB_CONTENT_H;
 
@@ -136,7 +142,8 @@ namespace BetterFG.UI
                     // the horizontal stretch inset and jitter the title sideways for a frame
                     var sd = _titleRt.sizeDelta;
                     _titleRt.sizeDelta = new Vector2(sd.x, UIScale.TITLE_H + (value ? TitleReachOpened : TitleReachClosed));
-                    _titleRt.localPosition = value ? TitleOpenedPos : TitleClosedPos;
+                    var basePos = value ? TitleOpenedPos : TitleClosedPos;
+                    _titleRt.localPosition = new Vector3(basePos.x, basePos.y + TitleYOffset, basePos.z);
                 }
             }
         }
@@ -182,13 +189,14 @@ namespace BetterFG.UI
             titleRt.offsetMin = new Vector2(0f, -UIScale.TITLE_H - TitleReachClosed);
             titleRt.offsetMax = Vector2.zero;
             _titleRt = titleRt;
-            titleRt.localPosition = TitleClosedPos;
+            titleRt.localPosition = new Vector3(TitleClosedPos.x, TitleClosedPos.y + TitleYOffset, TitleClosedPos.z);
             titleRt.localRotation = Quaternion.Euler(22f, 345f, 0f);
             titleRt.localScale = new Vector3(1.2f, 1.3f, 1.3f);
 
-            var t = UGUIShip.CreateLabel(titleGo.transform, default, TabTitle.ToUpper(), UIScale.FS_TITLE,
+            var t = UGUIShip.CreateLabel(titleGo.transform, default, TitleDisplay.ToUpper(), UIScale.FS_TITLE,
                 new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
             t.fontStyle = FontStyle.Bold;
+            _titleLabel = t;
             var labelRt = t.rectTransform;
             labelRt.anchorMin = new Vector2(0f, 1f);
             labelRt.anchorMax = new Vector2(1f, 1f);
@@ -227,6 +235,8 @@ namespace BetterFG.UI
                     UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(null);
             }));
 
+            BuildTitleExtras(titleGo.transform, t);
+
             var contentGo = new GameObject("ContentArea");
             contentGo.transform.SetParent(windowGo.transform, false);
             var contentRt = contentGo.AddComponent<RectTransform>();
@@ -243,10 +253,12 @@ namespace BetterFG.UI
         }
 
         protected virtual void BuildBackground(RectTransform root) { }
+        protected virtual void BuildTitleExtras(Transform titleBar, Text title) { }
         protected virtual void OnTitleHoverChanged(bool hovering) { }
         // called by the UI manager when this tab is opened/closed
         public virtual void OnOpened() { }
         public virtual void OnClosed() { }
+        public virtual void OnRepoChanged() { }
         internal void NotifyTitleHover(bool hovering)
         {
             _hovered = hovering;
@@ -278,7 +290,7 @@ namespace BetterFG.UI
             img.color = new Color(t.r, t.g, t.b, a);
             img.SetAllDirty(); // RawImage.color alone doesn't always trigger a repaint under IL2Cpp uGUI
         }
-        private void OnTitleClicked() { BetterFGUIMan.Instance?.ToggleTab(this); }
+        protected virtual void OnTitleClicked() { BetterFGUIMan.Instance?.ToggleTab(this); }
         protected virtual void BuildContent(RectTransform contentRoot) { }
     }
 }

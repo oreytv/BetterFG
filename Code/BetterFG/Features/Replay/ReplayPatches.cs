@@ -10,16 +10,88 @@ using UnityEngine;
 
 namespace BetterFG.Features.Replay
 {
-    [HarmonyPatch(typeof(EventInstance), nameof(EventInstance.start))]
+    // every capture hook below sits on something the game does constantly — each FMOD event start/stop,
+    // each pooled spawn, each animator audio state — and they all did nothing unless a recording was
+    // live. the early-out was cheap but the trampoline in front of it was not: an il2cpp-to-managed
+    // transition plus wrapper allocations, on all of that traffic, permanently. so the hooks go in when
+    // recording starts and come back out when it stops.
+    internal static class ReplayCaptureHooks
+    {
+        private static readonly List<(MethodBase target, MethodInfo patch)> _installed =
+            new List<(MethodBase, MethodInfo)>();
+
+        public static void SetActive(bool on)
+        {
+            if (on == _installed.Count > 0) return;
+            if (on) Install(); else Remove();
+        }
+
+        private static void Install()
+        {
+            Hook(AccessTools.Method(typeof(EventInstance), nameof(EventInstance.start)), typeof(ReplaySlideAudioPatch), false);
+            Hook(AccessTools.Method(typeof(EventInstance), nameof(EventInstance.stop)), typeof(ReplaySlideAudioStopPatch), false);
+            Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlayCharacterAudio)), typeof(ReplayCharacterAudioPatch), false);
+            Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlaySpeechBubbleAudio)), typeof(ReplaySpeechBubbleAudioPatch), false);
+            Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlayOneShot), new[] { typeof(string), typeof(Vector3) }), typeof(ReplayObjectAudioPatch), false);
+            Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlayOneShotAttached), new[] { typeof(string), typeof(GameObject) }), typeof(ReplayAttachedAudioPatch), false);
+            foreach (var m in ReplayCreateAudioPatch.Targets()) Hook(m, typeof(ReplayCreateAudioPatch), true);
+            Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.StopAndReleaseAudioEvent)), typeof(ReplayStopAudioPatch), false);
+            Hook(AccessTools.Method(typeof(PlayAudioStateBehaviour), nameof(PlayAudioStateBehaviour.OnStateEnter)), typeof(ReplayAnimatorAudioPatch), false);
+            Hook(AccessTools.Method(typeof(Levels.Obstacles.COMMON_PrefabSpawnerBase), nameof(Levels.Obstacles.COMMON_PrefabSpawnerBase.OnInstantiateObject)), typeof(ReplaySpawnerPatch), true);
+            Hook(AccessTools.Method(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForUse)), typeof(ReplayPoolGetPatch), true);
+            Hook(AccessTools.Method(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForStorage)), typeof(ReplayPoolReturnPatch), false);
+            Hook(AccessTools.Method(typeof(FG.Common.Character.FallGuyVFXController), nameof(FG.Common.Character.FallGuyVFXController.HandleOnDive)), typeof(ReplayDiveSlideVfxPatch), false);
+            Hook(AccessTools.Method(typeof(Levels.Tag.TailTagAccessory), nameof(Levels.Tag.TailTagAccessory.OnAccessoryEnabled)), typeof(ReplayTailEnablePatch), true);
+            Hook(AccessTools.Method(typeof(Levels.Tag.TailTagAccessory), nameof(Levels.Tag.TailTagAccessory.OnAccessoryDisabled)), typeof(ReplayTailDisablePatch), true);
+            Hook(AccessTools.Method(typeof(Levels.Starlink.StarlinkNode), nameof(Levels.Starlink.StarlinkNode.OnButtonPress)), typeof(ReplayStarchartButtonPatch), true);
+            Plugin.Log.LogInfo($"replay capture hooks in, {_installed.Count} methods");
+        }
+
+        private static void Hook(MethodBase target, Type owner, bool postfix)
+        {
+            if (target == null) { Plugin.Log.LogWarning($"replay: nothing to hook for {owner.Name}"); return; }
+            var patch = AccessTools.Method(owner, postfix ? "Postfix" : "Prefix");
+            if (patch == null) return;
+            var hm = new HarmonyMethod(patch);
+            Plugin.HarmonyInstance.Patch(target, prefix: postfix ? null : hm, postfix: postfix ? hm : null);
+            _installed.Add((target, patch));
+        }
+
+        private static void Remove()
+        {
+            foreach (var (target, patch) in _installed)
+                Plugin.HarmonyInstance.Unpatch(target, patch);
+            _installed.Clear();
+            Plugin.Log.LogInfo("recording stopped, capture hooks back out of the audio + pool paths");
+        }
+    }
+
+    internal static class ReplaySlideEvent
+    {
+        static readonly Dictionary<IntPtr, bool> _known = new Dictionary<IntPtr, bool>();
+
+        public static void Reset() => _known.Clear();
+
+        public static bool Matches(EventInstance instance, out EventDescription desc)
+        {
+            desc = default;
+            if (!instance.isValid() || instance.getDescription(out desc) != RESULT.OK) return false;
+
+            if (_known.TryGetValue(desc.handle, out bool slide)) return slide;
+
+            slide = desc.getPath(out string path) == RESULT.OK
+                && !string.IsNullOrEmpty(path)
+                && path.EndsWith("/F_Slide", StringComparison.OrdinalIgnoreCase);
+            _known[desc.handle] = slide;
+            return slide;
+        }
+    }
+
     internal static class ReplaySlideAudioPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(EventInstance __instance)
         {
-            if (FeatureReplay.Live == null || !__instance.isValid()) return;
-            if (__instance.getDescription(out var desc) != RESULT.OK) return;
-            if (desc.getPath(out string path) != RESULT.OK || string.IsNullOrEmpty(path)) return;
-            if (!path.EndsWith("/F_Slide", StringComparison.OrdinalIgnoreCase)) return;
+            if (FeatureReplay.Live == null || !ReplaySlideEvent.Matches(__instance, out var desc)) return;
 
             var pairs = new List<(string, float)>();
             if (desc.getParameterDescriptionCount(out int count) == RESULT.OK)
@@ -36,25 +108,17 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(EventInstance), nameof(EventInstance.stop))]
     internal static class ReplaySlideAudioStopPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(EventInstance __instance)
         {
-            if (FeatureReplay.Live == null || !__instance.isValid()) return;
-            if (__instance.getDescription(out var desc) != RESULT.OK) return;
-            if (desc.getPath(out string path) != RESULT.OK || string.IsNullOrEmpty(path)) return;
-            if (!path.EndsWith("/F_Slide", StringComparison.OrdinalIgnoreCase)) return;
-
+            if (FeatureReplay.Live == null || !ReplaySlideEvent.Matches(__instance, out _)) return;
             FeatureReplay.CloseSlideAudio(__instance.handle);
         }
     }
 
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlayCharacterAudio))]
     internal static class ReplayCharacterAudioPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(AudioEvent2D3DPairSO pair, FallGuysCharacterController characterController, Vector3 pos, AudioParamContainer paramContainer)
         {
             if (FeatureReplay.Live == null) return;
@@ -62,10 +126,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlaySpeechBubbleAudio))]
     internal static class ReplaySpeechBubbleAudioPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(string audioEvent, FallGuysCharacterController characterController)
         {
             if (FeatureReplay.Live == null || characterController == null) return;
@@ -73,10 +135,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlayOneShot), new Type[] { typeof(string), typeof(Vector3) })]
     internal static class ReplayObjectAudioPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(string __0, Vector3 __1)
         {
             if (FeatureReplay.Live == null) return;
@@ -84,10 +144,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.PlayOneShotAttached), new Type[] { typeof(string), typeof(GameObject) })]
     internal static class ReplayAttachedAudioPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(string __0, GameObject __1)
         {
             if (FeatureReplay.Live == null || __1 == null) return;
@@ -95,10 +153,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch]
     internal static class ReplayCreateAudioPatch
     {
-        [HarmonyTargetMethods]
         public static IEnumerable<MethodBase> Targets()
         {
             foreach (var m in typeof(AudioManager).GetMethods())
@@ -110,7 +166,6 @@ namespace BetterFG.Features.Replay
             }
         }
 
-        [HarmonyPostfix]
         public static void Postfix(object[] __args, EventInstanceReference __result)
         {
             if (FeatureReplay.Live == null || __args == null || __args.Length < 2) return;
@@ -124,10 +179,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(AudioManager), nameof(AudioManager.StopAndReleaseAudioEvent))]
     internal static class ReplayStopAudioPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(ref EventInstanceReference instanceReference)
         {
             if (FeatureReplay.Live == null) return;
@@ -135,10 +188,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(PlayAudioStateBehaviour), nameof(PlayAudioStateBehaviour.OnStateEnter))]
     internal static class ReplayAnimatorAudioPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(PlayAudioStateBehaviour __instance, Animator animator)
         {
             if (FeatureReplay.Live == null || animator == null) return;
@@ -151,10 +202,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(Levels.Obstacles.COMMON_PrefabSpawnerBase), nameof(Levels.Obstacles.COMMON_PrefabSpawnerBase.OnInstantiateObject))]
     internal static class ReplaySpawnerPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(GameObject go)
         {
             if (FeatureReplay.Live == null || go == null) return;
@@ -162,10 +211,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForUse))]
     internal static class ReplayPoolGetPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(GameObject go)
         {
             if (FeatureReplay.Live == null || go == null) return;
@@ -173,10 +220,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForStorage))]
     internal static class ReplayPoolReturnPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(GameObject go)
         {
             if (FeatureReplay.Live == null || go == null) return;
@@ -184,10 +229,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(FG.Common.Character.FallGuyVFXController), nameof(FG.Common.Character.FallGuyVFXController.HandleOnDive))]
     internal static class ReplayDiveSlideVfxPatch
     {
-        [HarmonyPrefix]
         public static void Prefix(FG.Common.Character.FallGuyVFXController __instance)
         {
             if (FeatureReplay.Live == null || __instance == null) return;
@@ -195,10 +238,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(Levels.Tag.TailTagAccessory), nameof(Levels.Tag.TailTagAccessory.OnAccessoryEnabled))]
     internal static class ReplayTailEnablePatch
     {
-        [HarmonyPostfix]
         public static void Postfix(Levels.Tag.TailTagAccessory __instance)
         {
             if (FeatureReplay.Live == null) return;
@@ -206,10 +247,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(Levels.Tag.TailTagAccessory), nameof(Levels.Tag.TailTagAccessory.OnAccessoryDisabled))]
     internal static class ReplayTailDisablePatch
     {
-        [HarmonyPostfix]
         public static void Postfix(Levels.Tag.TailTagAccessory __instance)
         {
             if (FeatureReplay.Live == null) return;
@@ -217,10 +256,8 @@ namespace BetterFG.Features.Replay
         }
     }
 
-    [HarmonyPatch(typeof(Levels.Starlink.StarlinkNode), nameof(Levels.Starlink.StarlinkNode.OnButtonPress))]
     internal static class ReplayStarchartButtonPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(Levels.Starlink.StarlinkNode __instance)
         {
             if (FeatureReplay.Live == null) return;

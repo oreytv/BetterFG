@@ -23,6 +23,7 @@ namespace BetterFG.UI.Tab
 
         public override string TabTitle => "UGC Customization";
 
+
         // ── Empty state ───────────────────────────────────────────────────────
         private const string EMPTY_NO_REPO = "No repository selected.";
         private const string EMPTY_NO_RESULTS = "No results for \"{0}\".";
@@ -52,10 +53,7 @@ namespace BetterFG.UI.Tab
 
         // ── Imported skins persistent list ────────────────────────────────────
         private List<string> _importedPaths = new List<string>(); // folder paths, persisted
-        private bool _importedRepoSelected = false;
-        private bool _featuredSelected = false; // "Featured Repos" dropdown entry active — list shows repos, not skins
         private Dictionary<string, RawImage> _featuredCoverImages = new Dictionary<string, RawImage>();
-        private RectTransform _repoScrollContent; // dropdown scroll content, rebuilt after parent
 
         // open item config window
         private ItemConfigWindow _configWindow;
@@ -101,9 +99,6 @@ namespace BetterFG.UI.Tab
         // ── Textures ──────────────────────────────────────────────────────────
         private static Texture2D _hoverTex;
         private static Texture2D _bgTex;
-        private static Texture2D _repoOverlayTex;
-        private static Texture2D _importedTex;
-        private static Texture2D _featuredTex;
         private GameObject _bgHoverGo;
 
         private static Texture2D LoadTex(string resource, ref Texture2D cache)
@@ -176,7 +171,7 @@ namespace BetterFG.UI.Tab
         private Dictionary<string, bool> _groupExpanded = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         // filter bar buttons
-        private Button _btnCostumes, _btnAccessories, _btnItems, _btnPlinths, _btnEmotes;
+        private Button _btnCostumes, _btnAccessories, _btnItems, _btnEmotes;
 
         private Dictionary<string, Image> _coverImages = new Dictionary<string, Image>();
 
@@ -193,7 +188,6 @@ namespace BetterFG.UI.Tab
 
         // ── State ─────────────────────────────────────────────────────────────
         private List<SkinInfo> availableSkins = new List<SkinInfo>();
-        private Dictionary<string, RawImage> _repoCoverImages = new Dictionary<string, RawImage>();
         private Dictionary<string, Texture2D> skinCovers = new Dictionary<string, Texture2D>();
 
         // ── Services ──────────────────────────────────────────────────────────
@@ -201,15 +195,9 @@ namespace BetterFG.UI.Tab
         private SkinLoaderService loaderService;
         private SkinApplicationService applicationService;
         private RepoRegistry repoRegistry;
-        private MenuCustomizationApplication _plinthApp;
 
         // ── Repo dropdown ─────────────────────────────────────────────────────
-        private RectTransform _repoRowsParent;
-        private bool _repoDropdownOpen = false;
-        private string _repoSearchQuery = "";     // filters the open repo list
-        private InputField _repoSearchField;      // real search bar shown in place of the header while open
         private bool _fakeInputLocked = false;
-        private GameObject _belowRepos; // everything under the repo section, hidden while the dropdown is open
 
         private List<SkinInfo> _pendingApplyQueue = new List<SkinInfo>();
         private int _pendingTotal = 0;
@@ -303,7 +291,7 @@ namespace BetterFG.UI.Tab
 
         private void OnReposChanged()
         {
-            RefreshRepoRows();
+            
             FetchActiveRepo();
             RefreshSkinList();
         }
@@ -418,18 +406,14 @@ namespace BetterFG.UI.Tab
             float w = TabWidth - PAD * 2f;
             float y = VPAD;
 
-            // ── Repo section ───────────────────────────────────────────────────
-            y = BuildRepoSection(contentRoot, y, w);
+            _repoRowParent = contentRoot;
+            _repoRowY = y;
+            _repoRowW = w;
+            y = RepoSelectorTab.BuildCurrentRepoRow(this, contentRoot, y, w);
             UGUIShip.CreatePanel(contentRoot, PR(y, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             y += 1f + SH;
 
-            // everything under the repo section lives in one container so it can be hidden wholesale
-            // while the repo dropdown is open (the dropdown expands to fill this whole area)
-            _belowRepos = new GameObject("BelowRepos");
-            _belowRepos.transform.SetParent(contentRoot, false);
-            var belowRt = _belowRepos.AddComponent<RectTransform>();
-            belowRt.anchorMin = Vector2.zero; belowRt.anchorMax = Vector2.one;
-            belowRt.offsetMin = belowRt.offsetMax = Vector2.zero;
+            var belowRt = contentRoot;
 
             // ── Filter bar: Costumes | Accessories | Items ─────────────────────
             BuildFilterBar(belowRt, y, w);
@@ -460,240 +444,23 @@ namespace BetterFG.UI.Tab
             UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Apply", BTN_APPLY, WHITE, FS, new Action(OnApply)); bx += singleW + gap;
             UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Remove All", BTN_REMOVE, WHITE, FS, new Action(OnRemoveAll));
 
-            // now that _belowRepos exists, populate the repo rows (RefreshRepoRows toggles it)
-            RefreshRepoRows();
+            Refresh();
         }
 
-        // ── Repo section builder ──────────────────────────────────────────────
+        private RectTransform _repoRowParent;
+        private float _repoRowY, _repoRowW;
 
-        private float BuildRepoSection(RectTransform parent, float y, float w)
+        public override void OnRepoChanged()
         {
-            // Repo rows container -- shows active repo row by default
-            // "+ Add" and extra rows become visible when dropdown is toggled
-
-            // reserve one row height for the active repo
-            // rows container created below
-
-            // repo rows container -- height grows with rows
-            var rowsGo = new GameObject("RepoRows");
-            rowsGo.transform.SetParent(parent, false);
-            _repoRowsParent = rowsGo.AddComponent<RectTransform>();
-            UGUIShip.SetPixelRect(_repoRowsParent, new Rect(PAD, y, w, 0f)); // height set by RefreshRepoRows
-            var vlg = rowsGo.AddComponent<VerticalLayoutGroup>();
-            vlg.childForceExpandWidth = true;
-            vlg.childForceExpandHeight = false;
-            vlg.spacing = 2f;
-            rowsGo.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            // estimate height for layout: one (tall) active row visible when closed
-            float estimatedH = RepoRowH + 2f;
-            y += estimatedH + SH;
-
-            return y;
+            RepoSelectorTab.BuildCurrentRepoRow(this, _repoRowParent, _repoRowY, _repoRowW);
+            Refresh();
         }
 
-        private void RefreshRepoRows()
+        private void Refresh()
         {
-            if (_repoRowsParent == null) return;
-            for (int i = _repoRowsParent.childCount - 1; i >= 0; i--)
-                Destroy(_repoRowsParent.GetChild(i).gameObject);
-            _repoCoverImages.Clear();
-            _repoScrollContent = null;
-
-            if (repoRegistry == null) return;
-
-            var activeRepo = repoRegistry.Active;
-
-            // Active row (always visible). tall image-on-top layout when a real repo (with cover) is selected;
-            // compact single line for the search bar, imported/featured, or no repo
-            bool activeTall = !_repoDropdownOpen && !_importedRepoSelected && !_featuredSelected && activeRepo != null;
-            float activeH = activeTall ? RepoRowH : BTN_H;
-            var activeGo = new GameObject("RepoActiveRow");
-            activeGo.transform.SetParent(_repoRowsParent, false);
-            var activeRt = activeGo.AddComponent<RectTransform>();
-            activeRt.sizeDelta = new Vector2(0f, activeH);
-            var activeLE = activeGo.AddComponent<LayoutElement>();
-            activeLE.preferredHeight = activeH;
-
-            var aHlg = activeGo.AddComponent<HorizontalLayoutGroup>();
-            aHlg.childForceExpandHeight = true;
-            aHlg.childForceExpandWidth = false;
-            aHlg.spacing = 3f;
-            aHlg.padding = new RectOffset(0, 0, 0, 0);
-
-            if (_repoDropdownOpen)
-            {
-                // while open, the header is a live search bar that filters the list below
-                _repoSearchField = UGUIShip.CreateInputField(activeGo.transform, new Rect(0f, 0f, 100f, BTN_H),
-                    "search repositories...", new Color(0f, 0f, 0f, 0.4f), WHITE, FS_SM);
-                _repoSearchField.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-                UGUIShip.SetInputText(_repoSearchField, _repoSearchQuery, false);
-                _repoSearchField.onValueChanged.AddListener(new Action<string>(val =>
-                {
-                    _repoSearchQuery = val ?? "";
-                    if (_repoScrollContent != null)
-                    {
-                        PopulateRepoEntries(_repoScrollContent);
-                        LayoutRebuilder.ForceRebuildLayoutImmediate(_repoScrollContent);
-                    }
-                }));
-            }
-            else
-            {
-                // Create left button via UGUIShip so shine + hover works, and left-align label
-                string activeLabelText = _featuredSelected
-                    ? "Featured Repositories (selected)"
-                    : _importedRepoSelected
-                        ? "Imported Skins (selected)"
-                        : activeRepo != null ? activeRepo.DisplayName + " (selected)" : "No repository";
-                Color activeLabelColor = _featuredSelected ? GOLD
-                    : _importedRepoSelected ? ORANGE
-                    : activeRepo != null ? YELLOW : HINT;
-                var nameBtn = UGUIShip.CreateButton(activeGo.transform, activeLabelText,
-                    BTN_DARK, activeLabelColor, FS_SM, new Action(() => { _repoDropdownOpen = true; _repoSearchQuery = ""; RefreshRepoRows(); }));
-                var nameLE = nameBtn.gameObject.GetComponent<LayoutElement>() ?? nameBtn.gameObject.AddComponent<LayoutElement>();
-                nameLE.flexibleWidth = 1f;
-
-                if (activeTall)
-                {
-                    // real repo selected: tall cover-on-top layout, matching the dropdown entries
-                    BuildRepoButtonContents(nameBtn, activeRepo, showControls: false);
-                    var nameLbl = nameBtn.transform.Find("Label")?.GetComponent<Text>();
-                    if (nameLbl != null) nameLbl.color = activeLabelColor;
-                }
-                else
-                {
-                    // imported / featured / no repo: single-line label, no cover
-                    var nameLbl = nameBtn.transform.Find("Label")?.GetComponent<Text>();
-                    if (nameLbl != null)
-                    {
-                        nameLbl.alignment = TextAnchor.MiddleLeft;
-                        nameLbl.color = activeLabelColor;
-                        var nameLblRt = nameLbl.GetComponent<RectTransform>();
-                        if (nameLblRt != null) nameLblRt.offsetMin = new Vector2(14f, nameLblRt.offsetMin.y);
-                    }
-                }
-            }
-
-            // caret button on right (small)
-            var caretBtn = UGUIShip.CreateButton(activeGo.transform, _repoDropdownOpen ? "▴" : "▾", BTN_DARK, CYAN, FS_SM, new Action(() => { _repoDropdownOpen = !_repoDropdownOpen; _repoSearchQuery = ""; RefreshRepoRows(); }));
-            caretBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = BTN_H;
-
-            // if dropdown open: pinned entries stay fixed at the top, only the added repos scroll
-            if (_repoDropdownOpen)
-            {
-                // pinned system entries, fixed order, never scroll: default repo, Imported, Featured
-                SkinRepo defaultRepo = null;
-                foreach (var repo in repoRegistry.Repos)
-                    if (repo.isDefault) { defaultRepo = repo; break; }
-                if (defaultRepo != null) BuildRepoEntryRow(_repoRowsParent, defaultRepo);
-                BuildImportedEntryRow(_repoRowsParent);
-                BuildFeaturedEntryRow(_repoRowsParent);
-
-                bool anyAdded = false;
-                foreach (var repo in repoRegistry.Repos)
-                    if (!repo.isDefault) { anyAdded = true; break; }
-
-                if (anyAdded)
-                {
-                    // fixed section header — sits tight above the scroll, aligned to the row's left edge
-                    var secGo = new GameObject("RepoSectionLabel");
-                    secGo.transform.SetParent(_repoRowsParent, false);
-                    secGo.AddComponent<RectTransform>();
-                    secGo.AddComponent<LayoutElement>().preferredHeight = FS + 18f;
-                    var secLbl = UGUIShip.CreateStretchLabel(secGo.transform, "Added repositories", FS, WHITE);
-                    secLbl.alignment = TextAnchor.LowerLeft;
-                    var secLblRt = secLbl.GetComponent<RectTransform>();
-                    secLblRt.offsetMin = new Vector2(14f, secLblRt.offsetMin.y);
-
-                    // the one scrollable area — fills what's left under the fixed rows and above the Add button
-                    float viewportH = TabHeight - VPAD * 2f - BTN_H * 5f - (FS + 18f) - 30f;
-                    if (viewportH < BTN_H * 2f) viewportH = BTN_H * 2f;
-
-                    var scroll = UGUIShip.CreateScrollView(_repoRowsParent, new Rect(0f, 0f, 100f, viewportH));
-                    scroll.scrollRect.scrollSensitivity = 24f;
-                    scroll.scrollRect.gameObject.AddComponent<LayoutElement>().preferredHeight = viewportH;
-                    // drop the viewport's left inset so the added rows line up with the label/pinned rows above
-                    var vp = scroll.scrollRect.viewport;
-                    if (vp != null) vp.offsetMin = new Vector2(0f, vp.offsetMin.y);
-
-                    var cVlg = scroll.content.gameObject.AddComponent<VerticalLayoutGroup>();
-                    cVlg.childControlWidth = true;
-                    cVlg.childControlHeight = true;
-                    cVlg.childForceExpandWidth = true;
-                    cVlg.childForceExpandHeight = false;
-                    cVlg.spacing = 2f;
-                    scroll.content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-                    _repoScrollContent = scroll.content;
-                    PopulateRepoEntries(scroll.content);
-                }
-
-                // Add button row — outside the scroll, always visible
-                var addRow = new GameObject("RepoAddRow");
-                addRow.transform.SetParent(_repoRowsParent, false);
-                addRow.AddComponent<RectTransform>();
-                var addLE = addRow.AddComponent<LayoutElement>();
-                addLE.preferredHeight = BTN_H;
-                var addHlg = addRow.AddComponent<HorizontalLayoutGroup>();
-                addHlg.childForceExpandHeight = true;
-                addHlg.childForceExpandWidth = false;
-                addHlg.spacing = 3f;
-                addHlg.padding = new RectOffset(0, 0, 0, 0);
-
-                var addBtn = UGUIShip.CreateButton(addRow.transform, "Add Repositories",
-                    BTN_DARK, CYAN, FS_SM, new Action(OnAddRepo));
-                var addBtnLE = addBtn.gameObject.AddComponent<LayoutElement>();
-                addBtnLE.preferredWidth = 180f;
-                addBtnLE.preferredHeight = BTN_H;
-            }
-
-            LayoutRebuilder.ForceRebuildLayoutImmediate(_repoRowsParent);
-            // the parent rebuild above gives the scroll host its real width; now rebuild
-            // the scroll content so its rows stretch to that width (otherwise width=0 = invisible)
-            if (_repoScrollContent != null)
-                LayoutRebuilder.ForceRebuildLayoutImmediate(_repoScrollContent);
-
-            // hide everything below the repo section while the dropdown is open (it expands to fill
-            // that area), and bring the dropdown to front so it isn't occluded
-            if (_repoDropdownOpen)
-            {
-                _belowRepos.SetActive(false);
-                _repoRowsParent.SetAsLastSibling();
-            }
-            else
-            {
-                _belowRepos.SetActive(true);
-                _repoRowsParent.SetAsFirstSibling();
-            }
-        }
-
-        // fills the open dropdown's scroll content: default repo, Imported, Featured pinned at the top in
-        // fills the scrollable area with just the user-added repos, filtered by the search query. the
-        // pinned entries + section label are built as fixed rows outside the scroll, so typing only
-        // re-lists this content and never tears down the search field itself
-        private void PopulateRepoEntries(RectTransform contentRt)
-        {
-            for (int i = contentRt.childCount - 1; i >= 0; i--)
-                Destroy(contentRt.GetChild(i).gameObject);
-
-            string q = (_repoSearchQuery ?? "").Trim().ToLower();
-            foreach (var repo in repoRegistry.Repos)
-            {
-                if (repo.isDefault) continue;
-                if (q.Length > 0 && !repo.DisplayName.ToLower().Contains(q)) continue;
-                BuildRepoEntryRow(contentRt, repo);
-            }
-        }
-
-        // strip the hover EventTrigger that UGUIShip adds — it implements drag handlers and
-        // swallows scroll-drag, blocking the parent ScrollRect (same fix as SkinTextureCostumeWindow)
-        private static void MakeButtonScrollable(Button btn)
-        {
-            if (btn == null) return;
-            btn.transition = Selectable.Transition.None;
-            var trigger = btn.GetComponent<EventTrigger>();
-            if (trigger != null) Destroy(trigger);
+            RefreshFilterBar();
+            FetchActiveRepo();
+            RefreshSkinList();
         }
 
         // flip an L/R hand button between on (cyan/black text) and off (dark/white text) in place,
@@ -713,206 +480,6 @@ namespace BetterFG.UI.Tab
             btn.colors = cols;
             var label = btn.transform.Find("Label")?.GetComponent<Text>();
             if (label != null) label.color = on ? Color.black : WHITE;
-        }
-
-        // repo covers are 532x38 banners; band fills the row width, height follows that aspect
-        private float RepoCoverW => TabWidth - PAD * 2f - 4f;
-        private float RepoCoverH => RepoCoverW * (38f / 532f);
-        // row is just the banner; name + remove/star overlay the cover along the bottom
-        private static float RepoStripH => BTN_H * 0.75f;
-        private float RepoRowH => RepoCoverH;
-
-        // full-height banner button filling a fresh row in the dropdown list
-        private Button CreateRepoRowButton(RectTransform parent, string goName, string label, Color labelColor, Action onClick)
-        {
-            var rowGo = new GameObject(goName);
-            rowGo.transform.SetParent(parent, false);
-            rowGo.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, RepoRowH);
-            rowGo.AddComponent<LayoutElement>().preferredHeight = RepoRowH;
-
-            var btn = UGUIShip.CreateButton(rowGo.transform, label, BTN_DARK, labelColor, FS_SM, onClick);
-            MakeButtonScrollable(btn);
-            var rt = btn.GetComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = rt.offsetMax = Vector2.zero;
-            return btn;
-        }
-
-        // one selectable repo row inside the dropdown scroll content
-        private void BuildRepoEntryRow(RectTransform parent, SkinRepo repo)
-        {
-            var capturedRepo = repo;
-            var btn = CreateRepoRowButton(parent, "RepoRow_" + repo.repoName, capturedRepo.DisplayName, WHITE,
-                new Action(() => { _importedRepoSelected = false; _featuredSelected = false; repoRegistry.SetActive(capturedRepo); _repoDropdownOpen = false; RefreshRepoRows(); RefreshSkinList(); }));
-            BuildRepoButtonContents(btn, capturedRepo);
-        }
-
-        // cover fills the whole button; name + remove/star overlay it along the bottom, over the overlay strip.
-        // repo==null with a fixedCover is the pinned Imported/Featured entries (embedded banner, no controls)
-        private void BuildRepoButtonContents(Button btn, SkinRepo repo, bool showControls = true, Texture2D fixedCover = null)
-        {
-            // cover fills the button, sized to the 532x38 banner aspect (this drives the row height)
-            var coverGo = new GameObject("RepoCover");
-            coverGo.transform.SetParent(btn.transform, false);
-            coverGo.transform.SetAsFirstSibling();
-            var coverRt = coverGo.AddComponent<RectTransform>();
-            coverRt.anchorMin = Vector2.zero;
-            coverRt.anchorMax = Vector2.one;
-            coverRt.offsetMin = coverRt.offsetMax = Vector2.zero;
-            var coverImg = coverGo.AddComponent<RawImage>();
-            coverImg.raycastTarget = false;
-            if (fixedCover != null)
-            {
-                coverImg.texture = fixedCover; coverImg.color = Color.white;
-            }
-            else
-            {
-                coverImg.color = new Color(1f, 1f, 1f, 0f);
-                _repoCoverImages[repo.githubUrl] = coverImg;
-                var cachedCoverTex = repoRegistry.GetCover(repo);
-                if (cachedCoverTex != null) { coverImg.texture = cachedCoverTex; coverImg.color = Color.white; }
-                else repoRegistry.FetchCover(repo);
-            }
-
-            // 99% overlay strip along the bottom, over the cover but behind the shine (sibling right after cover)
-            var overlayTex = LoadTex("BetterFG.assets.ui.cskins.repo_overlay.png", ref _repoOverlayTex);
-            if (overlayTex != null)
-            {
-                var ovGo = new GameObject("RepoOverlay");
-                ovGo.transform.SetParent(btn.transform, false);
-                ovGo.transform.SetSiblingIndex(coverGo.transform.GetSiblingIndex() + 1);
-                var ovRt = ovGo.AddComponent<RectTransform>();
-                ovRt.anchorMin = new Vector2(0f, 0f);
-                ovRt.anchorMax = new Vector2(1f, 0f);
-                ovRt.pivot = new Vector2(0.5f, 0f);
-                ovRt.sizeDelta = new Vector2(0f, RepoStripH);
-                var ovImg = ovGo.AddComponent<RawImage>();
-                ovImg.texture = overlayTex;
-                ovImg.color = new Color(1f, 1f, 1f, 0.99f);
-                ovImg.raycastTarget = false;
-            }
-
-            // name overlays the bottom strip, left aligned, drawn last so it's on top
-            var lbl = btn.transform.Find("Label")?.GetComponent<Text>();
-            if (lbl != null)
-            {
-                lbl.transform.SetAsLastSibling();
-                lbl.alignment = TextAnchor.MiddleLeft;
-                var lblRt = lbl.GetComponent<RectTransform>();
-                lblRt.anchorMin = new Vector2(0f, 0f);
-                lblRt.anchorMax = new Vector2(1f, 0f);
-                lblRt.pivot = new Vector2(0.5f, 0f);
-                lblRt.offsetMin = new Vector2(14f, 0f);
-                lblRt.offsetMax = new Vector2(showControls ? -RepoStripH : 0f, RepoStripH);
-            }
-
-            if (!showControls) return;
-
-            // remove / default-star pinned to the bottom-right
-            if (repo.isDefault)
-            {
-                var star = UGUIShip.CreateStretchLabel(btn.transform, "★", FS_SM, GOLD);
-                var starRt = star.GetComponent<RectTransform>();
-                starRt.anchorMin = new Vector2(1f, 0f);
-                starRt.anchorMax = new Vector2(1f, 0f);
-                starRt.pivot = new Vector2(1f, 0f);
-                starRt.sizeDelta = new Vector2(RepoStripH, RepoStripH);
-                starRt.anchoredPosition = Vector2.zero;
-            }
-            else
-            {
-                var capturedRepo = repo;
-                var removeBtn = UGUIShip.CreateButton(btn.transform, "−",
-                    BTN_REMOVE, WHITE, FS_SM, new Action(() => { repoRegistry.RemoveRepo(capturedRepo); RefreshRepoRows(); }));
-                MakeButtonScrollable(removeBtn);
-                var rmRt = removeBtn.GetComponent<RectTransform>();
-                rmRt.anchorMin = new Vector2(1f, 0f);
-                rmRt.anchorMax = new Vector2(1f, 0f);
-                rmRt.pivot = new Vector2(1f, 0f);
-                rmRt.sizeDelta = new Vector2(RepoStripH, RepoStripH);
-                rmRt.anchoredPosition = Vector2.zero;
-            }
-        }
-
-        // the permanent "Featured Repos" entry inside the dropdown scroll content
-        private void BuildFeaturedEntryRow(RectTransform parent)
-        {
-            var btn = CreateRepoRowButton(parent, "RepoRow_Featured", "Featured Repositories", GOLD, new Action(() =>
-            {
-                _featuredSelected = true;
-                _importedRepoSelected = false;
-                _repoDropdownOpen = false;
-                repoRegistry?.FetchFeatured();
-                RefreshRepoRows();
-                RefreshSkinList();
-            }));
-            BuildRepoButtonContents(btn, null, showControls: false,
-                fixedCover: LoadTex("BetterFG.assets.ui.cskins.featured.png", ref _featuredTex));
-        }
-
-        // the permanent "Imported Skins" entry inside the dropdown scroll content
-        private void BuildImportedEntryRow(RectTransform parent)
-        {
-            var btn = CreateRepoRowButton(parent, "RepoRow_Imported", "Imported Skins", ORANGE, new Action(() =>
-            {
-                _importedRepoSelected = true;
-                _featuredSelected = false;
-                _repoDropdownOpen = false;
-                RefreshRepoRows();
-                RefreshSkinList();
-            }));
-            BuildRepoButtonContents(btn, null, showControls: false,
-                fixedCover: LoadTex("BetterFG.assets.ui.cskins.imported.png", ref _importedTex));
-        }
-
-        private void OnAddRepo()
-        {
-            if (_repoRowsParent == null) return;
-            if (_repoRowsParent.Find("RepoInputRow") != null) return;
-
-            // swap the field in where the Add button sits (bottom) so there's no jump back to the top
-            var addRow = _repoRowsParent.Find("RepoAddRow");
-            int addIdx = addRow != null ? addRow.GetSiblingIndex() : _repoRowsParent.childCount;
-            if (addRow != null) addRow.gameObject.SetActive(false);
-
-            var rowGo = new GameObject("RepoInputRow");
-            rowGo.transform.SetParent(_repoRowsParent, false);
-            rowGo.transform.SetSiblingIndex(addIdx);
-            rowGo.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, BTN_H);
-            var hlg = rowGo.AddComponent<HorizontalLayoutGroup>();
-            hlg.childForceExpandHeight = true;
-            hlg.childForceExpandWidth = false;
-            hlg.spacing = 3f;
-            rowGo.AddComponent<LayoutElement>().preferredHeight = BTN_H;
-
-            var field = UGUIShip.CreateInputField(rowGo.transform, new Rect(0f, 0f, 100f, BTN_H),
-                "https://github.com/author/repo", null, CYAN, FS_SM);
-            field.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-
-            Action commit = () =>
-            {
-                string url = (field.text ?? "").Trim();
-                if (addRow != null) addRow.gameObject.SetActive(true);
-                Destroy(rowGo);
-                if (!string.IsNullOrEmpty(url))
-                    repoRegistry?.AddRepo(url);
-            };
-
-            var ok = UGUIShip.CreateButton(rowGo.transform, "OK",
-                new Color(0.15f, 0.3f, 0.15f, 1f), GREEN, FS_SM, commit);
-            ok.gameObject.AddComponent<LayoutElement>().preferredWidth = BTN_H * 1.5f;
-
-            var cancel = UGUIShip.CreateButton(rowGo.transform, "✕",
-                BTN_DARK, HINT, FS_SM, new Action(() =>
-                {
-                    if (addRow != null) addRow.gameObject.SetActive(true);
-                    Destroy(rowGo);
-                }));
-            cancel.gameObject.AddComponent<LayoutElement>().preferredWidth = BTN_H;
-
-            LayoutRebuilder.ForceRebuildLayoutImmediate(_repoRowsParent);
-            field.ActivateInputField();
         }
 
         private void SaveImportedPaths()
@@ -936,13 +503,12 @@ namespace BetterFG.UI.Tab
         private void BuildFilterBar(RectTransform parent, float y, float w)
         {
             float gap = PAD * 0.5f;
-            float btnW = (w - gap * 4f) / 5f;
+            float btnW = (w - gap * 3f) / 4f;
             float bx = PAD;
 
             _btnCostumes = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Costumes", GetFilterBg(SkinType.Costume), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Costume))); bx += btnW + gap;
             _btnAccessories = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Accessories", GetFilterBg(SkinType.Accessory), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Accessory))); bx += btnW + gap;
             _btnItems = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Items", GetFilterBg(SkinType.Item), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Item))); bx += btnW + gap;
-            _btnPlinths = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Plinths", GetFilterBg(SkinType.Plinth), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Plinth))); bx += btnW + gap;
             _btnEmotes = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Emotes", GetFilterBg(SkinType.Emote), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Emote)));
         }
 
@@ -958,7 +524,6 @@ namespace BetterFG.UI.Tab
             UGUIShip.SetButtonSelected(_btnCostumes, _activeFilter == SkinType.Costume, BTN_FILTER_ACTIVE);
             UGUIShip.SetButtonSelected(_btnAccessories, _activeFilter == SkinType.Accessory, BTN_FILTER_ACTIVE);
             UGUIShip.SetButtonSelected(_btnItems, _activeFilter == SkinType.Item, BTN_FILTER_ACTIVE);
-            UGUIShip.SetButtonSelected(_btnPlinths, _activeFilter == SkinType.Plinth, BTN_FILTER_ACTIVE);
             UGUIShip.SetButtonSelected(_btnEmotes, _activeFilter == SkinType.Emote, BTN_FILTER_ACTIVE);
         }
 
@@ -973,7 +538,6 @@ namespace BetterFG.UI.Tab
             catalogService = CustomizationServices.CatalogService;
             applicationService = CustomizationServices.ApplicationService;
             loaderService = CustomizationServices.LoaderService;
-            _plinthApp = CustomizationServices.PlinthApp;
 
             if (repoRegistry != null)
             {
@@ -1001,8 +565,6 @@ namespace BetterFG.UI.Tab
                 loaderService.OnProgress += SetStatus;
                 loaderService.OnError += err => SetStatus("Error: " + err);
             }
-            if (_plinthApp != null)
-                _plinthApp.OnStatus += SetStatus;
         }
 
         // ── Scroll / list ─────────────────────────────────────────────────────
@@ -1050,8 +612,8 @@ namespace BetterFG.UI.Tab
             }
 
             // Featured Repos section: filter bar makes no sense (a repo isn't sortable by costume/item)
-            SetFilterBarVisible(!_featuredSelected);
-            if (_featuredSelected)
+            SetFilterBarVisible(!RepoSelectorTab.FeaturedSelected);
+            if (RepoSelectorTab.FeaturedSelected)
             {
                 RenderFeaturedRepos();
                 LayoutRebuilder.ForceRebuildLayoutImmediate(_scrollContent);
@@ -1067,7 +629,7 @@ namespace BetterFG.UI.Tab
             for (int i = 0; i < availableSkins.Count; i++)
             {
                 var s = availableSkins[i];
-                if (_importedRepoSelected)
+                if (RepoSelectorTab.ImportedSelected)
                 {
                     if (!s.isLocalImport) continue;
                 }
@@ -1430,7 +992,7 @@ namespace BetterFG.UI.Tab
             }
 
             // delete button — only visible when "Imported Skins" repo is active
-            if (_importedRepoSelected && skin.isLocalImport && !string.IsNullOrEmpty(skin.localPath))
+            if (RepoSelectorTab.ImportedSelected && skin.isLocalImport && !string.IsNullOrEmpty(skin.localPath))
             {
                 string capturedFolder = Path.GetDirectoryName(skin.localPath);
                 var delBtn = UGUIShip.CreateButton(
@@ -1451,7 +1013,6 @@ namespace BetterFG.UI.Tab
             if (_btnCostumes != null) _btnCostumes.gameObject.SetActive(visible);
             if (_btnAccessories != null) _btnAccessories.gameObject.SetActive(visible);
             if (_btnItems != null) _btnItems.gameObject.SetActive(visible);
-            if (_btnPlinths != null) _btnPlinths.gameObject.SetActive(visible);
             if (_btnEmotes != null) _btnEmotes.gameObject.SetActive(visible);
             if (_filterDivider2Rt != null) _filterDivider2Rt.gameObject.SetActive(visible);
 
@@ -1503,7 +1064,7 @@ namespace BetterFG.UI.Tab
             rowGo.AddComponent<Image>().color = ITEM_BG;
 
             // kept background: the gradient scrim stretched over the whole card, behind the content
-            var overlaySprite = BetterFG.Utilities.EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.cskins.repo_overlay.png");
+            var overlaySprite = BetterFG.Utilities.EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.reposelector.repo_overlay.png");
             if (overlaySprite != null)
             {
                 var ovGo = new GameObject("CardBg");
@@ -1598,10 +1159,8 @@ namespace BetterFG.UI.Tab
         {
             var repo = repoRegistry?.FindRepo(url);
             if (repo == null) return;
-            _featuredSelected = false;
             repoRegistry.SetActive(repo);
-            _repoDropdownOpen = false;
-            RefreshRepoRows();
+            RepoSelectorTab.ClearFeatured();
             RefreshSkinList();
         }
 
@@ -1704,18 +1263,6 @@ namespace BetterFG.UI.Tab
                         selectedIndices.Add(index);
                         break;
 
-                    case SkinType.Plinth:
-                        // deselect any existing plinth first
-                        int existingPlinth = -1;
-                        foreach (int pi in selectedIndices)
-                        {
-                            if (pi < 0 || pi >= availableSkins.Count) continue;
-                            if (SkinTypeParser.FromString(availableSkins[pi].type) == SkinType.Plinth) { existingPlinth = pi; break; }
-                        }
-                        if (existingPlinth != -1) { selectedIndices.Remove(existingPlinth); changed.Add(existingPlinth); }
-                        selectedIndices.Add(index);
-                        break;
-
                     default:
                         selectedIndices.Add(index);
                         break;
@@ -1743,6 +1290,9 @@ namespace BetterFG.UI.Tab
 
         private void SaveSelection()
         {
+            bool hadPlinth = MenuCustomizationApplication.TryGetSavedPlinthEntry(
+                out string plinthFile, out string plinthSource, out string plinthPath, out string plinthRepo);
+
             var files = new List<string>();
             var sources = new List<string>();
             var paths = new List<string>();
@@ -1753,6 +1303,7 @@ namespace BetterFG.UI.Tab
             {
                 if (i < 0 || i >= availableSkins.Count) continue;
                 SkinInfo s = availableSkins[i];
+                if (SkinTypeParser.FromString(s.type) == SkinType.Plinth) continue;
                 files.Add(s.file);
                 sources.Add(s.isLocalImport ? "local" : "remote");
                 paths.Add(s.isLocalImport && !string.IsNullOrEmpty(s.localPath)
@@ -1766,6 +1317,9 @@ namespace BetterFG.UI.Tab
             SettingsService.Set(KEY_MULTI_PATHS, string.Join(",", paths));
             SettingsService.Set(KEY_MULTI_REPOS, string.Join(",", repos));
             SettingsService.Set(KEY_MULTI_TYPES, string.Join(",", types));
+
+            if (hadPlinth)
+                MenuCustomizationApplication.SavePlinthEntry(plinthFile, plinthSource, plinthPath, plinthRepo);
         }
 
         private void SaveHandOverrides()
@@ -1937,8 +1491,6 @@ namespace BetterFG.UI.Tab
         private void OnRepoCoverLoaded(SkinRepo repo, Texture2D tex)
         {
             if (repo == null || tex == null) return;
-            if (_repoCoverImages.TryGetValue(repo.githubUrl, out var img) && img != null)
-            { img.texture = tex; img.color = Color.white; }
             if (_featuredCoverImages.TryGetValue(repo.githubUrl, out var fimg) && fimg != null)
             {
                 fimg.texture = tex; fimg.color = Color.white;
@@ -1949,7 +1501,7 @@ namespace BetterFG.UI.Tab
 
         private void OnFeaturedLoaded()
         {
-            if (_featuredSelected) RefreshSkinList();
+            if (RepoSelectorTab.FeaturedSelected) RefreshSkinList();
         }
 
         private void OnSkinCoverLoaded(string key, Texture2D tex)
@@ -2097,10 +1649,7 @@ namespace BetterFG.UI.Tab
         {
             _pendingApplyQueue.Clear();
 
-            // build the set of files the user currently wants equipped (non-plinth), and
-            // pick out the selected plinth (if any) separately — plinth has its own apply path
             var wantedFiles = new HashSet<string>();
-            SkinInfo pendingPlinth = null;
             var wantedSkins = new List<SkinInfo>();
             // snapshot what's currently equipped (file -> live hand override) BEFORE we mutate
             // any skinInfo. the active slot shares the same SkinInfo reference as availableSkins,
@@ -2115,11 +1664,7 @@ namespace BetterFG.UI.Tab
             {
                 if (i < 0 || i >= availableSkins.Count) continue;
                 var skin = availableSkins[i];
-                if (SkinTypeParser.FromString(skin.type) == SkinType.Plinth)
-                {
-                    pendingPlinth = skin;
-                    continue;
-                }
+                if (SkinTypeParser.FromString(skin.type) == SkinType.Plinth) continue;
                 if (_handOverrides.ContainsKey(skin.file))
                     skin.handOverride = _handOverrides[skin.file];
                 wantedFiles.Add(skin.file);
@@ -2171,17 +1716,6 @@ namespace BetterFG.UI.Tab
                 }
                 return ScoreOf(a).CompareTo(ScoreOf(b));
             });
-
-            // plinth: if nothing's selected but one's applied, take it off; otherwise only
-            // (re)apply when the selected plinth actually differs from what's already on
-            if (pendingPlinth == null)
-            {
-                if (_plinthApp != null && _plinthApp.HasPlinthApplied) _plinthApp.RemovePlinth();
-            }
-            else if (_plinthApp == null || _plinthApp.ActiveFile != pendingPlinth.file)
-            {
-                StartCoroutine(ApplyPlinthDownload(pendingPlinth).WrapToIl2Cpp());
-            }
 
             SaveSelection();
             KickNextPending();
@@ -2243,63 +1777,6 @@ namespace BetterFG.UI.Tab
             loaderService?.DownloadSkinWithInfo(next.file, url, infoUrl);
         }
 
-        private System.Collections.IEnumerator ApplyPlinthDownload(SkinInfo info)
-        {
-            if (_plinthApp == null) yield break;
-
-            // if the bundle is already live, skip the entire download/load and apply immediately
-            if (_plinthApp.TryGetBundle(info.file, out var cachedBundle))
-            {
-                _plinthApp.ApplyPlinth(info, cachedBundle);
-                yield break;
-            }
-
-            byte[] bytes = null;
-
-            if (info.isLocalImport && !string.IsNullOrEmpty(info.localPath))
-            {
-                SetStatus($"Loading plinth {info.name}...");
-                try { bytes = System.IO.File.ReadAllBytes(info.localPath); }
-                catch (Exception ex) { SetStatus($"Plinth read failed: {ex.Message}"); yield break; }
-                yield return null;
-            }
-            else
-            {
-                string repoRaw = RepoRegistry.ResolveRaw(info.sourceRepo);
-                string folder = !string.IsNullOrEmpty(info.repoFolder) ? info.repoFolder : $"Plinths/{info.file}";
-                string url = $"{repoRaw}/{folder}/{info.file}";
-
-                SetStatus($"Downloading plinth {info.name}...");
-
-                var req = UnityEngine.Networking.UnityWebRequest.Get(url);
-                yield return req.SendWebRequest();
-
-                if (req.result != UnityEngine.Networking.UnityWebRequest.Result.Success)
-                {
-                    SetStatus($"Plinth dl failed: {req.error}");
-                    req.Dispose();
-                    yield break;
-                }
-
-                bytes = req.downloadHandler.data;
-                req.Dispose();
-            }
-
-            // check again after the async download in case another coroutine raced us
-            if (_plinthApp.TryGetBundle(info.file, out var raceBundle))
-            {
-                _plinthApp.ApplyPlinth(info, raceBundle);
-                yield break;
-            }
-
-            AssetBundle bundle = null;
-            try { bundle = AssetBundle.LoadFromMemory(bytes); }
-            catch (Exception ex) { Plugin.Log.LogWarning($"Plinth: bundle load failed: {ex.Message}"); }
-
-            if (bundle == null) { SetStatus("Plinth: bundle load failed"); yield break; }
-
-            _plinthApp.ApplyPlinth(info, bundle);
-        }
 
         private static string GetCategoryFolder(string typeStr)
         {
@@ -2318,50 +1795,43 @@ namespace BetterFG.UI.Tab
         {
             SkinType filter = _activeFilter;
 
-            if (filter == SkinType.Plinth)
+            // clear the UI selection for this filter
+            var toRemove = new List<int>();
+            foreach (int i in selectedIndices)
             {
-                _plinthApp?.RemovePlinth();
+                if (i < 0 || i >= availableSkins.Count) continue;
+                if (SkinTypeParser.FromString(availableSkins[i].type) == filter)
+                    toRemove.Add(i);
             }
-            else
+            foreach (int i in toRemove)
             {
-                // clear the UI selection for this filter
-                var toRemove = new List<int>();
-                foreach (int i in selectedIndices)
-                {
-                    if (i < 0 || i >= availableSkins.Count) continue;
-                    if (SkinTypeParser.FromString(availableSkins[i].type) == filter)
-                        toRemove.Add(i);
-                }
-                foreach (int i in toRemove)
-                {
-                    selectedIndices.Remove(i);
-                    if (filter == SkinType.Item && availableSkins[i] != null)
-                        _handOverrides.Remove(availableSkins[i].file);
-                }
-                _pendingApplyQueue.RemoveAll(s => SkinTypeParser.FromString(s.type) == filter);
+                selectedIndices.Remove(i);
+                if (filter == SkinType.Item && availableSkins[i] != null)
+                    _handOverrides.Remove(availableSkins[i].file);
+            }
+            _pendingApplyQueue.RemoveAll(s => SkinTypeParser.FromString(s.type) == filter);
 
-                // strip whatever is actually APPLIED to the bean of this type. the UI selection
-                // can drift from what's equipped (selected-not-applied, or applied-not-selected),
-                // so walk the active slots directly instead of trusting selectedIndices — GetActiveSlots
-                // returns a copy so removing while iterating is fine
-                if (applicationService != null)
+            // strip whatever is actually APPLIED to the bean of this type. the UI selection
+            // can drift from what's equipped (selected-not-applied, or applied-not-selected),
+            // so walk the active slots directly instead of trusting selectedIndices — GetActiveSlots
+            // returns a copy so removing while iterating is fine
+            if (applicationService != null)
+            {
+                foreach (var slot in applicationService.GetActiveSlots())
                 {
-                    foreach (var slot in applicationService.GetActiveSlots())
-                    {
-                        if (slot?.skinInfo == null || string.IsNullOrEmpty(slot.skinInfo.file)) continue;
-                        if (slot.type != filter) continue;
-                        applicationService.RemoveOneSkinByFile(slot.skinInfo.file);
-                        if (filter == SkinType.Item)
-                            _handOverrides.Remove(slot.skinInfo.file);
-                    }
+                    if (slot?.skinInfo == null || string.IsNullOrEmpty(slot.skinInfo.file)) continue;
+                    if (slot.type != filter) continue;
+                    applicationService.RemoveOneSkinByFile(slot.skinInfo.file);
+                    if (filter == SkinType.Item)
+                        _handOverrides.Remove(slot.skinInfo.file);
                 }
+            }
 
-                if (filter == SkinType.Item && _configWindow != null)
-                {
-                    Destroy(_configWindow.gameObject);
-                    _configWindow = null;
-                    _configWindowFile = null;
-                }
+            if (filter == SkinType.Item && _configWindow != null)
+            {
+                Destroy(_configWindow.gameObject);
+                _configWindow = null;
+                _configWindowFile = null;
             }
 
             SaveSelection();

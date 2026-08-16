@@ -221,6 +221,13 @@ namespace BetterFG.Nametag
             }
         }
 
+        [HarmonyPatch(typeof(PlayerInfoHUDBase), "LateUpdate")]
+        internal static class patch_HudLateUpdate
+        {
+            [HarmonyPostfix]
+            public static void Postfix(PlayerInfoHUDBase __instance) => CrownRankFovFix.Apply(__instance);
+        }
+
         private static bool _refreshQueued;
 
         private static IEnumerator CoalescedRefresh()

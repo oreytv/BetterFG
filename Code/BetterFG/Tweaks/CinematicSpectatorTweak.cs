@@ -55,13 +55,15 @@ namespace BetterFG.Tweaks
         public override void OnSpectatorMode()
         {
             _sessionOver = false;
+            _cgm = null;
             ClearCaches();
         }
 
         public override void OnRoundStart()
         {
             _sessionOver = false;
-            Shutdown();
+            _cgm = null;
+            ShutdownOnce();
         }
 
         public override void OnStateChanged(GameStateMachine.IGameState newState)
@@ -69,15 +71,28 @@ namespace BetterFG.Tweaks
             if (newState == null || newState.TryCast<StateGameInProgress>() == null) Shutdown();
         }
 
+        // Shutdown clears _cgm, so the old "bail then Shutdown" shape re-resolved the game manager off
+        // GlobalGameStateClient on every single frame of normal play and tore down a prompt that was
+        // already gone. only run the teardown on the edge, and only look the manager up while we're live.
+        bool _torndown = true;
+
         void Update()
         {
-            if (!IsEnabled || _sessionOver) { Shutdown(); return; }
+            if (!IsEnabled || _sessionOver) { ShutdownOnce(); return; }
 
             if (_cgm == null) GlobalGameStateClient.Instance?.GameStateView?.GetLiveClientGameManager(out _cgm);
-            if (_cgm == null || !_cgm.IsSpectatorMode) { Shutdown(); return; }
+            if (_cgm == null || !_cgm.IsSpectatorMode) { ShutdownOnce(); return; }
 
+            _torndown = false;
             EnsurePrompt();
             if (_prompt != null && _prompt.IsPressed()) SetCinematic(!_cinematicOn);
+        }
+
+        void ShutdownOnce()
+        {
+            if (_torndown) return;
+            _torndown = true;
+            Shutdown();
         }
 
         void LateUpdate()
@@ -203,9 +218,12 @@ namespace BetterFG.Tweaks
             ClearCaches();
         }
 
+        // _cgm deliberately survives a shutdown — dropping it there meant re-walking
+        // GlobalGameStateClient.GameStateView.GetLiveClientGameManager every frame of every round we
+        // weren't spectating. the real session changes below clear it, and a destroyed manager reads as
+        // null anyway.
         void ClearCaches()
         {
-            _cgm = null;
             _director = null;
             _lastTarget = null;
         }

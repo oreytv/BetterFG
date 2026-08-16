@@ -125,8 +125,6 @@ namespace BetterFG.UI.Tab
         private static readonly Color ROW_OFF = new Color(0.08f, 0.08f, 0.08f, 1f);
         private static readonly Color BTN_EDIT_OPEN = new Color(0.45f, 0.38f, 0.1f, 1f); // dark yellow = form open on this row
 
-        // tick WinDialogs so the file-picker callback fires
-        void Update() => WinDialogs.Tick();
 
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
         private static readonly Color WHITE = Color.white;

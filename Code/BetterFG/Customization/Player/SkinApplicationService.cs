@@ -123,6 +123,13 @@ namespace BetterFG.Customization.Player
             foreach (var entry in local.skins)
             {
                 if (string.IsNullOrEmpty(entry.file)) continue;
+
+                if (entry.source == "game")
+                {
+                    ApplySavedGamePlinth(entry.file, plinthApp);
+                    continue;
+                }
+
                 // already equipped (forced preset reload) — leave it alone, only apply what's missing
                 if (HasActiveSlotForFile(entry.file)) continue;
 
@@ -172,9 +179,18 @@ namespace BetterFG.Customization.Player
             foreach (var entry in local.skins)
             {
                 if (SkinTypeParser.FromString(entry.type) != SkinType.Plinth || string.IsNullOrEmpty(entry.file)) continue;
-                RestoreOneSkin(new SkinInfo { file = entry.file, name = entry.file, sourceRepo = entry.repoUrl, type = entry.type }, loader, plinthApp);
+                if (entry.source == "game") ApplySavedGamePlinth(entry.file, plinthApp);
+                else RestoreOneSkin(new SkinInfo { file = entry.file, name = entry.file, sourceRepo = entry.repoUrl, type = entry.type }, loader, plinthApp);
                 return;
             }
+        }
+
+        private static void ApplySavedGamePlinth(string id, MenuCustomizationApplication plinthApp)
+        {
+            if (plinthApp == null) return;
+            foreach (var gp in MenuCustomizationApplication.GamePlinths)
+                if (gp.Id == id) { plinthApp.ApplyGamePlinth(gp); return; }
+            Plugin.Log.LogWarning($"saved plinth id {id} isn't in the game plinth table anymore, skipping");
         }
 
         private void RestoreOneSkin(SkinInfo skinInfo, SkinLoaderService loader, MenuCustomizationApplication plinthApp)

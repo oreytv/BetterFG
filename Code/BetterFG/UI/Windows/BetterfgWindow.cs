@@ -58,6 +58,9 @@ namespace BetterFG.UI.Windows
         private Transform _titleRoot;
         private RawImage _hoverImage;
         private CanvasGroup _canvasGroup;
+        // alpha 0 still leaves the canvas in the render + layout + raycast set, so every closed window
+        // kept submitting its whole tree each frame. the canvas goes off with the window instead.
+        private Canvas _canvas;
 
         // Set by whoever spawns the window so we can hide when the tab closes
         public BetterFG.UI.BetterFGTab OwnerTab { get; set; }
@@ -85,6 +88,7 @@ namespace BetterFG.UI.Windows
         public void HideWindow()
         {
             if (_activeWindow == this) _activeWindow = null;
+            if (_canvas != null) _canvas.enabled = false;
             if (_canvasGroup == null) return;
             _canvasGroup.alpha = 0f;
             _canvasGroup.blocksRaycasts = false;
@@ -98,6 +102,7 @@ namespace BetterFG.UI.Windows
             if (_activeWindow != null && _activeWindow != this) _activeWindow.HideWindow();
             _activeWindow = this;
 
+            if (_canvas != null) _canvas.enabled = true;
             if (_canvasGroup != null)
             {
                 _canvasGroup.alpha = 1f;
@@ -163,7 +168,11 @@ namespace BetterFG.UI.Windows
             _layoutApplied = false;
         }
 
-        public void Show() => gameObject.SetActive(true);
+        public void Show()
+        {
+            gameObject.SetActive(true);
+            if (_canvas != null) _canvas.enabled = true;
+        }
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -178,7 +187,18 @@ namespace BetterFG.UI.Windows
             if (_activeWindow == this) _activeWindow = null;
         }
 
-        void Update() => ManagedUpdate();
+        void Update()
+        {
+            // visibility here has always meant "alpha > 0", and subclasses reach that state through
+            // several routes. rather than chase every one, keep the canvas in step with it — a closed
+            // window then costs nothing to render, batch or raycast.
+            if (_canvas != null && _canvasGroup != null)
+            {
+                bool want = _canvasGroup.alpha > 0f;
+                if (_canvas.enabled != want) _canvas.enabled = want;
+            }
+            ManagedUpdate();
+        }
 
         protected virtual void ManagedUpdate()
         {
@@ -235,7 +255,7 @@ namespace BetterFG.UI.Windows
             canvasGo.hideFlags = HideFlags.HideAndDontSave;
             canvasGo.transform.SetParent(transform, false);
 
-            var canvas = canvasGo.AddComponent<Canvas>();
+            var canvas = _canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 997;
 

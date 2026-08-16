@@ -24,47 +24,77 @@ namespace BetterFG.Tweaks
         // only force the timer while one of these GameState GameObjects is the active one. otherwise the
         // timer leaks into every state (countdown, banners, etc).
         private const string GameStatesPath = "UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/GameStates";
-        private static Transform _gameStates; // cached so the per-frame getter checks don't Find() every frame
+        private static Transform _playing, _spectator;
+
+        // the two visibility getters and the per-frame state pass all ask this, so it's several calls a
+        // frame. resolving the two state objects by name once and memoising the answer per frame keeps it
+        // off the il2cpp string marshalling that a childCount name scan pays on every single call.
+        private static int _answerFrame = -1;
+        private static bool _answer;
 
         public static bool ShouldForceNow()
+        {
+            if (_answerFrame == Time.frameCount) return _answer;
+            _answerFrame = Time.frameCount;
+            _answer = Resolve();
+            return _answer;
+        }
+
+        private static bool Resolve()
         {
             var inst = Instance;
             if (inst == null || !inst.IsEnabled) return false;
 
-            if (_gameStates == null)
+            if (_playing == null && _spectator == null)
             {
                 var go = GameObject.Find(GameStatesPath);
                 if (go == null) return false;
-                _gameStates = go.transform;
+                var root = go.transform;
+                for (int i = 0; i < root.childCount; i++)
+                {
+                    var child = root.GetChild(i);
+                    string n = child.name;
+                    if (n == "PlayingState") _playing = child;
+                    else if (n == "SpectatorState") _spectator = child;
+                }
+                if (_playing == null && _spectator == null) return false;
             }
-            var root = _gameStates;
-            for (int i = 0; i < root.childCount; i++)
-            {
-                var child = root.GetChild(i);
-                if (!child.gameObject.activeInHierarchy) continue;
-                if (child.name == "PlayingState" || child.name == "SpectatorState") return true;
-            }
-            return false;
+
+            return (_playing != null && _playing.gameObject.activeInHierarchy)
+                || (_spectator != null && _spectator.gameObject.activeInHierarchy);
         }
     }
 
     // DetermineTimeRemainingState runs every frame inside Update() and recomputes _shouldShowTimeRemaining.
     // forcing the field/getters true reveals the container but the game skips CreateTimeRemaining (which is
     // what actually writes the TMP text), so the timer shows up blank. fix: after the game's own pass, force
-    // the field true AND run CreateTimeRemaining ourselves with the live remaining time so the game's own
-    // formatting fills the text. no manual string building.
+    // the field true AND run CreateTimeRemaining ourselves so the game's own formatting fills the text.
+    //
+    // CreateTimeRemaining dirties the TMP mesh and its canvas, so calling it every frame cost a full text
+    // regen + canvas rebatch at framerate for a readout that only ever changes once a second. it now fires
+    // on the second boundary. one postfix, not two — this method is hot enough that a second trampoline
+    // dispatch for the threshold check was pure overhead.
     [HarmonyPatch(typeof(GameplayTimerViewModel), "DetermineTimeRemainingState")]
     internal static class DetermineTimeRemainingStatePatch
     {
+        private static int _lastWritten = int.MinValue;
+
         [HarmonyPostfix]
         public static void Postfix(GameplayTimerViewModel __instance)
         {
-            if (!AlwaysShowTimerTweak.ShouldForceNow()) return;
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            if (gsv == null) { TimerThresholdReapply.Reset(); return; }
+
+            float remaining = gsv.GameplayTimeRemaining;
+            TimerThresholdReapply.Check(remaining);
+
+            if (!AlwaysShowTimerTweak.ShouldForceNow()) { _lastWritten = int.MinValue; return; }
             __instance._shouldShowTimeRemaining = true;
 
-            var gsv = GlobalGameStateClient.Instance?.GameStateView;
-            if (gsv == null) return;
-            try { __instance.CreateTimeRemaining(gsv.GameplayTimeRemaining); } catch { }
+            int second = Mathf.CeilToInt(remaining);
+            if (second == _lastWritten) return;
+            _lastWritten = second;
+            try { __instance.CreateTimeRemaining(remaining); } catch { }
         }
     }
 
@@ -92,19 +122,17 @@ namespace BetterFG.Tweaks
 
     // when the timer naturally pops on at 30/15/10s left, the game reassigns the BigTimerContainer
     // sprite, dropping our pink/grey baked swap. detect the threshold crossings off the live
-    // remaining time (DetermineTimeRemainingState runs every frame inside Update) and reapply
-    // a frame later — the swap is cached per image+texture so this is a sprite reassign, not a rebuild.
+    // remaining time and reapply a frame later — the swap is cached per image+texture so this is a
+    // sprite reassign, not a rebuild.
     internal static class TimerThresholdReapply
     {
         private static float _prevRemaining = float.MaxValue;
         private static readonly float[] Thresholds = { 30f, 15f, 10f };
 
-        public static void Check()
-        {
-            var gsv = GlobalGameStateClient.Instance?.GameStateView;
-            if (gsv == null) { _prevRemaining = float.MaxValue; return; }
+        public static void Reset() => _prevRemaining = float.MaxValue;
 
-            float now = gsv.GameplayTimeRemaining;
+        public static void Check(float now)
+        {
             float prev = _prevRemaining;
             _prevRemaining = now;
 
@@ -126,12 +154,5 @@ namespace BetterFG.Tweaks
             yield return null;
             app.ReapplyBakedPinkGreyTextures();
         }
-    }
-
-    [HarmonyPatch(typeof(GameplayTimerViewModel), "DetermineTimeRemainingState")]
-    internal static class DetermineTimeRemainingState_ThresholdHook
-    {
-        [HarmonyPostfix]
-        public static void Postfix() => TimerThresholdReapply.Check();
     }
 }

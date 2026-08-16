@@ -175,17 +175,29 @@ namespace BetterFG.Tweaks
         public static void OnExternalLeaveTrigger() => _externalWindowUntil = Time.realtimeSinceStartup + 8f;
         public static void OnExternalLeaveTriggerEnd() => _externalWindowUntil = 0f;
 
+        // four TryCasts a frame, every frame, for a state that changes a handful of times a match. the
+        // state object's pointer is a plain field read, so memoise the verdict against it and only pay
+        // the casts when the machine actually moves.
+        private static IntPtr _castedState;
+        private static bool _castedOk;
+
         private static bool IsInLeavableLoadingState()
         {
             if (Time.realtimeSinceStartup < _externalWindowUntil) return true;
 
             var state = GlobalGameStateClient.Instance?._gameStateMachine?.CurrentState;
             if (state == null) return false;
-            bool stateOk = state.TryCast<StateConnectToGame>() != null
-                || state.TryCast<StateConnectionAuthentication>() != null
-                || state.TryCast<StateGameLoading>() != null
-                || state.TryCast<StatePrivateLobbyMinimal>() != null;
-            if (!stateOk) return false;
+
+            var ptr = state.Pointer;
+            if (ptr != _castedState)
+            {
+                _castedState = ptr;
+                _castedOk = state.TryCast<StateConnectToGame>() != null
+                    || state.TryCast<StateConnectionAuthentication>() != null
+                    || state.TryCast<StateGameLoading>() != null
+                    || state.TryCast<StatePrivateLobbyMinimal>() != null;
+            }
+            if (!_castedOk) return false;
 
             // also require the actual LoadingScreen container to have any active child — otherwise
             // we'd offer "Leave" during connect/auth states where no loading UI is on screen.

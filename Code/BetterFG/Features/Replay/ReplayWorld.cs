@@ -76,9 +76,11 @@ namespace BetterFG.Features.Replay
             return name;
         }
 
-        public static bool IsPoolInstance(string name)
+        public static bool IsRuntimeInstance(string name)
         {
-            if (string.IsNullOrEmpty(name) || !name.EndsWith("]", StringComparison.Ordinal)) return false;
+            if (string.IsNullOrEmpty(name)) return false;
+            if (name.IndexOf("(Clone)", StringComparison.Ordinal) > 0) return true;
+            if (!name.EndsWith("]", StringComparison.Ordinal)) return false;
             int bracket = name.LastIndexOf(" [", StringComparison.Ordinal);
             if (bracket <= 0) return false;
             for (int i = bracket + 2; i < name.Length - 1; i++)
@@ -195,11 +197,6 @@ namespace BetterFG.Features.Replay
 
     internal static class ReplayWorldDrivers
     {
-        public static void ForEachRecordable(GameObject root, Action<Behaviour> act)
-        {
-            foreach (var c in root.GetComponentsInChildren<FGBehaviour>(true)) if (c != null) act(c);
-        }
-
         public static void ForEachSimulated(GameObject root, Action<Behaviour> act)
         {
             foreach (var c in root.GetComponentsInChildren<SeededRandomisable>(true)) if (c != null) act(c);
@@ -223,6 +220,8 @@ namespace BetterFG.Features.Replay
         const int MAX_NODES = 25000;
         const int FRAME_BUDGET = 2500000;
         const int VERIFY_MASK = 15;
+        const float WORLD_HZ = 20f;
+        const float NET_SWEEP_STEP = 0.1f;
         internal const float SCROLL_Q = 2048f;
 
         class Node
@@ -233,6 +232,7 @@ namespace BetterFG.Features.Replay
             public Animator anim;
             public bool hasAnim;
             public bool world;
+            public bool watchActive;
             public Vector3 pos;
             public Quaternion rot;
             public Vector3 scale;
@@ -256,6 +256,7 @@ namespace BetterFG.Features.Replay
         static readonly Dictionary<int, Node> _liveLocal = new Dictionary<int, Node>();
         static readonly HashSet<IntPtr> _knownNet = new HashSet<IntPtr>();
         static readonly HashSet<int> _seen = new HashSet<int>();
+        static readonly HashSet<int> _keep = new HashSet<int>();
         static readonly HashSet<IntPtr> _aliveThisTick = new HashSet<IntPtr>();
         static readonly HashSet<int> _particleAt = new HashSet<int>();
         static readonly HashSet<int> _beanAt = new HashSet<int>();
@@ -288,6 +289,7 @@ namespace BetterFG.Features.Replay
             _liveLocal.Clear();
             _knownNet.Clear();
             _seen.Clear();
+            _keep.Clear();
             _frames = 0;
             _drivers = 0;
             _pooled = 0;
@@ -332,6 +334,7 @@ namespace BetterFG.Features.Replay
             _liveLocal.Clear();
             _knownNet.Clear();
             _seen.Clear();
+            _keep.Clear();
             ClearIndex();
             _rec = null;
         }
@@ -363,6 +366,8 @@ namespace BetterFG.Features.Replay
                     if (root.GetComponent<Canvas>() != null) continue;
 
                     ClearIndex();
+                    _keep.Clear();
+
                     foreach (var c in root.GetComponentsInChildren<ParticleSystem>(true))
                         if (c != null) _particleAt.Add(c.transform.GetInstanceID());
                     foreach (var c in root.GetComponentsInChildren<FallGuysCharacterController>(true))
@@ -384,21 +389,39 @@ namespace BetterFG.Features.Replay
                     var placeables = root.GetComponentsInChildren<LevelEditorPlaceableObject>(true);
                     foreach (var c in placeables) if (c != null) _placeableAt[c.transform.GetInstanceID()] = c;
 
-                    string name = scene.name;
-                    int index = r;
-                    ReplayWorldDrivers.ForEachRecordable(root, driver => { _drivers++; TrackSubtree(driver.transform, name, index); });
+                    var drivers = root.GetComponentsInChildren<FGBehaviour>(true);
+                    var bodies = root.GetComponentsInChildren<Rigidbody>(true);
+                    var joints = root.GetComponentsInChildren<Joint>(true);
+                    var collectables = root.GetComponentsInChildren<Levels.ScoreZone.SpawnableCollectable>(true);
 
-                    foreach (var c in root.GetComponentsInChildren<Rigidbody>(true))
+                    foreach (var c in drivers) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in bodies) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in joints) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in anims) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in placeables) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in uvRenderers) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in collectables) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in root.GetComponentsInChildren<MPGNetObject>(true)) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in root.GetComponentsInChildren<Collider>(true)) if (c != null) MarkKeep(c.transform);
+                    foreach (var c in _blastAt.Values) MarkKeep(c.transform);
+                    foreach (var c in _destAt.Values) MarkKeep(c.transform);
+                    foreach (var c in _convAt.Values) MarkKeep(c.transform);
+                    foreach (var c in root.GetComponentsInChildren<Renderer>(true))
+                        if (c != null && !c.gameObject.activeSelf) MarkKeep(c.transform);
+
+                    foreach (var c in drivers)
+                        if (c != null) { _drivers++; TrackSubtree(c.transform, scene.name, r); }
+                    foreach (var c in bodies)
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
                     foreach (var c in anims)
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
-                    foreach (var c in root.GetComponentsInChildren<Joint>(true))
+                    foreach (var c in joints)
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
                     foreach (var c in placeables)
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
                     foreach (var c in uvRenderers)
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
-                    foreach (var c in root.GetComponentsInChildren<Levels.ScoreZone.SpawnableCollectable>(true))
+                    foreach (var c in collectables)
                         if (c != null) TrackSubtree(c.transform, scene.name, r);
 
                     foreach (var sw in root.GetComponentsInChildren<SetSwitcher>(true))
@@ -418,6 +441,12 @@ namespace BetterFG.Features.Replay
                 Plugin.Log.LogInfo($"{_rec.sets.Count} set switchers noted down with their chosen variation");
         }
 
+        static void MarkKeep(Transform tf)
+        {
+            for (var cur = tf; cur is not null; cur = cur.parent)
+                if (!_keep.Add(cur.GetInstanceID())) return;
+        }
+
         static void TrackSubtree(Transform tf, string sceneName, int rootIndex)
         {
             if (_nodes.Count >= MAX_NODES) return;
@@ -431,7 +460,7 @@ namespace BetterFG.Features.Replay
             _subtree = 0;
             Track(tf, anchor, placeable == null ? null : placeable._GUID.ToString(), null,
                 anchor != null ? ReplayWorldPath.Build(tf, anchor, null, 0) : ReplayWorldPath.Build(tf, null, sceneName, rootIndex),
-                tf.name, tf.parent == null, _startTime);
+                tf.name, tf.parent == null, _startTime, false);
         }
 
         static Node TrackSpawnedSubtree(Transform tf, string prefabName, float t)
@@ -451,13 +480,14 @@ namespace BetterFG.Features.Replay
             foreach (var c in tf.GetComponentsInChildren<LevelEditorPlaceableObject>(true)) if (c != null) _placeableAt[c.transform.GetInstanceID()] = c;
 
             _subtree = 0;
-            return Track(tf, null, null, null, "spawn:" + tf.GetInstanceID(), tf.name, true, t, prefabName);
+            return Track(tf, null, null, null, "spawn:" + tf.GetInstanceID(), tf.name, true, t, true, prefabName);
         }
 
-        static Node Track(Transform tf, Transform anchor, string guid, string owner, string path, string name, bool sceneRoot, float t, string forcedPrefab = null)
+        static Node Track(Transform tf, Transform anchor, string guid, string owner, string path, string name, bool sceneRoot, float t, bool keepAll, string forcedPrefab = null)
         {
             if (_nodes.Count >= MAX_NODES || _subtree >= SUBTREE_CAP) return null;
             int id = tf.GetInstanceID();
+            if (!keepAll && !_keep.Contains(id)) return null;
             if (!_seen.Add(id)) return null;
             if (_particleAt.Contains(id) || _beanAt.Contains(id)) return null;
 
@@ -475,7 +505,7 @@ namespace BetterFG.Features.Replay
                 data.owner = owner ?? "";
             }
 
-            bool spawned = forcedPrefab != null || (anchor == null && sceneRoot && ReplayWorldPath.IsPoolInstance(name));
+            bool spawned = forcedPrefab != null || (anchor == null && sceneRoot && ReplayWorldPath.IsRuntimeInstance(name));
             if (spawned)
             {
                 data.prefab = forcedPrefab ?? ReplayWorldPath.BaseName(name);
@@ -492,23 +522,24 @@ namespace BetterFG.Features.Replay
             _destAt.TryGetValue(id, out var dest);
             _uvAt.TryGetValue(id, out var uv);
             _convAt.TryGetValue(id, out var conveyor);
-            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, conveyor, spawned, t);
+            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, conveyor, spawned, _subtree == 0, t);
             _subtree++;
 
             string sep = path.Length > 0 ? "/" : "";
+            bool childKeepAll = keepAll || anim != null;
             int children = tf.GetChildCount();
             for (int i = 0; i < children; i++)
             {
                 var child = tf.GetChild(i);
                 string childName = child.name;
-                Track(child, anchor, guid, owner, path + sep + i + ":" + ReplayWorldPath.Clean(childName), childName, false, t);
+                Track(child, anchor, guid, owner, path + sep + i + ":" + ReplayWorldPath.Clean(childName), childName, false, t, childKeepAll);
             }
 
             return node;
         }
 
         static Node Add(ReplayObject data, Transform tf, Animator anim, Levels.Obstacles.COMMON_BlastBall blast,
-            LevelEditorDestructibleObjectResponder dest, Levels.TextureUVImageRenderer uv, Behaviour conveyor, bool world, float t)
+            LevelEditorDestructibleObjectResponder dest, Levels.TextureUVImageRenderer uv, Behaviour conveyor, bool world, bool seed, float t)
         {
             var go = tf.gameObject;
             var node = new Node
@@ -535,6 +566,10 @@ namespace BetterFG.Features.Replay
                 node.conv = conveyor.TryCast<Levels.Obstacles.COMMON_ConveyorBelt>();
                 if (node.conv == null) node.convLe = conveyor.TryCast<Levels.Obstacles.LevelEditorCommonConveyorBelt>();
             }
+
+            node.watchActive = world || seed || !node.active || anim != null
+                || node.blast is not null || node.dest is not null || node.uv is not null
+                || node.conv is not null || node.convLe is not null;
 
             if (ReadState(node, out node.blastState))
                 data.states.Add(new ReplayObjectState { t = t, state = node.blastState });
@@ -598,12 +633,13 @@ namespace BetterFG.Features.Replay
         public static void OnLocalSpawn(GameObject go, float t)
         {
             if (_rec == null || _budgetBlown || go == null || _nodes.Count >= MAX_NODES) return;
-            if (_suppressed > 0 || IsBettrFGOwned(go.transform)) return;
+            if (_suppressed > 0) return;
 
             var tf = go.transform;
             int id = tf.GetInstanceID();
 
             OnLocalDespawn(go, t);
+            if (_seen.Contains(id) || IsBettrFGOwned(tf)) return;
 
             var node = TrackSpawnedSubtree(tf, ReplayWorldPath.BaseName(go.name), t);
             if (node != null) _liveLocal[id] = node;
@@ -611,7 +647,7 @@ namespace BetterFG.Features.Replay
 
         public static void OnLocalDespawn(GameObject go, float t)
         {
-            if (_rec == null || go == null) return;
+            if (_rec == null || _liveLocal.Count == 0 || go == null) return;
 
             int id = go.transform.GetInstanceID();
             if (!_liveLocal.TryGetValue(id, out var node)) return;
@@ -662,9 +698,8 @@ namespace BetterFG.Features.Replay
         {
             if (_rec == null || _budgetBlown) return;
 
-            float step = 1f / FeatureReplay.SampleHz;
             _sweep += dt;
-            if (_sweep >= step)
+            if (_sweep >= NET_SWEEP_STEP)
             {
                 _sweep = 0f;
                 SweepNetObjects(t);
@@ -673,7 +708,7 @@ namespace BetterFG.Features.Replay
             int count = _nodes.Count;
             if (count == 0) return;
 
-            _slice += dt * FeatureReplay.SampleHz * count;
+            _slice += dt * WORLD_HZ * count;
             int todo = (int)_slice;
             if (todo <= 0) return;
             if (todo >= count) { todo = count; _slice = 0f; }
@@ -733,7 +768,12 @@ namespace BetterFG.Features.Replay
             var scale = node.scale;
             if (verify || node.world || tf.hasChanged) scale = tf.localScale;
 
-            bool active = node.go.activeSelf;
+            bool active = node.active;
+            if (node.watchActive || verify)
+            {
+                active = node.go.activeSelf;
+                if (active != node.active) node.watchActive = true;
+            }
 
             if (node.hasAnim)
             {

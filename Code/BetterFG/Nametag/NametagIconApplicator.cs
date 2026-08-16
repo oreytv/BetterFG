@@ -113,6 +113,11 @@ namespace BetterFG.Nametag
 
         private static void SetIconAlphaForText(TMP_Text txt, float alpha)
         {
+            // the game fades nametag alpha by distance, so this runs for every visible tag every frame.
+            // GetInstanceID is an il2cpp round trip, and almost nobody has a custom icon — so when the
+            // registries are empty there's nothing to look up and we get out before paying for it.
+            if (_icon3d.Count == 0 && _iconUI.Count == 0) return;
+
             int id = txt.GetInstanceID();
 
             if (_icon3d.TryGetValue(id, out var sr) && sr != null)

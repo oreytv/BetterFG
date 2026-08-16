@@ -32,6 +32,10 @@ namespace BetterFG.UI.Windows.Creative
         {
             Services.DiscordPresenceService.FlushPendingPush();
 
+            // this component is DontDestroyOnLoad, so without the editor gate every round paid a
+            // LevelEditorManager + GetMultiselectHandler interop round trip on every frame for nothing
+            if (!UnityRoundLoader.InLevelEditor) { DestroyPrompt(); return; }
+
             var handler = LevelEditorManager.Instance?.GetMultiselectHandler();
             if (handler == null) { DestroyPrompt(); return; }
             if (handler.IsPlacingOrCloning) return;
@@ -56,6 +60,7 @@ namespace BetterFG.UI.Windows.Creative
 
         void LateUpdate()
         {
+            if (!UnityRoundLoader.InLevelEditor) return;
             Features.CreativeGroups.CreativeGroups.TickGroupDrag();
         }
 

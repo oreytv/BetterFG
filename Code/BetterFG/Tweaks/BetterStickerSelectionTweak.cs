@@ -74,6 +74,17 @@ namespace BetterFG.Tweaks
             TryOpenOnStickerRow();
         }
 
+        // IsStickerRow walks the selected object twice with GetComponentInChildren, and this runs every
+        // frame the parameter menu is open. the answer can only change when the selection or the
+        // highlighted row changes, so key it on those and leave the scan out of the steady state.
+        private IntPtr _rowSel;
+        private int _rowIndex = -1;
+        private bool _rowIsSticker;
+        private LevelEditorRangeParameter _rowRange;
+        private LevelEditorDecal _rowDecal;
+        private int _rowCount;
+        private Transform _rowRoot;
+
         private void TryOpenOnStickerRow()
         {
             var vm = LevelEditorParameterMenuViewModel._instance;
@@ -84,12 +95,23 @@ namespace BetterFG.Tweaks
             var handler = Handler(vm);
             if (handler == null) return;
 
-            if (!IsStickerRow(vm, out var range, out var decal, out int count, out var root)) { ClearTip(); return; }
+            var sel = LevelEditorManager.Instance?.SelectedObject;
+            IntPtr selPtr = sel == null ? IntPtr.Zero : sel.Pointer;
+            if (selPtr != _rowSel || vm.SelectedIndex != _rowIndex)
+            {
+                _rowSel = selPtr;
+                _rowIndex = vm.SelectedIndex;
+                _rowIsSticker = IsStickerRow(vm, sel, out _rowRange, out _rowDecal, out _rowCount, out _rowRoot);
+            }
+            if (!_rowIsSticker) { ClearTip(); return; }
 
             // hint rides on the row itself, after the same hover delay the rest of our tooltips use
             _tipTimer += Time.unscaledDeltaTime;
             if (!_tipShown && _tipTimer >= Tooltip.HoverDelay)
             {
+                // one attempt per selection either way — retrying a failed row lookup every frame meant a
+                // full GetComponentsInChildren sweep of the menu for as long as the row stayed highlighted
+                _tipShown = true;
                 var row = RowAt(vm, vm.SelectedIndex);
                 if (row != null)
                 {
@@ -100,7 +122,6 @@ namespace BetterFG.Tweaks
                     BetterFGUIMan.Instance?.ShowTooltipOver(
                         "Press space or the usual confirm button on your joystick to see a better selection",
                         top, 3600f);
-                    _tipShown = true;
                 }
             }
 
@@ -108,7 +129,7 @@ namespace BetterFG.Tweaks
             if (!KbConfirmDown() && !(player != null && player.GetButtonDown(handler.SubmitAction))) return;
 
             ClearTip();
-            Open(vm, handler, range, decal, count, root);
+            Open(vm, handler, _rowRange, _rowDecal, _rowCount, _rowRoot);
         }
 
         // the row GameObject backing node `index` — Content's children sit in the same order as NodeEntries
@@ -126,12 +147,11 @@ namespace BetterFG.Tweaks
         }
 
         // is the highlighted parameter row a decal's sticker (range) node?
-        private static bool IsStickerRow(LevelEditorParameterMenuViewModel vm,
+        private static bool IsStickerRow(LevelEditorParameterMenuViewModel vm, LevelEditorPlaceableObject sel,
             out LevelEditorRangeParameter range, out LevelEditorDecal decal, out int count, out Transform root)
         {
             range = null; decal = null; count = 0; root = null;
 
-            var sel = LevelEditorManager.Instance?.SelectedObject;
             if (sel == null) return false;
             range = sel.GetComponentInChildren<LevelEditorRangeParameter>(true);
             decal = sel.GetComponentInChildren<LevelEditorDecal>(true);

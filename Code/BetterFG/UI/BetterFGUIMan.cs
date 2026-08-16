@@ -389,6 +389,8 @@ namespace BetterFG.UI
         private List<RectTransform> _tabRoots = new List<RectTransform>();
         private BetterFGTab _openTab = null;
         private Dictionary<BetterFGTab, Coroutine> _anims = new Dictionary<BetterFGTab, Coroutine>();
+        private readonly Dictionary<BetterFGTab, GameObject> _parkedContent = new Dictionary<BetterFGTab, GameObject>();
+        private readonly Dictionary<BetterFGTab, BetterFGTab> _parkedHost = new Dictionary<BetterFGTab, BetterFGTab>();
 
         private SlotDropdown _dropdown = new SlotDropdown();
         private BetterFGTab _pendingDropdownTab;
@@ -855,6 +857,78 @@ namespace BetterFG.UI
         // drill-in tabs like Creative <-> "Creative - Custom Textures" that aren't in the tab registry
         // (so they never show in the slot dropdown) and are reached only via an in-tab button. not
         // saved: on relaunch the slot restores to whatever registered tab was there.
+        // drill into a temporary tab without tearing the host down: the host's built UI is moved
+        // aside intact and moved back on pop, so returning costs nothing but a reparent
+        public void PushSlotTab(BetterFGTab host, BetterFGTab temp)
+        {
+            int idx = _tabs.IndexOf(host);
+            if (idx < 0 || temp == null) return;
+
+            var rt = _tabRoots[idx];
+            var rootGo = rt.gameObject;
+
+            var park = new GameObject("Parked_" + idx);
+            park.hideFlags = HideFlags.HideAndDontSave;
+            park.transform.SetParent(_rootGo.transform, false);
+            park.SetActive(false);
+            for (int i = rootGo.transform.childCount - 1; i >= 0; i--)
+                rootGo.transform.GetChild(i).SetParent(park.transform, false);
+
+            _parkedContent[temp] = park;
+            _parkedHost[temp] = host;
+
+            if (_openTab == host)
+            {
+                _openTab = null;
+                rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, _peekedY);
+            }
+            if (_anims.ContainsKey(host)) { StopCoroutine(_anims[host]); _anims.Remove(host); }
+            host.IsOpen = false;
+
+            _tabs[idx] = temp;
+            temp.transform.SetParent(rootGo.transform, false);
+            var tabRt = temp.gameObject.GetComponent<RectTransform>() ?? temp.gameObject.AddComponent<RectTransform>();
+            tabRt.anchorMin = Vector2.zero;
+            tabRt.anchorMax = Vector2.one;
+            tabRt.offsetMin = tabRt.offsetMax = Vector2.zero;
+            temp.TabWidth = TAB_W;
+            temp.TabHeight = TAB_CONTENT_H;
+            temp.Initialize(rt);
+            temp.EnsureBuilt();
+
+            ToggleTab(temp);
+        }
+
+        public void PopSlotTab(BetterFGTab temp)
+        {
+            if (!_parkedContent.TryGetValue(temp, out var park)) return;
+            var host = _parkedHost[temp];
+            _parkedContent.Remove(temp);
+            _parkedHost.Remove(temp);
+
+            int idx = _tabs.IndexOf(temp);
+            if (idx < 0) return;
+            var rt = _tabRoots[idx];
+            var rootGo = rt.gameObject;
+
+            if (_openTab == temp)
+            {
+                _openTab = null;
+                rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, _peekedY);
+            }
+            if (_anims.ContainsKey(temp)) { StopCoroutine(_anims[temp]); _anims.Remove(temp); }
+
+            for (int i = rootGo.transform.childCount - 1; i >= 0; i--)
+                UnityEngine.Object.Destroy(rootGo.transform.GetChild(i).gameObject);
+
+            for (int i = park.transform.childCount - 1; i >= 0; i--)
+                park.transform.GetChild(i).SetParent(rootGo.transform, false);
+            UnityEngine.Object.Destroy(park);
+
+            _tabs[idx] = host;
+            ToggleTab(host);
+        }
+
         public BetterFGTab SwitchSlotTab(BetterFGTab from, BetterFGTab replacement)
         {
             int slot = _tabs.IndexOf(from);

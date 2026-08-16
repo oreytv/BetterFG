@@ -49,9 +49,8 @@ namespace BetterFG.Customization.Menu
 
         public void ApplyAmbientFromSettings()
         {
-            // only apply in the menu scene — gate on the root MainMenuManager existing
-            if (GameObject.Find("MainMenuManager") == null) return;
             if (SettingsService.Get(KEY_AMBIENT_ON, "false") != "true") return;
+            if (!InMenuScene) return;
             ApplyAmbient(new Color(ParseF(KEY_AMBIENT_R, 0.5f), ParseF(KEY_AMBIENT_G, 0.5f), ParseF(KEY_AMBIENT_B, 0.5f)));
         }
 
@@ -103,8 +102,8 @@ namespace BetterFG.Customization.Menu
 
         public void ApplySunFromSettings()
         {
-            if (GameObject.Find("MainMenuManager") == null) return;
             if (SettingsService.Get(KEY_SUN_ON, "false") != "true") return;
+            if (!InMenuScene) return;
             ApplySunRotation(ParseF(KEY_SUN_ROT_X, 50f), ParseF(KEY_SUN_ROT_Y, 0f), ParseF(KEY_SUN_ROT_Z, 0f));
         }
 

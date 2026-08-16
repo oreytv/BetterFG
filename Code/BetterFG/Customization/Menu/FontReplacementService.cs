@@ -629,7 +629,8 @@ namespace BetterFG.Customization.Menu
                 // only famepass-revert NON-nametag text (the game's own gold fame-UI). nametags are meant
                 // to get the custom font even when gold (ApplyToNametag re-derives the gold material onto
                 // our atlas), so we never revert them just for being famepass.
-                bool nowProtected = !kv.Value.isNametag && RendersProtected(t);
+                bool nowProtected = stillCovered && !kv.Value.isNametag &&
+                                    t.isActiveAndEnabled && RendersProtected(t);
                 if (!stillCovered || nowProtected)
                 {
                     RestoreOne(t, kv.Value);

@@ -16,6 +16,7 @@ namespace BetterFG.UI.Components
         public bool useUnscaledTime = true; // menus run while paused, so default to unscaled
 
         private RectTransform _rt;
+        private Canvas _canvas;
         private Vector2 _baseAnchored;
         private Vector3 _baseLocal;
         private float _t;
@@ -25,6 +26,7 @@ namespace BetterFG.UI.Components
             if (axis.sqrMagnitude < 0.0001f) axis = Vector3.up;
             axis = axis.normalized;
             _rt = GetComponent<RectTransform>();
+            _canvas = GetComponentInParent<Canvas>();
             if (_rt != null) _baseAnchored = _rt.anchoredPosition;
             else _baseLocal = transform.localPosition;
         }
@@ -39,6 +41,7 @@ namespace BetterFG.UI.Components
 
         void Update()
         {
+            if (_canvas != null && !_canvas.enabled) return;
             float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
             _t += dt * speed * Mathf.PI * 2f;
             float offset = Mathf.Sin(_t) * strength;

@@ -20,9 +20,17 @@ namespace BetterFG.Tweaks
 
         private static readonly Regex TagRegex = new Regex(@"<\s*/?\s*[a-zA-Z][^>]*>", RegexOptions.Compiled);
 
+        // this hangs off PlayerNameManager.GetNameToDisplayForPlayer, so it runs for every nametag the
+        // game draws — and each uncached call is up to four regex passes plus four il2cpp round trips
+        // through RemoveTextMeshProTags, every one of those marshalling the string both ways. player
+        // names don't change, so the answer is worth keeping.
+        private static readonly System.Collections.Generic.Dictionary<string, string> _cache =
+            new System.Collections.Generic.Dictionary<string, string>();
+
         internal static string Strip(string text)
         {
             if (string.IsNullOrEmpty(text)) return text;
+            if (_cache.TryGetValue(text, out var hit)) return hit;
 
             string s = text;
             for (int pass = 0; pass < 4; pass++)
@@ -31,6 +39,9 @@ namespace BetterFG.Tweaks
                 if (next == s) break;
                 s = next;
             }
+
+            if (_cache.Count > 512) _cache.Clear();
+            _cache[text] = s;
             return s;
         }
 

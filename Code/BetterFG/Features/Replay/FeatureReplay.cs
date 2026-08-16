@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Core;
 using BetterFG.Customization.Player;
@@ -437,7 +438,8 @@ namespace BetterFG.Features.Replay
             public Transform tf;
             public Animator anim;
             public Transform animTf;
-            public int beanId;
+            public IntPtr beanPtr;
+            public Vector3 lastPos;
             public Transform upperBody;
             public Transform armLeft;
             public Transform armRight;
@@ -448,9 +450,12 @@ namespace BetterFG.Features.Replay
         static Transform _gameCam;
         static RenderTexture _thumbRt;
         static ClientGameStateView _gsv;
+        static long _worldTicks;
+        static long _playerTicks;
+        static int _sampledFrames;
         static readonly Dictionary<uint, Tracked> _tracked = new Dictionary<uint, Tracked>();
-        static readonly Dictionary<int, uint> _beanOwners = new Dictionary<int, uint>();
-        static readonly Dictionary<int, FallGuysCharacterController> _animBeans = new Dictionary<int, FallGuysCharacterController>();
+        static readonly Dictionary<IntPtr, uint> _beanOwners = new Dictionary<IntPtr, uint>();
+        static readonly Dictionary<IntPtr, FallGuysCharacterController> _animBeans = new Dictionary<IntPtr, FallGuysCharacterController>();
         static bool _culledRemotes = true;
         static readonly Dictionary<string, int> _keyIds = new Dictionary<string, int>();
         static readonly Dictionary<string, int> _paramIds = new Dictionary<string, int>();
@@ -486,7 +491,7 @@ namespace BetterFG.Features.Replay
 
             ReplayThumbnail.Release(_thumbRt);
             _thumbRt = null;
-            if (!AutoRecord) { _live = null; return; }
+            if (!AutoRecord) { _live = null; ReplayCaptureHooks.SetActive(false); return; }
 
             var rec = new ReplayRecording
             {
@@ -538,9 +543,14 @@ namespace BetterFG.Features.Replay
             _paramSets.Clear();
             _openSounds.Clear();
             _lastDiveSlideTimes.Clear();
+            ReplaySlideEvent.Reset();
             _gameCam = null;
+            _worldTicks = 0;
+            _playerTicks = 0;
+            _sampledFrames = 0;
             _gsv = gsv;
             _live = rec;
+            ReplayCaptureHooks.SetActive(true);
 
             if (cgm?._clientPlayerManager?._playerIdIndex != null)
             {
@@ -580,20 +590,25 @@ namespace BetterFG.Features.Replay
             {
                 yield return null;
                 if (_live == null || _recGen != gen) yield break;
-
-                ClientGameManager cgm = null;
-                if (_gsv != null) _gsv.GetLiveClientGameManager(out cgm);
-
-                var index = cgm?._clientPlayerManager?._playerIdIndex;
-                if (index == null) continue;
+                if (_gsv is null) continue;
 
                 float t = _gsv.GameplayTimeElapsed;
                 float dt = Time.unscaledDeltaTime;
+
+                long mark = Stopwatch.GetTimestamp();
                 ReplayWorldRecorder.Sample(t, dt);
+                long afterWorld = Stopwatch.GetTimestamp();
+                _worldTicks += afterWorld - mark;
+                _sampledFrames++;
 
                 due -= dt;
                 if (due > 0f) continue;
                 due = due < -step ? step : due + step;
+
+                ClientGameManager cgm = null;
+                _gsv.GetLiveClientGameManager(out cgm);
+                var index = cgm?._clientPlayerManager?._playerIdIndex;
+                if (index == null) continue;
 
                 if (_gameCam == null) _gameCam = FallGuysLib.Camera.CameraUtils.GetMainCameraTransform();
                 if (_gameCam != null)
@@ -605,17 +620,19 @@ namespace BetterFG.Features.Replay
                 if (_thumbRt == null && t >= THUMB_AT)
                     _thumbRt = ReplayThumbnail.Grab(FallGuysLib.Camera.CameraUtils.GetMainCamera());
 
-                bool scaleTick = (++ticks & 7) == 0;
+                bool scaleTick = (++ticks & 31) == 0;
                 var ident = Quaternion.identity;
 
                 foreach (var kvp in index)
                 {
                     if (BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(kvp.Key)) continue;
                     var fgcc = kvp.Value?.fgcc;
-                    if (fgcc == null) continue;
+                    if (fgcc is null) continue;
 
-                    int beanId = fgcc.GetInstanceID();
-                    if (!_tracked.TryGetValue(kvp.Key, out var tracked) || tracked.beanId != beanId)
+                    IntPtr beanPtr = fgcc.m_CachedPtr;
+                    if (beanPtr == IntPtr.Zero) continue;
+
+                    if (!_tracked.TryGetValue(kvp.Key, out var tracked) || tracked.beanPtr != beanPtr)
                     {
                         var found = BeanAnimationUtil.FindAnimator(fgcc.gameObject);
                         var rag = fgcc.GetComponentInChildren<FG.Common.Character.RagdollController>(true);
@@ -625,14 +642,14 @@ namespace BetterFG.Features.Replay
                             tf = fgcc.transform,
                             anim = found,
                             animTf = found != null ? found.transform : null,
-                            beanId = beanId,
+                            beanPtr = beanPtr,
                             upperBody = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.UpperBody)?.CachedTransform,
                             armLeft = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.ArmLeft)?.CachedTransform,
                             armRight = rag?.GetJoint(FG.Common.Character.RagdollJoint.ID.ArmRight)?.CachedTransform,
                         };
                         _tracked[kvp.Key] = tracked;
-                        _beanOwners[beanId] = kvp.Key;
-                        if (found != null) _animBeans[found.GetInstanceID()] = fgcc;
+                        _beanOwners[beanPtr] = kvp.Key;
+                        if (found != null) _animBeans[found.m_CachedPtr] = fgcc;
 
                         var accessory = fgcc.GetComponentInChildren<Levels.Tag.TailTagAccessory>(true);
                         if (accessory != null) CaptureTailState(accessory, accessory.AccessoryEnabled);
@@ -640,7 +657,7 @@ namespace BetterFG.Features.Replay
 
                     int sh = 0;
                     float at = 0f;
-                    if (tracked.anim != null)
+                    if (tracked.anim is not null && tracked.anim.m_CachedPtr != IntPtr.Zero)
                     {
                         var info = tracked.anim.GetCurrentAnimatorStateInfo(0);
                         sh = info.shortNameHash;
@@ -648,16 +665,17 @@ namespace BetterFG.Features.Replay
                         if (scaleTick) tracked.player.bfgScale = tracked.animTf.lossyScale.x;
                     }
 
-                    bool ragged = tracked.upperBody != null;
+                    bool ragged = tracked.upperBody is not null && tracked.upperBody.m_CachedPtr != IntPtr.Zero;
                     Quaternion upper = ident, armL = ident, armR = ident;
                     if (ragged)
                     {
                         tracked.upperBody.GetLocalPositionAndRotation(out _, out upper);
-                        if (tracked.armLeft != null) tracked.armLeft.GetLocalPositionAndRotation(out _, out armL);
-                        if (tracked.armRight != null) tracked.armRight.GetLocalPositionAndRotation(out _, out armR);
+                        if (tracked.armLeft is not null) tracked.armLeft.GetLocalPositionAndRotation(out _, out armL);
+                        if (tracked.armRight is not null) tracked.armRight.GetLocalPositionAndRotation(out _, out armR);
                     }
 
                     tracked.tf.GetPositionAndRotation(out var pos, out var rot);
+                    tracked.lastPos = pos;
                     tracked.player.frames.Add(new ReplayFrame
                     {
                         t = t,
@@ -671,6 +689,8 @@ namespace BetterFG.Features.Replay
                         armRight = armR,
                     });
                 }
+
+                _playerTicks += Stopwatch.GetTimestamp() - afterWorld;
             }
         }
 
@@ -750,6 +770,7 @@ namespace BetterFG.Features.Replay
         {
             var rec = _live;
             _live = null;
+            ReplayCaptureHooks.SetActive(false);
             ReplayWorldRecorder.End();
             _tracked.Clear();
             _beanOwners.Clear();
@@ -777,6 +798,12 @@ namespace BetterFG.Features.Replay
             int frames = 0;
             foreach (var p in rec.players) frames += p.frames.Count;
             Plugin.Log.LogInfo($"round over, {frames} frames across {rec.players.Count} players, {rec.audioEvents.Count} bean sounds over {rec.audioKeys.Count} events");
+
+            if (_sampledFrames > 0)
+            {
+                double toMs = 1000.0 / Stopwatch.Frequency;
+                Plugin.Log.LogInfo($"recorder cost {_worldTicks * toMs / _sampledFrames:0.000}ms/frame on the level, {_playerTicks * toMs / _sampledFrames:0.000}ms/frame on beans, over {_sampledFrames} frames");
+            }
             SaveReplay.Write(rec);
         }
 
@@ -843,7 +870,7 @@ namespace BetterFG.Features.Replay
             if (_live == null) return;
 
             var fgcc = controller.GetComponent<FallGuysCharacterController>();
-            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.GetInstanceID(), out uint owner)) return;
+            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.m_CachedPtr, out uint owner)) return;
 
             _lastDiveSlideTimes[owner] = GameplayTime;
             _live.diveSlideVfxEvents.Add(new ReplayVfxEvent { t = GameplayTime, playerId = owner });
@@ -854,7 +881,7 @@ namespace BetterFG.Features.Replay
             if (_live == null || accessory == null) return;
 
             var fgcc = accessory.GetComponentInParent<FallGuysCharacterController>(true);
-            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.GetInstanceID(), out uint owner)) return;
+            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.m_CachedPtr, out uint owner)) return;
 
             if (string.IsNullOrEmpty(_live.tailPrefab) && accessory.transform.parent != null)
             {
@@ -880,11 +907,11 @@ namespace BetterFG.Features.Replay
             {
                 float delta = GameplayTime - kvp.Value;
                 if (delta < 0f || delta >= bestDelta) continue;
-                if (!_tracked.TryGetValue(kvp.Key, out var candidate) || candidate.tf == null) continue;
+                if (!_tracked.TryGetValue(kvp.Key, out var candidate) || candidate.tf.m_CachedPtr == IntPtr.Zero) continue;
 
                 bestDelta = delta;
                 owner = kvp.Key;
-                pos = candidate.tf.position;
+                pos = candidate.lastPos;
             }
 
             int paramStart = _live.audioParams.Count;
@@ -917,7 +944,7 @@ namespace BetterFG.Features.Replay
 
         public static FallGuysCharacterController BeanFor(Animator animator)
         {
-            int id = animator.GetInstanceID();
+            IntPtr id = animator.m_CachedPtr;
             if (_animBeans.TryGetValue(id, out var bean)) return bean;
             bean = animator.GetComponentInParent<FallGuysCharacterController>();
             _animBeans[id] = bean;
@@ -1002,14 +1029,14 @@ namespace BetterFG.Features.Replay
             }
 
             uint owner = 0;
-            if (controller != null) _beanOwners.TryGetValue(controller.GetInstanceID(), out owner);
+            if (controller != null) _beanOwners.TryGetValue(controller.m_CachedPtr, out owner);
             else
             {
                 float best = 4f * 4f;
                 foreach (var kvp in _tracked)
                 {
-                    if (kvp.Value.tf == null) continue;
-                    float d2 = (kvp.Value.tf.position - pos).sqrMagnitude;
+                    if (kvp.Value.tf.m_CachedPtr == IntPtr.Zero) continue;
+                    float d2 = (kvp.Value.lastPos - pos).sqrMagnitude;
                     if (d2 < best) { best = d2; owner = kvp.Key; }
                 }
             }
@@ -1032,7 +1059,7 @@ namespace BetterFG.Features.Replay
             if (_live == null || bean == null) return;
 
             var fgcc = bean.GetComponent<FallGuysCharacterController>();
-            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.GetInstanceID(), out uint owner)) return;
+            if (fgcc == null || !_beanOwners.TryGetValue(fgcc.m_CachedPtr, out uint owner)) return;
 
             if (!_speechIds.TryGetValue(optionId, out int index))
             {

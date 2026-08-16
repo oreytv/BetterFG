@@ -16,12 +16,14 @@ namespace BetterFG.UI.Components
         public bool useUnscaledTime = true; // menus run while paused, so default to unscaled
 
         private CanvasGroup _cg;
+        private Canvas _canvas;
         private float _t;
 
         void Awake()
         {
             _cg = GetComponent<CanvasGroup>();
             if (_cg == null) _cg = gameObject.AddComponent<CanvasGroup>();
+            _canvas = GetComponentInParent<Canvas>();
         }
 
         void OnEnable() { _t = 0f; }
@@ -29,6 +31,7 @@ namespace BetterFG.UI.Components
         void Update()
         {
             if (_cg == null) return;
+            if (_canvas != null && !_canvas.enabled) return;
             float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
             _t += dt * speed * Mathf.PI * 2f;
             _cg.alpha = Mathf.Lerp(min, max, (Mathf.Sin(_t) * 0.5f) + 0.5f);

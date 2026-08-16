@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BetterFG.Customization.Player;
 using BetterFG.Nametag;
 using BetterFG.Services;
 using FallGuysLib.Players;
@@ -83,6 +84,41 @@ namespace BetterFG.Network
             foreach (var e in local.skins)
                 if (e.file == file) return true;
             return false;
+        }
+
+        public static string LocalAppliedSummary(SkinRepo repo)
+        {
+            if (repo == null) return null;
+            var local = LocalLoadout();
+            if (local == null) return null;
+
+            int costumes = 0, accessories = 0, items = 0, plinths = 0, emotes = 0, others = 0;
+            foreach (var e in local.skins)
+            {
+                if (string.IsNullOrEmpty(e.repoUrl)) continue;
+                if (!string.Equals(e.repoUrl, repo.githubUrl, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(e.repoUrl, repo.RawBase, StringComparison.OrdinalIgnoreCase)) continue;
+
+                switch (SkinTypeParser.FromString(e.type))
+                {
+                    case SkinType.Costume: costumes++; break;
+                    case SkinType.Accessory: accessories++; break;
+                    case SkinType.Item: items++; break;
+                    case SkinType.Plinth: plinths++; break;
+                    case SkinType.Emote: emotes++; break;
+                    default: others++; break;
+                }
+            }
+
+            var parts = new List<string>();
+            if (costumes > 0) parts.Add(costumes + (costumes == 1 ? " costume" : " costumes"));
+            if (accessories > 0) parts.Add(accessories + (accessories == 1 ? " accessory" : " accessories"));
+            if (items > 0) parts.Add(items + (items == 1 ? " item" : " items"));
+            if (plinths > 0) parts.Add(plinths + (plinths == 1 ? " plinth" : " plinths"));
+            if (emotes > 0) parts.Add(emotes + (emotes == 1 ? " emote" : " emotes"));
+            if (others > 0) parts.Add(others + (others == 1 ? " other" : " others"));
+
+            return parts.Count > 0 ? string.Join(", ", parts) : null;
         }
 
         public static void Clear()

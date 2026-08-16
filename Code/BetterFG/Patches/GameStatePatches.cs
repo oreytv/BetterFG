@@ -44,6 +44,8 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void OnMainMenuEntered(MainMenuManager __instance)
         {
+            MenuCustomizationApplication.CacheMenuManager(__instance);
+
             if (__instance._lobbyVirtualCam != null)
             {
                 MenuCustomizationApplication.Instance?.CacheCamBase(__instance._lobbyVirtualCam);
@@ -55,6 +57,7 @@ namespace BetterFG.Patches.GameStates
             BetterFG.Tweaks.BfgTweak.RaiseMainMenuEntered();
             BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
             BetterFG.Features.Replay.ReplayViewer.OnMainMenuEntered();
+            BetterFG.Patches.SeasonProgressHoverPatch.Forget();
 
             BetterFG.UI.Tab.NametagTab.CacheNameAssets();
             BetterFG.UI.BetterFGUIMan.ResolveAsapFont();
@@ -370,6 +373,7 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix()
         {
             BetterFG.Services.DiscordPresenceService.OnShowSelectorClosed();
+            BetterFG.Tweaks.ShowTilePlaysTweak.PruneCache();
             MenuCustomizationApplication.AutoApplyCamFromSettings();
 
             var app = MenuCustomizationApplication.Instance;
@@ -536,9 +540,7 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance == null) return;
             BetterFG.Services.DiscordPresenceService.OnShowSelectorTileSeen();
-            var app = MenuCustomizationApplication.Instance;
-            if (app != null)
-                app.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(__instance.transform).WrapToIl2Cpp());
+            MenuCustomizationApplication.Instance?.QueueForegroundScope(__instance.transform);
             BetterFG.Features.Stars.FeatureStars.OnSetIndividualShowData(__instance, showSelectorShow);
             BetterFG.Tweaks.ShowTilePlaysTweak.OnSetShowData(__instance, showSelectorShow);
         }
@@ -551,9 +553,7 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileViewModel __instance)
         {
             if (__instance == null) return;
-            var app = MenuCustomizationApplication.Instance;
-            if (app != null)
-                app.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(__instance.transform, anyImage: true).WrapToIl2Cpp());
+            MenuCustomizationApplication.Instance?.QueueForegroundScope(__instance.transform, true);
         }
     }
 
@@ -567,9 +567,7 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileTagViewModel __instance)
         {
             if (__instance == null) return;
-            var app = MenuCustomizationApplication.Instance;
-            if (app != null)
-                app.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(__instance.transform, anyImage: true).WrapToIl2Cpp());
+            MenuCustomizationApplication.Instance?.QueueForegroundScope(__instance.transform, true);
         }
     }
 
@@ -777,6 +775,8 @@ namespace BetterFG.Patches.GameStates
         {
             BetterFG.Features.Replay.FeatureReplay.OnPlayerSpawned(playerId, accountId, platformId, playerName,
                 playerGeneratedName, teamId, squadId, partyId, customisationSelections, isLocalPlayer, isNPC);
+
+            BetterFG.Tweaks.CreativeIntroCameraTweak.OnPlayerSpawned(playerId);
 
             if (!isLocalPlayer || pNetObject == null) return;
             var bean = pNetObject.gameObject;
@@ -1214,6 +1214,8 @@ namespace BetterFG.Patches.GameStates
         {
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnCleanupLoadingScreens();
             BetterFG.Features.Replay.FeatureReplay.OnCleanupLoadingScreens();
+            BetterFG.Tweaks.CreativeIntroCameraTweak.OnCleanupLoadingScreens();
+            BetterFG.Nametag.CrownRankFovFix.Forget();
 
             BetterFGUnityRounds.RestoreMusic();
 
@@ -1456,12 +1458,18 @@ namespace BetterFG.Patches.GameStates
 
             UIScaleService.ApplySaved();
 
-            SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
+            var mainView = MenuCustomizationApplication.MainMenuSwitchableView;
+            bool isMainMenuView = mainView == null || view == null || view.GetInstanceID() == mainView.GetInstanceID();
 
-            MenuCustomizationApplication.Instance?.ApplyAmbientFromSettings();
-            MenuCustomizationApplication.Instance?.ApplySunFromSettings();
+            if (isMainMenuView)
+            {
+                SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
 
-            MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
+                MenuCustomizationApplication.Instance?.ApplyAmbientFromSettings();
+                MenuCustomizationApplication.Instance?.ApplySunFromSettings();
+
+                MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
+            }
 
             if (scope != null) NametagFinder.ReapplyNameplatesInScope(scope);
             else NametagFinder.ReapplyAllNameplates();
@@ -1472,7 +1480,7 @@ namespace BetterFG.Patches.GameStates
 
             if (view == null || view.CurrentViewIndex != 0) yield break;
 
-            MenuCustomizationApplication.AutoApplyCamFromSettings();
+            if (isMainMenuView) MenuCustomizationApplication.AutoApplyCamFromSettings();
 
             var app = MenuCustomizationApplication.Instance;
             if (app == null) yield break;

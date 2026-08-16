@@ -33,6 +33,7 @@ namespace BetterFG
     public class Plugin : BasePlugin
     {
         internal static new ManualLogSource Log;
+        internal static Harmony HarmonyInstance;
 
         public override void Load()
         {
@@ -61,7 +62,7 @@ namespace BetterFG
             var wheel = SideWheelManager.Create();
             SidewheelRegistry.RegisterAll(wheel);
 
-            var harmony = new Harmony(MyPluginInfo.PLUGIN_GUID);
+            var harmony = HarmonyInstance = new Harmony(MyPluginInfo.PLUGIN_GUID);
             foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
             {
                 try { new HarmonyLib.PatchClassProcessor(harmony, type).Patch(); }
@@ -141,7 +142,6 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Patches.CreativeEditorBgApplier>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.QualificationTime.PBPopupDestroyWatcher>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Nametag.GifAnimator>();
-            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Tweaks.BlinkDriverComponent>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.Replay.ReplayViewer>();
 
             // tabs
@@ -158,6 +158,8 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<CustomCreativeTextureTab>();
             ClassInjector.RegisterTypeInIl2Cpp<PersonalBestTab>();
             ClassInjector.RegisterTypeInIl2Cpp<ReplayTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PlinthsTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<RepoSelectorTab>();
 
             // windows
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGWindow>();
@@ -206,6 +208,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<LobbyCustomiserTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<DisableCameraAssistTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<CinematicSpectatorTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<CreativeIntroCameraTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<ObjectiveRoundNumberTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomCursorTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<DisableAntiAfkTweak>();
@@ -290,6 +293,7 @@ namespace BetterFG
             BetterFGTabRegistry.Register<CreativeTab>();
             BetterFGTabRegistry.Register<PersonalBestTab>();
             BetterFGTabRegistry.Register<ReplayTab>();
+            BetterFGTabRegistry.Register<PlinthsTab>();
 
             var uiManGo = new GameObject("BetterFG_UI");
             uiManGo.hideFlags = HideFlags.HideAndDontSave;

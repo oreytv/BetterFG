@@ -18,6 +18,18 @@ namespace BetterFG.Patches
         // hovered state per banner (instance id of the SeasonProgressViewModel).
         private static readonly Dictionary<int, bool> _hoverState = new Dictionary<int, bool>();
 
+        // ColorUpdate fires for every tween colour write in the game, every frame, and the menu runs
+        // dozens at once. walking the parent chain looking for the banner on each of those was the bulk
+        // of BettrFG's idle menu cost, so the answer is memoised per image. -1 = not a banner image.
+        private static readonly Dictionary<int, int> _bannerOf = new Dictionary<int, int>();
+
+        // menu rebuild invalidates the ids we cached against
+        internal static void Forget()
+        {
+            _bannerOf.Clear();
+            _hoverState.Clear();
+        }
+
         [HarmonyPatch(typeof(UITweenTriggerComponent), nameof(UITweenTriggerComponent.OnPointerEnter))]
         internal static class Patch_OnPointerEnter
         {
@@ -54,10 +66,16 @@ namespace BetterFG.Patches
                 var img = comp.TryCast<Image>();
                 if (img == null) return;
 
-                var banner = img.GetComponentInParent<SeasonProgressViewModel>();
-                if (banner == null) return;
+                int id = img.GetInstanceID();
+                if (!_bannerOf.TryGetValue(id, out int bannerId))
+                {
+                    var banner = img.GetComponentInParent<SeasonProgressViewModel>();
+                    bannerId = banner == null ? -1 : banner.GetInstanceID();
+                    _bannerOf[id] = bannerId;
+                }
+                if (bannerId < 0) return;
 
-                _hoverState.TryGetValue(banner.GetInstanceID(), out bool hovered);
+                _hoverState.TryGetValue(bannerId, out bool hovered);
                 MenuCustomizationApplication.Instance?.RecolourSeasonProgressImage(img, hovered);
             }
         }

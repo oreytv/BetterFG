@@ -1849,13 +1849,19 @@ namespace BetterFG.UI
         public Color Idle;
         public Color Hover;
         private RectTransform _rt;
+        private Canvas _canvas;
         private bool _over;
 
-        void Awake() => _rt = GetComponent<RectTransform>();
+        void Awake()
+        {
+            _rt = GetComponent<RectTransform>();
+            _canvas = GetComponentInParent<Canvas>();
+        }
 
         void Update()
         {
             if (_rt == null || Text == null) return;
+            if (_canvas != null && !_canvas.enabled) return;
             bool over = RectTransformUtility.RectangleContainsScreenPoint(
                 _rt, new Vector2(Input.mousePosition.x, Input.mousePosition.y), null);
             if (over == _over) return;
@@ -1872,6 +1878,7 @@ namespace BetterFG.UI
         private RectTransform _self;
         private RectTransform _target;
         private RectTransform _parentRt;
+        private Canvas _canvas;
         private bool _dragging;
         private Vector2 _dragOffset;
 
@@ -1881,7 +1888,11 @@ namespace BetterFG.UI
             return this;
         }
 
-        public void Awake() { _self = GetComponent<RectTransform>(); }
+        public void Awake()
+        {
+            _self = GetComponent<RectTransform>();
+            _canvas = GetComponentInParent<Canvas>();
+        }
 
         public void Start()
         {
@@ -1899,6 +1910,7 @@ namespace BetterFG.UI
         public void Update()
         {
             if (_self == null || _target == null || _parentRt == null) return;
+            if (!_dragging && _canvas != null && !_canvas.enabled) return;
 
             var mouse = new Vector2(Input.mousePosition.x, Input.mousePosition.y);
 

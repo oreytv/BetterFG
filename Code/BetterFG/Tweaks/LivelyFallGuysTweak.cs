@@ -5,12 +5,6 @@ using UnityEngine;
 
 namespace BetterFG.Tweaks
 {
-    // looping eye-blink for every Fall Guy in the scene. directly samples the eye-blink clip into
-    // the bean's transforms in LateUpdate, after the animator has written its pose — so we always
-    // win on the eye-scale curves without ever touching the animator/PlayableGraph (which would
-    // fight emotes, idle, anything else animating that rig).
-    //
-    // event-driven: reapplied on MainMenuEntered / HandleServerStartRound.
     public class LivelyFallGuysTweak : BfgTweak
     {
         public LivelyFallGuysTweak(IntPtr ptr) : base(ptr) { }
@@ -29,51 +23,129 @@ namespace BetterFG.Tweaks
         public override void OnLevelEditorPlaytest() => ReapplyAll();
         public override void OnMainMenuEntered() => ReapplyAll();
 
+        private const float BakeFps = 30f;
+        private const int MaxBakeFrames = 512;
+
+        private static int _bakedFrames;
+        private static float _playbackRate;
+        private static Vector3[] _lPos, _lScale, _rPos, _rScale;
+        private static Quaternion[] _lRot, _rRot;
+
+        private struct Blinker
+        {
+            public Transform eyeL;
+            public Transform eyeR;
+            public float cursor;
+            public float speed;
+        }
+
+        private static Blinker[] _blinkers = new Blinker[64];
+        private static int _count;
+
         public static void ReapplyAll()
         {
-            if (Instance == null) return;
+            for (int i = 0; i < _count; i++) { _blinkers[i].eyeL = null; _blinkers[i].eyeR = null; }
+            _count = 0;
+
+            if (Instance == null || !Instance.IsEnabled) return;
             if (AssetManager.Instance == null) return;
             if (!AssetManager.Instance.animClips.TryGetValue("bettrfg_anim_eyes", out var clip) || clip == null) return;
 
-            bool on = Instance.IsEnabled;
-
             foreach (var fgcc in UnityEngine.Object.FindObjectsOfType<FallGuysCharacterController>())
-            {
-                if (fgcc == null) continue;
-                ApplyToRoot(fgcc.gameObject, clip, on);
-            }
+                Track(fgcc.gameObject, clip);
 
-            // menu/lobby fall guys are display rigs without an fgcc — pick them up directly
             var mm = UnityEngine.Object.FindObjectOfType<MainMenuManager>();
             if (mm != null)
             {
-                if (mm._menuFallGuy != null) ApplyToRoot(mm._menuFallGuy, clip, on);
-                if (mm._lobbyFallGuy != null) ApplyToRoot(mm._lobbyFallGuy, clip, on);
+                if (mm._menuFallGuy != null) Track(mm._menuFallGuy, clip);
+                if (mm._lobbyFallGuy != null) Track(mm._lobbyFallGuy, clip);
             }
         }
 
-        private static void ApplyToRoot(GameObject root, AnimationClip clip, bool on)
+        private static void Track(GameObject root, AnimationClip clip)
         {
-            if (root == null) return;
-            // clip curve paths are "SKELETON/Root/.../Eye_L_jnt" — sample on the GO that holds
-            // SKELETON as a direct child so paths resolve cleanly and we never touch the bean root.
             var skel = FindChildNamed(root.transform, "SKELETON");
             if (skel == null) return;
-            var host = skel.parent != null ? skel.parent.gameObject : skel.gameObject;
+            var eyeL = FindChildNamed(skel, "Eye_L_jnt");
+            var eyeR = FindChildNamed(skel, "Eye_R_jnt");
+            if (eyeL == null || eyeR == null) return;
 
-            var drv = host.GetComponent<BlinkDriverComponent>();
-            if (on)
+            if (_bakedFrames == 0)
             {
-                if (drv == null)
-                {
-                    drv = host.AddComponent<BlinkDriverComponent>();
-                    drv.Init(clip, FindChildNamed(skel, "Eye_L_jnt"), FindChildNamed(skel, "Eye_R_jnt"));
-                }
-                drv.enabled = true;
+                Bake(clip, skel.parent != null ? skel.parent.gameObject : skel.gameObject, eyeL, eyeR);
+                if (_bakedFrames == 0) return;
             }
-            else if (drv != null)
+
+            if (_count == _blinkers.Length) Array.Resize(ref _blinkers, _count * 2);
+            _blinkers[_count].eyeL = eyeL;
+            _blinkers[_count].eyeR = eyeR;
+            _blinkers[_count].speed = UnityEngine.Random.Range(0.8f, 1.25f) * _playbackRate;
+            _blinkers[_count].cursor = UnityEngine.Random.Range(0f, _bakedFrames);
+            _count++;
+        }
+
+        private static void Bake(AnimationClip clip, GameObject host, Transform eyeL, Transform eyeR)
+        {
+            float len = clip.length;
+            if (len <= 0f) return;
+
+            int frames = Mathf.Clamp(Mathf.CeilToInt(len * BakeFps), 2, MaxBakeFrames);
+            _lPos = new Vector3[frames]; _lRot = new Quaternion[frames]; _lScale = new Vector3[frames];
+            _rPos = new Vector3[frames]; _rRot = new Quaternion[frames]; _rScale = new Vector3[frames];
+
+            var t = host.transform;
+            t.GetLocalPositionAndRotation(out var hostPos, out var hostRot);
+            var hostScale = t.localScale;
+
+            for (int i = 0; i < frames; i++)
             {
-                drv.enabled = false;
+                clip.SampleAnimation(host, len * i / frames);
+                eyeL.GetLocalPositionAndRotation(out _lPos[i], out _lRot[i]);
+                eyeR.GetLocalPositionAndRotation(out _rPos[i], out _rRot[i]);
+                _lScale[i] = eyeL.localScale;
+                _rScale[i] = eyeR.localScale;
+            }
+
+            t.SetLocalPositionAndRotation(hostPos, hostRot);
+            t.localScale = hostScale;
+
+            _bakedFrames = frames;
+            _playbackRate = frames / len;
+            Plugin.Log.LogInfo($"blink clip baked once, {frames} frames off {len:0.00}s, no more per-bean SampleAnimation");
+        }
+
+        void LateUpdate()
+        {
+            if (_count == 0) return;
+
+            float dt = Time.deltaTime;
+            int frames = _bakedFrames;
+
+            for (int i = 0; i < _count; i++)
+            {
+                var eyeL = _blinkers[i].eyeL;
+                var eyeR = _blinkers[i].eyeR;
+                if (eyeL.m_CachedPtr == IntPtr.Zero || eyeR.m_CachedPtr == IntPtr.Zero)
+                {
+                    _count--;
+                    _blinkers[i] = _blinkers[_count];
+                    _blinkers[_count].eyeL = null;
+                    _blinkers[_count].eyeR = null;
+                    i--;
+                    continue;
+                }
+
+                float c = _blinkers[i].cursor + dt * _blinkers[i].speed;
+                if (c >= frames) c -= frames * Mathf.Floor(c / frames);
+                _blinkers[i].cursor = c;
+
+                int idx = (int)c;
+                if (idx >= frames) idx = frames - 1;
+
+                eyeL.SetLocalPositionAndRotation(_lPos[idx], _lRot[idx]);
+                eyeL.localScale = _lScale[idx];
+                eyeR.SetLocalPositionAndRotation(_rPos[idx], _rRot[idx]);
+                eyeR.localScale = _rScale[idx];
             }
         }
 
@@ -93,78 +165,6 @@ namespace BetterFG.Tweaks
                 }
             }
             return null;
-        }
-    }
-
-    public class BlinkDriverComponent : MonoBehaviour
-    {
-        public BlinkDriverComponent(IntPtr ptr) : base(ptr) { }
-
-        private AnimationClip _clip;
-        private float _time;
-        private float _speed = 1f;
-        private float _sampleTimer;
-        private const float SampleInterval = 1f / 24f;
-
-        private Transform _eyeL;
-        private Transform _eyeR;
-        private Vector3 _eyeLPos, _eyeRPos;
-        private Quaternion _eyeLRot, _eyeRRot;
-        private Vector3 _eyeLScale, _eyeRScale;
-        private bool _eyesCached;
-
-        public void Init(AnimationClip clip, Transform eyeL, Transform eyeR)
-        {
-            _clip = clip;
-            _eyeL = eyeL;
-            _eyeR = eyeR;
-            _speed = UnityEngine.Random.Range(0.8f, 1.25f);
-            _time = UnityEngine.Random.Range(0f, Mathf.Max(0.05f, clip.length));
-            _sampleTimer = UnityEngine.Random.Range(0f, SampleInterval);
-        }
-
-        void LateUpdate()
-        {
-            if (_clip == null) return;
-            _time += Time.deltaTime * _speed;
-            if (_clip.length > 0f)
-            {
-                while (_time >= _clip.length) _time -= _clip.length;
-                if (_time < 0f) _time = 0f;
-            }
-
-            // SampleAnimation (full curve/path evaluation) only runs at SampleInterval — every other
-            // frame we just re-write the two eye bones straight from the last sample, which is what
-            // actually needs to happen every LateUpdate to keep winning over the animator's own pose.
-            _sampleTimer += Time.deltaTime;
-            if (_sampleTimer < SampleInterval)
-            {
-                if (_eyesCached)
-                {
-                    if (_eyeL != null) { _eyeL.localPosition = _eyeLPos; _eyeL.localRotation = _eyeLRot; _eyeL.localScale = _eyeLScale; }
-                    if (_eyeR != null) { _eyeR.localPosition = _eyeRPos; _eyeR.localRotation = _eyeRRot; _eyeR.localScale = _eyeRScale; }
-                }
-                return;
-            }
-            _sampleTimer = 0f;
-
-            // snapshot the host transform — SampleAnimation can write to the root itself when a
-            // curve targets an empty path (or the clip's authoring root was at this level). restore
-            // afterwards so we never move the bean.
-            var t = transform;
-            var pos = t.localPosition;
-            var rot = t.localRotation;
-            var scl = t.localScale;
-
-            _clip.SampleAnimation(gameObject, _time);
-
-            t.localPosition = pos;
-            t.localRotation = rot;
-            t.localScale = scl;
-
-            if (_eyeL != null) { _eyeLPos = _eyeL.localPosition; _eyeLRot = _eyeL.localRotation; _eyeLScale = _eyeL.localScale; }
-            if (_eyeR != null) { _eyeRPos = _eyeR.localPosition; _eyeRRot = _eyeR.localRotation; _eyeRScale = _eyeR.localScale; }
-            _eyesCached = true;
         }
     }
 }

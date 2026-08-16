@@ -14,12 +14,20 @@ namespace BetterFG.UI.Components
         public bool useUnscaledTime = true; // menus run while paused
 
         private RawImage _img;
+        private Canvas _canvas;
 
-        void Awake() { _img = GetComponent<RawImage>(); }
+        void Awake()
+        {
+            _img = GetComponent<RawImage>();
+            _canvas = GetComponentInParent<Canvas>();
+        }
 
         void Update()
         {
             if (_img == null) return;
+            // writing uvRect dirties the graphic, so an off-screen window animating behind a disabled
+            // canvas was still churning the rebuild registry every frame
+            if (_canvas != null && !_canvas.enabled) return;
             float dt = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
             var r = _img.uvRect;
             r.position += speed * dt;

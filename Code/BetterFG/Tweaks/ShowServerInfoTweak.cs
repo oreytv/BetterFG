@@ -131,15 +131,21 @@ namespace BetterFG.Tweaks
                 Instance.StartCoroutine(FetchRegion(addr).WrapToIl2Cpp());
             }
 
-            // live update ms + region every frame while the label is alive.
             // packets/sec + loss% sampled once a second off FG_UnityInternetNetworkManager — those
             // counters are monotonically growing ints, so we diff against the prior sample.
             // up/down KB/s come from the Hazel send/recv patch (NetByteCounterPatch).
+            //
+            // assigning TMP_Text.text dirties the mesh and forces the canvas it lives on to rebatch, so
+            // doing it at framerate for a readout that changes a few times a second was costing real frame
+            // time in every round. everything here only moves on the 1s sample or when the ping ticks over,
+            // so recompose on those and leave the label alone in between.
             int lastSent = -1, lastLost = -1;
             long lastBytesOut = 0, lastBytesIn = 0;
             float lastSampleTime = 0f;
             int ppsOut = 0, lossPct = 0;
             float upKBs = 0f, downKBs = 0f;
+            int lastMs = int.MinValue;
+            string lastRegion = null;
 
             while (gen == _runGen && _label != null)
             {
@@ -150,6 +156,7 @@ namespace BetterFG.Tweaks
 
                 var nm = ggsc?.NetworkManager;
                 var unm = nm != null ? nm.TryCast<FG_UnityInternetNetworkManager>() : null;
+                bool sampled = false;
                 if (unm != null)
                 {
                     int sent = unm.PacketSent;
@@ -162,6 +169,7 @@ namespace BetterFG.Tweaks
                         lastSent = sent; lastLost = lost;
                         lastBytesOut = bOut; lastBytesIn = bIn;
                         lastSampleTime = now;
+                        sampled = true;
                     }
                     else if (now - lastSampleTime >= 1f)
                     {
@@ -176,12 +184,18 @@ namespace BetterFG.Tweaks
                         lastSent = sent; lastLost = lost;
                         lastBytesOut = bOut; lastBytesIn = bIn;
                         lastSampleTime = now;
+                        sampled = true;
                     }
-                    _label.text = $"{ms}ms  {ppsOut}pps  {lossPct}% loss\n↑ {upKBs:0.0} KB/s   ↓ {downKBs:0.0} KB/s\n{RegionText()}";
                 }
-                else
+
+                string region = RegionText();
+                if (sampled || ms != lastMs || !ReferenceEquals(region, lastRegion))
                 {
-                    _label.text = $"{ms}ms\n{RegionText()}";
+                    lastMs = ms;
+                    lastRegion = region;
+                    _label.text = unm != null
+                        ? $"{ms}ms  {ppsOut}pps  {lossPct}% loss\n↑ {upKBs:0.0} KB/s   ↓ {downKBs:0.0} KB/s\n{region}"
+                        : $"{ms}ms\n{region}";
                 }
                 yield return null;
             }

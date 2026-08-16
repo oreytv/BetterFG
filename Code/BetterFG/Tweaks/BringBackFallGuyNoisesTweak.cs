@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using BetterFG.Utilities;
 using FG.Common;
 using FG.Common.Audio;
@@ -24,10 +25,62 @@ namespace BetterFG.Tweaks
 
         void Awake() => Instance = this;
 
-        public override void EnableTweak() => Active = true;
-        public override void DisableTweak() => Active = false;
+        public override void EnableTweak()
+        {
+            Active = true;
+            HookCollisions(true);
+        }
+
+        public override void DisableTweak()
+        {
+            Active = false;
+            HookCollisions(false);
+        }
 
         public override void OnRoundStart() => ApplyFix();
+
+        // OnCollisionEnter fires on every bean against every collider seam, and an il2cpp harmony
+        // trampoline there costs a managed transition plus two wrapper allocations per hit whether or
+        // not we do anything in it. that showed up as a permanent frame-time tax in creative levels
+        // even with the tweak off, so the patch goes in and out with the toggle instead of at load.
+        private static MethodInfo _hooked;
+
+        private static void HookCollisions(bool on)
+        {
+            var h = Plugin.HarmonyInstance;
+            if (h == null) return;
+
+            if (!on)
+            {
+                if (_hooked == null) return;
+                h.Unpatch(_hooked, HarmonyPatchType.Postfix, h.Id);
+                _hooked = null;
+                Plugin.Log.LogInfo("fall guy noises off, dropped the OnCollisionEnter hook");
+                return;
+            }
+
+            if (_hooked != null) return;
+            var target = AccessTools.Method(typeof(FallGuysCharacterController), nameof(FallGuysCharacterController.OnCollisionEnter));
+            if (target == null) { Plugin.Log.LogWarning("no OnCollisionEnter to hook? remote hit noises won't play"); return; }
+            h.Patch(target, postfix: new HarmonyMethod(AccessTools.Method(typeof(BringBackFallGuyNoisesTweak), nameof(CollisionPostfix))));
+            _hooked = target;
+        }
+
+        // OnCollisionEnter is the busiest thing in a round — every bean against every floor seam, every
+        // frame they're moving. the overwhelming majority of those are the same bean scraping again well
+        // inside its yelp cooldown, so settle that from a dictionary before asking the controller or the
+        // collision anything, since both of those are interop.
+        private static void CollisionPostfix(FallGuysCharacterController __instance, UnityEngine.Collision collision)
+        {
+            if (!Active || __instance == null) return;
+
+            var key = (__instance.Pointer, Voe.Hit);
+            _last.TryGetValue(key, out float last);
+            if (Time.time - last < HitVoiceCooldown) return;
+
+            if (__instance.IsLocalPlayer) return;
+            HandleRemoteCollision(__instance, collision);
+        }
 
         const float RemoteTickInterval = 1f / 20f;
         float _nextRemoteTick;
@@ -66,11 +119,13 @@ namespace BetterFG.Tweaks
 
         private enum Voe { Falling, Dive, Hit }
 
-        private static readonly System.Collections.Generic.Dictionary<long, bool> _was = new System.Collections.Generic.Dictionary<long, bool>();
-        private static readonly System.Collections.Generic.Dictionary<long, float> _last = new System.Collections.Generic.Dictionary<long, float>();
-        private static readonly System.Collections.Generic.Dictionary<int, bool> _wasGrounded = new System.Collections.Generic.Dictionary<int, bool>();
-        private static readonly System.Collections.Generic.Dictionary<int, float> _peakFall = new System.Collections.Generic.Dictionary<int, float>();
-        private static readonly System.Collections.Generic.Dictionary<int, float> _fallTime = new System.Collections.Generic.Dictionary<int, float>();
+        // keyed on the il2cpp pointer, which is a plain field read — GetInstanceID is a runtime_invoke
+        // and this is all per bean per tick (and per collision)
+        private static readonly System.Collections.Generic.Dictionary<(IntPtr, Voe), bool> _was = new System.Collections.Generic.Dictionary<(IntPtr, Voe), bool>();
+        private static readonly System.Collections.Generic.Dictionary<(IntPtr, Voe), float> _last = new System.Collections.Generic.Dictionary<(IntPtr, Voe), float>();
+        private static readonly System.Collections.Generic.Dictionary<IntPtr, bool> _wasGrounded = new System.Collections.Generic.Dictionary<IntPtr, bool>();
+        private static readonly System.Collections.Generic.Dictionary<IntPtr, float> _peakFall = new System.Collections.Generic.Dictionary<IntPtr, float>();
+        private static readonly System.Collections.Generic.Dictionary<IntPtr, float> _fallTime = new System.Collections.Generic.Dictionary<IntPtr, float>();
 
         internal static void TickRemote(FallGuysCharacterController c, float elapsed)
         {
@@ -80,7 +135,7 @@ namespace BetterFG.Tweaks
                 var master = AudioManager.EventMasterData;
                 if (master == null) return;
 
-                int id = c.GetInstanceID();
+                IntPtr id = c.Pointer;
                 bool grounded = c.IsTouchingGround;
                 float yvel = c.AnimatedPlayerVelocity.y;
 
@@ -159,7 +214,7 @@ namespace BetterFG.Tweaks
 
         private static void Yelp(FallGuysCharacterController c, float strength)
         {
-            long key = Key(c, Voe.Hit);
+            var key = Key(c, Voe.Hit);
             _last.TryGetValue(key, out float last);
             if (Time.time - last < HitVoiceCooldown) return;
             _last[key] = Time.time;
@@ -175,7 +230,7 @@ namespace BetterFG.Tweaks
 
         private static void Fire(FallGuysCharacterController c, Voe ev, bool condition, AudioEvent2D3DPairSO pair)
         {
-            long key = Key(c, ev);
+            var key = Key(c, ev);
 
             _was.TryGetValue(key, out bool was);
             _was[key] = condition;
@@ -186,7 +241,7 @@ namespace BetterFG.Tweaks
             PlayPair(c, pair);
         }
 
-        private static long Key(FallGuysCharacterController c, Voe ev) => ((long)c.GetInstanceID() << 4) | (long)ev;
+        private static (IntPtr, Voe) Key(FallGuysCharacterController c, Voe ev) => (c.Pointer, ev);
 
         private static bool IsOnCooldown(FallGuysCharacterController c, Voe ev)
         {
@@ -214,18 +269,6 @@ namespace BetterFG.Tweaks
             FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO");
             FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_3D");
             FmodUtil.UnmuteBus("bus:/MASTER/BUS_VO/BUS_VO_2D");
-        }
-    }
-
-    [HarmonyPatch(typeof(FallGuysCharacterController), nameof(FallGuysCharacterController.OnCollisionEnter))]
-    internal static class BringBackFallGuyNoises_Collision
-    {
-        [HarmonyPostfix]
-        public static void Postfix(FallGuysCharacterController __instance, UnityEngine.Collision collision)
-        {
-            if (!BringBackFallGuyNoisesTweak.Active || __instance == null) return;
-            if (__instance.IsLocalPlayer) return;
-            BringBackFallGuyNoisesTweak.HandleRemoteCollision(__instance, collision);
         }
     }
 }

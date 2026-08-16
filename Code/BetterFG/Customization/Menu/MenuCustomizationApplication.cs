@@ -29,6 +29,28 @@ namespace BetterFG.Customization.Menu
 
         void Awake() { Instance = this; MigrateOldBgKeys(); MigrateBgSplit(); }
 
+        private static MainMenuManager _menuManager;
+
+        public static void CacheMenuManager(MainMenuManager mgr) => _menuManager = mgr;
+
+        public static bool InMenuScene
+        {
+            get
+            {
+                if (_menuManager == null)
+                {
+                    var go = GameObject.Find("MainMenuManager");
+                    if (go == null) return false;
+                    _menuManager = go.GetComponent<MainMenuManager>();
+                    if (_menuManager == null) return false;
+                }
+                return _menuManager.gameObject.activeInHierarchy;
+            }
+        }
+
+        public static FG.Common.UI.SwitchableView MainMenuSwitchableView =>
+            !InMenuScene ? null : _menuManager.MainMenuBuilder?.SwitchableView;
+
         private static float ParseF(string key, float def) =>
             float.TryParse(SettingsService.Get(key, ""), System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out float v) ? v : def;

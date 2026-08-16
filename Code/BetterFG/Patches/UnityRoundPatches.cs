@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection;
 using System.Collections;
 using BetterFG.Services;
 using BetterFG.Features.UnityRound;
@@ -33,6 +34,7 @@ namespace BetterFG.Patches.BettrFGRounds
             UnityRoundAbortHooks.Remove();
             BetterFG.Features.Replay.FeatureReplay.OnClientGameManagerShutdown();
             BetterFG.Tweaks.CinematicSpectatorTweak.OnClientGameManagerShutdown();
+            BetterFG.Tweaks.CreativeIntroCameraTweak.OnClientGameManagerShutdown();
         }
 
         [HarmonyPostfix]
@@ -43,10 +45,8 @@ namespace BetterFG.Patches.BettrFGRounds
     }
 
 
-    [HarmonyPatch(typeof(MotorFunctionGrabStateConfirm), "ShouldQuitDueToUnconfirmedGrab")]
     public class ShouldQuitDueToUnconfirmedGrab
     {
-        [HarmonyPostfix]
         public static void Postfix(ref bool __result)
         {
             if (!UnityRoundGate.RoundLive) return;
@@ -54,10 +54,8 @@ namespace BetterFG.Patches.BettrFGRounds
         }
     }
 
-    [HarmonyPatch(typeof(MotorFunctionMantle), "CheckForMantleTarget")]
     public class CheckForMantleTargetPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(ref MantleTargetFailed __result)
         {
             if (!UnityRoundGate.RoundLive) return;
@@ -66,10 +64,8 @@ namespace BetterFG.Patches.BettrFGRounds
         }
     }
 
-    [HarmonyPatch(typeof(MotorFunctionGrab), "IsValidTarget")]
     public class IsValidTargetPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(ref bool __result, ref InvalidGrabTargetResult details)
         {
             if (!UnityRoundGate.RoundLive) return;
@@ -81,10 +77,8 @@ namespace BetterFG.Patches.BettrFGRounds
         }
     }
 
-    [HarmonyPatch(typeof(MotorFunctionMantleStateGrab), "Begin", new[] { typeof(int) })]
     public class MantleStateGrabBeginPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(MotorFunctionMantleStateGrab __instance)
         {
             if (!UnityRoundGate.RoundLive) return;
@@ -114,6 +108,10 @@ namespace BetterFG.Patches.BettrFGRounds
 
         public static bool SkipOriginal() => false;
 
+        // the grab/mantle hooks below only ever do anything inside one of our own rounds, but left on
+        // attributes they sat in the character motor system permanently — ShouldApplyStateSnapshot alone
+        // runs per player per network snapshot. they ride this instance's lifetime instead, so a normal
+        // Fall Guys round carries none of them.
         public static void Install()
         {
             if (_harmony != null) return;
@@ -121,6 +119,21 @@ namespace BetterFG.Patches.BettrFGRounds
             var prefix = new HarmonyMethod(typeof(UnityRoundAbortHooks), nameof(SkipOriginal));
             _harmony.Patch(AccessTools.Method(typeof(MotorFunctionGrab), "AbortGrab"), prefix: prefix);
             _harmony.Patch(AccessTools.Method(typeof(MotorFunctionMantle), "AbortMantling"), prefix: prefix);
+
+            Hook(AccessTools.Method(typeof(MotorFunctionGrabStateConfirm), "ShouldQuitDueToUnconfirmedGrab"), typeof(ShouldQuitDueToUnconfirmedGrab), true);
+            Hook(AccessTools.Method(typeof(MotorFunctionMantle), "CheckForMantleTarget"), typeof(CheckForMantleTargetPatch), true);
+            Hook(AccessTools.Method(typeof(MotorFunctionGrab), "IsValidTarget"), typeof(IsValidTargetPatch), true);
+            Hook(AccessTools.Method(typeof(MotorFunctionMantleStateGrab), "Begin", new[] { typeof(int) }), typeof(MantleStateGrabBeginPatch), true);
+            Hook(AccessTools.Method(typeof(MotorFunctionGrab), "ShouldApplyStateSnapshot"), typeof(GrabShouldApplyStateSnapshotPatch), true);
+            Hook(AccessTools.Method(typeof(MotorFunctionMantle), "ShouldApplyStateSnapshot"), typeof(MantleShouldApplyStateSnapshotPatch), true);
+            Hook(AccessTools.Method(typeof(MotorFunctionMantle), "ApplyUrgentUnbufferedStateSnapshot"), typeof(MantleUrgentSnapshotPatch), false);
+        }
+
+        private static void Hook(MethodBase target, Type owner, bool postfix)
+        {
+            if (target == null) { Plugin.Log.LogWarning($"unity round: no target for {owner.Name}"); return; }
+            var hm = new HarmonyMethod(AccessTools.Method(owner, postfix ? "Postfix" : "Prefix"));
+            _harmony.Patch(target, prefix: postfix ? null : hm, postfix: postfix ? hm : null);
         }
 
         public static void Remove()
@@ -130,10 +143,8 @@ namespace BetterFG.Patches.BettrFGRounds
         }
     }
 
-    [HarmonyPatch(typeof(MotorFunctionGrab), "ShouldApplyStateSnapshot")]
     public class GrabShouldApplyStateSnapshotPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(MotorFunctionGrab __instance, ref bool __result)
         {
             if (!UnityRoundGate.RoundLive) return;
@@ -142,10 +153,8 @@ namespace BetterFG.Patches.BettrFGRounds
         }
     }
 
-    [HarmonyPatch(typeof(MotorFunctionMantle), "ShouldApplyStateSnapshot")]
     public class MantleShouldApplyStateSnapshotPatch
     {
-        [HarmonyPostfix]
         public static void Postfix(ref bool __result)
         {
             if (!UnityRoundGate.RoundLive) return;
@@ -153,10 +162,8 @@ namespace BetterFG.Patches.BettrFGRounds
         }
     }
 
-    [HarmonyPatch(typeof(MotorFunctionMantle), "ApplyUrgentUnbufferedStateSnapshot")]
     public class MantleUrgentSnapshotPatch
     {
-        [HarmonyPrefix]
         public static bool Prefix(ref bool __result)
         {
             if (!UnityRoundGate.RoundLive) return true;

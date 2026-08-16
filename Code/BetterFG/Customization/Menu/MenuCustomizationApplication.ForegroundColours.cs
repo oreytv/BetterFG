@@ -57,6 +57,49 @@ namespace BetterFG.Customization.Menu
             Instance.ReapplyForegroundFromSettings(scopeRoot, anyImage: anyImage);
         }
 
+        private Transform _uiCanvasRoot;
+        private Transform _navOverlay;
+
+        private Transform UICanvasRoot()
+        {
+            if (_uiCanvasRoot != null) return _uiCanvasRoot;
+            var go = GameObject.Find("UICanvas_Client_V2(Clone)");
+            _uiCanvasRoot = go == null ? null : go.transform;
+            return _uiCanvasRoot;
+        }
+
+        private readonly Dictionary<int, Transform> _pendingFgScopes = new Dictionary<int, Transform>();
+        private readonly HashSet<int> _pendingFgAnyImage = new HashSet<int>();
+        private bool _fgFlushQueued;
+
+        public void QueueForegroundScope(Transform scope, bool anyImage = false)
+        {
+            if (scope == null) return;
+            int id = scope.GetInstanceID();
+            _pendingFgScopes[id] = scope;
+            if (anyImage) _pendingFgAnyImage.Add(id);
+
+            if (_fgFlushQueued) return;
+            _fgFlushQueued = true;
+            StartCoroutine(FlushForegroundScopes().WrapToIl2Cpp());
+        }
+
+        private IEnumerator FlushForegroundScopes()
+        {
+            yield return null;
+            yield return new WaitForSeconds(0.01f);
+            _fgFlushQueued = false;
+
+            var pal = FgPalette.FromSettings();
+            if (pal.AnyOn)
+                foreach (var kv in _pendingFgScopes)
+                    if (kv.Value != null)
+                        ApplyForeground(pal, kv.Value, null, _pendingFgAnyImage.Contains(kv.Key));
+
+            _pendingFgScopes.Clear();
+            _pendingFgAnyImage.Clear();
+        }
+
         public void ReapplyForegroundFromSettings(Transform scopeRoot = null, string excludeSubtreeName = null, bool anyImage = false, bool refreshOriginals = false)
         {
             bool fullCanvas = scopeRoot == null;
@@ -113,12 +156,12 @@ namespace BetterFG.Customization.Menu
 
         private void ApplyForeground(FgPalette pal, Transform scopeRoot = null, string excludeSubtreeName = null, bool anyImage = false, bool refreshOriginals = false)
         {
-            if (scopeRoot == null)
+            bool fullCanvas = scopeRoot == null;
+            if (fullCanvas)
             {
                 RevertForeground();
-                var uiCanvas = GameObject.Find("UICanvas_Client_V2(Clone)");
-                if (uiCanvas == null) return;
-                scopeRoot = uiCanvas.transform;
+                scopeRoot = UICanvasRoot();
+                if (scopeRoot == null) return;
             }
 
             var images = scopeRoot.GetComponentsInChildren<UnityEngine.UI.Image>(true);
@@ -126,36 +169,12 @@ namespace BetterFG.Customization.Menu
             // the options screen's Description block); anything under one of them is left alone.
             string[] excludes = excludeSubtreeName == null ? null : excludeSubtreeName.Split('|');
 
-            foreach (var img in images)
+            for (int i = 0; i < images.Length; i++)
             {
+                var img = images[i];
                 if (img == null) continue;
-                var p = img.transform;
-                bool inStarPopup = false;
-                bool inExcluded = false;
-                bool inTeamContainer = false;
-                bool inPhraseOverlay = false;
-                bool inTileFolder = false;
-                bool inRadialItem = false;
-                while (p != null)
-                {
-                    if (p.name.StartsWith("StarPopup_")) inStarPopup = true;
-                    if (p.name == "TeamContainer") inTeamContainer = true;
-                    if (p.name == "TabContentSocialPhraseOverlay") inPhraseOverlay = true;
-                    if (p.name == "Folder Items" || p.name == "Carousel_Items") inTileFolder = true;
-                    if (p.name.StartsWith("CustomiserSubMenu")) inRadialItem = true;
-                    if (excludes != null) foreach (var ex in excludes) if (p.name == ex) { inExcluded = true; break; }
-                    p = p.parent;
-                }
-                if (inStarPopup || inExcluded || inTeamContainer || inPhraseOverlay) continue;
-                string n = img.gameObject.name;
-                // radial fills belong to RetintRadialItems; sweeping them fought the toggle state and
-                // re-cached our own output as the original, double-tinting on the next pass
-                if (inRadialItem && n == "Background_Fill") continue;
-                // carousel/folder tiles are recoloured by name in ApplyFolderTileColours (Fill->blue,
-                // Selected->cyan); the hue sweep mis-buckets Background_Fill as cyan, so leave both to it.
-                // scoped to the tile subtrees ApplyFolderTileColours actually runs on — skipping the name
-                // globally also killed the private lobby player list's Background_Fill, which nothing else paints.
-                if (!anyImage && inTileFolder && (n == "Background_Fill" || n == "Background_Selected")) continue;
+
+                string n = img.name;
                 bool isFill = n.Contains("Fill") || n.Contains("Background") || n.Contains("Outline") || n.Contains("Inline") || n.Contains("BG");
                 bool isCrowns = n.Equals("crowns");
                 bool isBacking = n.Contains("Backing");
@@ -173,6 +192,31 @@ namespace BetterFG.Customization.Menu
                 if (isCrowns && pal.BlueOn) hues.Cyan = pal.Blue; // crowns follow cyan, but want the blue colour
                 if (!hues.TryRetint(c, out Color target)) continue;
 
+                bool excluded = false;
+                bool inTileFolder = false;
+                bool inRadialItem = false;
+                for (var p = img.transform; p != null; p = p.parent)
+                {
+                    string pn = p.name;
+                    if (pn == "TeamContainer" || pn == "TabContentSocialPhraseOverlay" || pn.StartsWith("StarPopup_")) { excluded = true; break; }
+                    if (pn == "Folder Items" || pn == "Carousel_Items") inTileFolder = true;
+                    else if (pn.StartsWith("CustomiserSubMenu")) inRadialItem = true;
+                    if (excludes != null)
+                    {
+                        foreach (var ex in excludes) if (pn == ex) { excluded = true; break; }
+                        if (excluded) break;
+                    }
+                }
+                if (excluded) continue;
+                // radial fills belong to RetintRadialItems; sweeping them fought the toggle state and
+                // re-cached our own output as the original, double-tinting on the next pass
+                if (inRadialItem && n == "Background_Fill") continue;
+                // carousel/folder tiles are recoloured by name in ApplyFolderTileColours (Fill->blue,
+                // Selected->cyan); the hue sweep mis-buckets Background_Fill as cyan, so leave both to it.
+                // scoped to the tile subtrees ApplyFolderTileColours actually runs on — skipping the name
+                // globally also killed the private lobby player list's Background_Fill, which nothing else paints.
+                if (!anyImage && inTileFolder && (n == "Background_Fill" || n == "Background_Selected")) continue;
+
                 if (refreshOriginals || !_fgOriginals.ContainsKey(id))
                 {
                     _fgOriginals[id] = c;
@@ -182,7 +226,7 @@ namespace BetterFG.Customization.Menu
                 img.color = new Color(target.r, target.g, target.b, img.color.a);
             }
 
-            ApplyMainPlayButtonUnselectedFill(scopeRoot, pal.YellowOn, pal.Yellow);
+            ApplyMainPlayButtonUnselectedFill(scopeRoot, pal.YellowOn, pal.Yellow, fullCanvas);
         }
 
         // level-editor variation folder: recolour by name only. Background_Fill -> blue, Background_Selected
@@ -201,21 +245,22 @@ namespace BetterFG.Customization.Menu
             Color blue = BlueReplacement();
             Color cyan = CyanReplacement();
 
+            int painted = 0;
             foreach (var img in folderRoot.GetComponentsInChildren<UnityEngine.UI.Image>(true))
             {
                 if (img == null) continue;
-                string n = img.gameObject.name;
+                string n = img.name;
                 bool fill = blueOn && n == "Background_Fill";
                 bool sel = cyanOn && n == "Background_Selected";
                 if (!fill && !sel) continue;
 
                 int id = img.GetInstanceID();
-                Color before = img.color;
-                if (!_fgOriginals.ContainsKey(id)) { _fgOriginals[id] = before; _fgTouchedImages[id] = img; }
+                if (!_fgOriginals.ContainsKey(id)) { _fgOriginals[id] = img.color; _fgTouchedImages[id] = img; }
                 Color target = fill ? blue : cyan;
                 img.color = new Color(target.r, target.g, target.b, img.color.a);
-                Plugin.Log.LogInfo($"folder tile colour {FullPath(img.transform)} {before} -> {img.color}");
+                painted++;
             }
+            Plugin.Log.LogInfo($"folder tiles under {folderRoot.name}: {painted} recoloured");
         }
 
         // OnApply's full-canvas RevertForeground clears the same _fgOriginals cache the carousel/folder
@@ -329,21 +374,35 @@ namespace BetterFG.Customization.Menu
         // SeasonProgressHoverPatch calls this every tween frame with the live Image and whether the
         // banner is hovered. idle = blue, hover = pink. only stomp the tween's colour if that colour's
         // foreground toggle is actually on; otherwise leave the game's colour alone.
+        // driven from UITween.ColorUpdate, so this runs per tween write per frame. re-reading the two
+        // toggles and re-parsing six floats out of settings on every one of those was pure overhead —
+        // resolve them once a frame instead.
+        private static int _spFrame = -1;
+        private static bool _spPinkOn, _spBlueOn;
+        private static Color _spPink, _spBlue;
+
         public void RecolourSeasonProgressImage(UnityEngine.UI.Image img, bool hovered)
         {
             if (img == null) return;
 
+            if (_spFrame != Time.frameCount)
+            {
+                _spFrame = Time.frameCount;
+                _spPinkOn = SettingsService.Get(KEY_FG_PINK_ON, "false") == "true";
+                _spBlueOn = SettingsService.Get(KEY_FG_BLUE_ON, "false") == "true";
+                if (_spPinkOn) _spPink = PinkReplacement();
+                if (_spBlueOn) _spBlue = BlueReplacement();
+            }
+
             if (hovered)
             {
-                if (SettingsService.Get(KEY_FG_PINK_ON, "false") != "true") return;
-                var p = PinkReplacement();
-                img.color = new Color(p.r, p.g, p.b, img.color.a);
+                if (!_spPinkOn) return;
+                img.color = new Color(_spPink.r, _spPink.g, _spPink.b, img.color.a);
             }
             else
             {
-                if (SettingsService.Get(KEY_FG_BLUE_ON, "false") != "true") return;
-                var b = BlueReplacement();
-                img.color = new Color(b.r, b.g, b.b, img.color.a);
+                if (!_spBlueOn) return;
+                img.color = new Color(_spBlue.r, _spBlue.g, _spBlue.b, img.color.a);
             }
         }
 
@@ -389,8 +448,13 @@ namespace BetterFG.Customization.Menu
             ReapplySpecialForeground(SpecialScreen.PrivateLobbyPlayerList);
 
             // navigation overlay sits outside UICanvas_Client_V2, so the main sweep misses it.
-            var nav = GameObject.Find("Prefab_UI_NavigationOverlay(Clone)");
-            if (nav != null) ReapplyForegroundFromSettings(nav.transform);
+            if (_navOverlay == null)
+            {
+                var nav = GameObject.Find("Prefab_UI_NavigationOverlay(Clone)");
+                _navOverlay = nav == null ? null : nav.transform;
+            }
+            if (_navOverlay != null && _navOverlay.gameObject.activeInHierarchy)
+                ReapplyForegroundFromSettings(_navOverlay);
 
             // RevertForeground put the radial's toggles back, so redo them if it's open right now
             var radial = GameObject.Find("UICanvas_Client_V2(Clone)/Default/Prime_UI_LE_RadialMenu_Canvas(Clone)");
@@ -402,9 +466,19 @@ namespace BetterFG.Customization.Menu
             }
         }
 
-        private void ApplyMainPlayButtonUnselectedFill(Transform scopeRoot, bool yellowOn, Color yellowTarget)
+        private UnityEngine.UI.Image _playButtonUnselectedFill;
+
+        private void ApplyMainPlayButtonUnselectedFill(Transform scopeRoot, bool yellowOn, Color yellowTarget, bool fullCanvas)
         {
             if (scopeRoot == null || !yellowOn) return;
+
+            var cached = _playButtonUnselectedFill;
+            if (cached != null)
+            {
+                TintPlayButtonFill(cached, yellowTarget);
+                return;
+            }
+            if (!fullCanvas) return;
 
             string[] roots =
             {
@@ -420,16 +494,22 @@ namespace BetterFG.Customization.Menu
                 var img = unselected == null ? null : unselected.GetComponent<UnityEngine.UI.Image>();
                 if (img == null) continue;
 
-                int id = img.GetInstanceID();
-                if (!_fgOriginals.ContainsKey(id))
-                {
-                    _fgOriginals[id] = img.color;
-                    _fgTouchedImages[id] = img;
-                }
-
-                img.color = new Color(yellowTarget.r, yellowTarget.g, yellowTarget.b, img.color.a);
+                _playButtonUnselectedFill = img;
+                TintPlayButtonFill(img, yellowTarget);
                 return;
             }
+        }
+
+        private void TintPlayButtonFill(UnityEngine.UI.Image img, Color yellowTarget)
+        {
+            int id = img.GetInstanceID();
+            if (!_fgOriginals.ContainsKey(id))
+            {
+                _fgOriginals[id] = img.color;
+                _fgTouchedImages[id] = img;
+            }
+
+            img.color = new Color(yellowTarget.r, yellowTarget.g, yellowTarget.b, img.color.a);
         }
 
         public void ReapplyPrivateLobbyShowEntryForeground(Transform entry)
@@ -441,6 +521,10 @@ namespace BetterFG.Customization.Menu
             var img = outline == null ? null : outline.GetComponent<UnityEngine.UI.Image>();
             if (img != null) img.color = Color.white;
         }
+
+        private readonly Dictionary<int, UnityEngine.Sprite> _showSelectBaked = new Dictionary<int, UnityEngine.Sprite>();
+        private Color _showSelectBakedCyan;
+        private bool _showSelectBakedCyanOn;
 
         private void ApplyPrivateLobbyShowSelect(Transform root)
         {
@@ -457,7 +541,32 @@ namespace BetterFG.Customization.Menu
                     _showSelectOriginalSprites[id] = original;
                 }
 
-                image.sprite = ProcessShowSelectSprite(original);
+                bool cyanOn = SettingsService.Get(KEY_FG_CYAN_ON, "false") == "true";
+                Color cyan = CyanReplacement();
+                if (cyanOn != _showSelectBakedCyanOn || cyan != _showSelectBakedCyan)
+                {
+                    foreach (var stale in _showSelectBaked.Values)
+                    {
+                        if (stale == null || !stale.name.EndsWith("_betterfg")) continue;
+                        Destroy(stale.texture);
+                        Destroy(stale);
+                    }
+                    _showSelectBaked.Clear();
+                    _showSelectBakedCyanOn = cyanOn;
+                    _showSelectBakedCyan = cyan;
+                }
+
+                if (!cyanOn) image.sprite = original;
+                else
+                {
+                    int oid = original.GetInstanceID();
+                    if (!_showSelectBaked.TryGetValue(oid, out var baked) || baked == null)
+                    {
+                        baked = ProcessShowSelectSprite(original);
+                        _showSelectBaked[oid] = baked;
+                    }
+                    image.sprite = baked;
+                }
             }
 
             SetImageColor(root, "Container/ShowsScrollList/TabScrollbar", BlueReplacement(), true);
