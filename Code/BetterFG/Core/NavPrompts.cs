@@ -329,7 +329,9 @@ namespace BetterFG.Core
             return _focusCachedResult;
         }
 
-        private static bool ComputeFocused()
+        // exposed so callers outside a NavPromptHandle (free-cam movement, etc.) can gate raw
+        // input on the same "is the gameplay view actually focused" check the prompts use.
+        internal static bool ComputeFocused()
         {
             // BannersState = elimination/qualification banner is playing. game is fully in gameplay
             // input mode here regardless of what any FocusableViewModel says. short-circuit true.
@@ -434,10 +436,17 @@ namespace BetterFG.Core
                     var j = sticks[i];
                     _aemBuf.Clear();
                     int got = p.controllers.maps.GetButtonMapsWithAction(j, actionId, false, _aemBuf);
+                    int layout = -1;
                     for (int k = 0; k < got; k++)
                     {
                         var aem = _aemBuf[k];
                         if (aem == null) continue;
+                        var cm = aem.controllerMap;
+                        if (cm != null)
+                        {
+                            if (layout < 0) layout = cm.layoutId;
+                            else if (cm.layoutId != layout) continue;
+                        }
                         if (!j.GetButtonDownById(aem.elementIdentifierId)) continue;
                         if (_elementFilter != null)
                         {
@@ -454,10 +463,18 @@ namespace BetterFG.Core
                 {
                     _aemBuf.Clear();
                     int got = p.controllers.maps.GetButtonMapsWithAction(kb, actionId, false, _aemBuf);
+                    int kbLayout = -1;
                     for (int k = 0; k < got; k++)
                     {
                         var aem = _aemBuf[k];
-                        if (aem != null && kb.GetButtonDownById(aem.elementIdentifierId)) return true;
+                        if (aem == null) continue;
+                        var cm = aem.controllerMap;
+                        if (cm != null)
+                        {
+                            if (kbLayout < 0) kbLayout = cm.layoutId;
+                            else if (cm.layoutId != kbLayout) continue;
+                        }
+                        if (kb.GetButtonDownById(aem.elementIdentifierId)) return true;
                     }
                 }
             }

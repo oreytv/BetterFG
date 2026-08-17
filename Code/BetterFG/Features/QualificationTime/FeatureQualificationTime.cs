@@ -141,6 +141,97 @@ namespace BetterFG.Features.QualificationTime
 
         public static void ShowQualificationTime(float elapsed)
         {
+            if (!feature.enabled) return;
+            if (_qualHandled)
+            {
+                Plugin.Log.LogInfo("QualTime: already handled this round's qualify, not doing it twice");
+                return;
+            }
+            _qualHandled = true;
+
+            ClientGameManager cgm = null;
+            var gsv = FGClient.GlobalGameStateClient.Instance?.GameStateView;
+            if (gsv != null)
+                gsv.GetLiveClientGameManager(out cgm);
+
+            GameObject clone = On("qual") ? SpawnQualPopup(elapsed, cgm) : null;
+            _qualPopupGo = clone;
+            if (clone == null) DestroyLiveTimer();
+
+            string cgmRoundId = null;
+            string cgmRoundName = null;
+            try
+            {
+                if (cgm?._round != null)
+                {
+                    cgmRoundId = cgm._round.Id;
+                    cgmRoundName = cgm._round.DisplayNameUnindented;
+                }
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("QualTime: cgm round lookup failed: " + ex.Message); }
+
+            string roundId = _roundIdCache ?? cgmRoundId;
+            if (string.IsNullOrEmpty(roundId))
+            {
+                try { roundId = GlobalGameStateClient.Instance?.GameStateView?.CurrentGameLevelName; }
+                catch (Exception ex) { Plugin.Log.LogWarning("QualTime: round lookup failed: " + ex.Message); }
+            }
+            if (string.IsNullOrEmpty(roundId)) roundId = "unknown";
+            roundId = PBStore.CanonicalRoundId(roundId);
+            string roundName = _roundNameCache ?? cgmRoundName ?? roundId;
+            bool isRealUgc = cgm != null ? cgm.IsUGCRound : roundId.StartsWith("ugc-");
+            bool isUnityRound = !isRealUgc;
+            string roundCacheId = (isUnityRound && !string.IsNullOrEmpty(roundName)) ? roundName : roundId;
+            Plugin.Log.LogInfo("QualTime: round=" + roundId + " name=" + roundName + " elapsed=" + elapsed);
+
+            if (IsRaceRound())
+            {
+                _ghostRecording = false;
+                bool usePb = On("store");
+                float prevPb = 0f;
+                bool isPb = false;
+                bool canStorePb = usePb && roundId != "unknown" && !string.IsNullOrEmpty(roundCacheId) && (!isUnityRound || roundName != roundId);
+                // "Ask to save PB" means don't touch the store on qualify — just work out whether this
+                // run *would* be a new PB so the label/prompts read right, and let the Save prompt in
+                // WaitForFeatureInput do the actual TrySet + ghost. off = old behavior, save immediately.
+                bool askSave = On("asksave") && clone != null;
+                if (canStorePb)
+                {
+                    bool hadPb = PBStore.TryGet(roundCacheId, out prevPb, out _);
+                    if (askSave)
+                    {
+                        isPb = !hadPb || elapsed < prevPb;
+                    }
+                    else
+                    {
+                        isPb = PBStore.TrySet(roundCacheId, roundName, elapsed, isRealUgc);
+                        if (isPb && On("ghost"))
+                            SaveGhost(roundCacheId, PBStore.CurrentType());
+                    }
+                }
+                // override-pb path force-wrote the time + ghost itself; treat this re-spawn as a
+                // PB so ShowPbLabel paints "Personal Best!" and the sound fires. prevPb was just
+                // read as the new slow time (we overwrote the store) — swap in the real previous.
+                if (_forceTreatAsPb) { isPb = true; _forceTreatAsPb = false; prevPb = _forcedPrevPb; _forcedPrevPb = 0f; }
+                else if (usePb)
+                    Plugin.Log.LogWarning("QualTime: no display name for Unity round, not saving PB as id");
+                if (canStorePb && isUnityRound) SplashCache.TryRename(roundId, roundCacheId);
+                Plugin.Log.LogInfo("QualTime: isPb=" + isPb);
+                if (canStorePb && clone != null)
+                {
+                    ShowPbLabel(clone.transform, isPb, roundName, elapsed, prevPb);
+                    BetterFGUIMan.Instance.StartCoroutine(WaitForFeatureInput(clone, roundCacheId, roundName, isPb, elapsed, PBStore.CurrentType(), isRealUgc).WrapToIl2Cpp());
+                }
+            }
+
+            if (clone != null)
+                BetterFGUIMan.Instance.StartCoroutine(DismissAfterDelay(clone).WrapToIl2Cpp());
+
+            Plugin.Log.LogInfo("QualTime: done");
+        }
+
+        static GameObject SpawnQualPopup(float elapsed, ClientGameManager cgm)
+        {
             Plugin.Log.LogInfo("QualTime: looking for TimeAttackResultViewModel...");
 
             // parent under InGameUiManager(Clone)/GameStates so the qual popup + its nav prompts
@@ -149,13 +240,13 @@ namespace BetterFG.Features.QualificationTime
             if (gameStates == null)
             {
                 Plugin.Log.LogInfo("QualTime: GameStates not found, bailing");
-                return;
+                return null;
             }
 
             if (gameStates.transform.Find("Thisisacustomname") != null)
             {
                 Plugin.Log.LogInfo("QualTime: existing result UI detected, skipping");
-                return;
+                return null;
             }
 
             var clone = TakeLiveTimerForQual(gameStates.transform);
@@ -165,7 +256,7 @@ namespace BetterFG.Features.QualificationTime
                 if (original == null)
                 {
                     Plugin.Log.LogInfo("QualTime: original is null, bailing");
-                    return;
+                    return null;
                 }
 
                 clone = UnityEngine.Object.Instantiate(original, gameStates.transform);
@@ -219,17 +310,14 @@ namespace BetterFG.Features.QualificationTime
             if (vm == null)
             {
                 Plugin.Log.LogInfo("QualTime: no vm on clone, bailing");
-                return;
+                UnityEngine.Object.Destroy(clone);
+                return null;
             }
 
             TimeSpan t = TimeSpan.FromSeconds(elapsed);
             string formatted = string.Format("{0:D2}:{1:D2}:{2:D3}", t.Minutes, t.Seconds, t.Milliseconds);
             Plugin.Log.LogInfo("QualTime: setting time to " + formatted);
 
-            ClientGameManager cgm = null;
-            var gsv = FGClient.GlobalGameStateClient.Instance?.GameStateView;
-            if (gsv != null)
-                gsv.GetLiveClientGameManager(out cgm);
             bool isFinal = cgm?._round?.Archetype?.Id == "archetype_final";
             int pos = isFinal ? 1 : (cgm != null ? cgm._qualifiedPlayerCount + 1 : 434);
             string suffix = pos == 1 ? "st" : pos == 2 ? "nd" : pos == 3 ? "rd" : "th";
@@ -240,75 +328,7 @@ namespace BetterFG.Features.QualificationTime
             clone.transform.localScale = Vector3.zero;
             clone.SetActive(true);
             BetterFGUIMan.Instance.StartCoroutine(PopInAnimation(clone).WrapToIl2Cpp());
-
-            string cgmRoundId = null;
-            string cgmRoundName = null;
-            try
-            {
-                if (cgm?._round != null)
-                {
-                    cgmRoundId = cgm._round.Id;
-                    cgmRoundName = cgm._round.DisplayNameUnindented;
-                }
-            }
-            catch (Exception ex) { Plugin.Log.LogWarning("QualTime: cgm round lookup failed: " + ex.Message); }
-
-            string roundId = _roundIdCache ?? cgmRoundId;
-            if (string.IsNullOrEmpty(roundId))
-            {
-                try { roundId = GlobalGameStateClient.Instance?.GameStateView?.CurrentGameLevelName; }
-                catch (Exception ex) { Plugin.Log.LogWarning("QualTime: round lookup failed: " + ex.Message); }
-            }
-            if (string.IsNullOrEmpty(roundId)) roundId = "unknown";
-            roundId = PBStore.CanonicalRoundId(roundId);
-            string roundName = _roundNameCache ?? cgmRoundName ?? roundId;
-            bool isRealUgc = cgm != null ? cgm.IsUGCRound : roundId.StartsWith("ugc-");
-            bool isUnityRound = !isRealUgc;
-            string roundCacheId = (isUnityRound && !string.IsNullOrEmpty(roundName)) ? roundName : roundId;
-            Plugin.Log.LogInfo("QualTime: round=" + roundId + " name=" + roundName + " elapsed=" + elapsed);
-
-            if (IsRaceRound())
-            {
-                _ghostRecording = false;
-                bool usePb = On("store");
-                float prevPb = 0f;
-                bool isPb = false;
-                bool canStorePb = usePb && roundId != "unknown" && !string.IsNullOrEmpty(roundCacheId) && (!isUnityRound || roundName != roundId);
-                // "Ask to save PB" means don't touch the store on qualify — just work out whether this
-                // run *would* be a new PB so the label/prompts read right, and let the Save prompt in
-                // WaitForFeatureInput do the actual TrySet + ghost. off = old behavior, save immediately.
-                bool askSave = On("asksave");
-                if (canStorePb)
-                {
-                    bool hadPb = PBStore.TryGet(roundCacheId, out prevPb, out _);
-                    if (askSave)
-                    {
-                        isPb = !hadPb || elapsed < prevPb;
-                    }
-                    else
-                    {
-                        isPb = PBStore.TrySet(roundCacheId, roundName, elapsed, isRealUgc);
-                        if (isPb && On("ghost"))
-                            SaveGhost(roundCacheId, PBStore.CurrentType());
-                    }
-                }
-                // override-pb path force-wrote the time + ghost itself; treat this re-spawn as a
-                // PB so ShowPbLabel paints "Personal Best!" and the sound fires. prevPb was just
-                // read as the new slow time (we overwrote the store) — swap in the real previous.
-                if (_forceTreatAsPb) { isPb = true; _forceTreatAsPb = false; prevPb = _forcedPrevPb; _forcedPrevPb = 0f; }
-                else if (usePb)
-                    Plugin.Log.LogWarning("QualTime: no display name for Unity round, not saving PB as id");
-                if (canStorePb && isUnityRound) SplashCache.TryRename(roundId, roundCacheId);
-                Plugin.Log.LogInfo("QualTime: isPb=" + isPb);
-                if (canStorePb && On("qual"))
-                    ShowPbLabel(clone.transform, isPb, roundName, elapsed, prevPb);
-                if (canStorePb)
-                    BetterFGUIMan.Instance.StartCoroutine(WaitForFeatureInput(clone, roundCacheId, roundName, isPb, elapsed, PBStore.CurrentType(), isRealUgc).WrapToIl2Cpp());
-            }
-
-            BetterFGUIMan.Instance.StartCoroutine(DismissAfterDelay(clone).WrapToIl2Cpp());
-
-            Plugin.Log.LogInfo("QualTime: done");
+            return clone;
         }
 
         static IEnumerator WaitForFeatureInput(GameObject clone, string roundId, string roundName, bool isPb, float elapsed, PbType type, bool isUgc)
@@ -478,6 +498,7 @@ namespace BetterFG.Features.QualificationTime
                     // dismiss timer hasn't finished); ShowQualificationTime bails if it sees one.
                     var old = GameObject.Find("UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/GameStates")?.transform.Find("Thisisacustomname");
                     if (old != null) UnityEngine.Object.DestroyImmediate(old.gameObject);
+                    _qualHandled = false;
                     ShowQualificationTime(elapsed);
                 }));
         }
@@ -662,6 +683,10 @@ namespace BetterFG.Features.QualificationTime
         internal static string CachedRoundName => _roundNameCache;
         static bool _forceTreatAsPb;
         static float _forcedPrevPb;
+        static bool _qualHandled;
+
+        static GameObject _qualPopupGo;
+        public static bool QualPopupOpen => _qualPopupGo != null;
 
         static void ResetRaceRoundCache() => _isRaceRoundCache = null;
 
@@ -1805,6 +1830,7 @@ namespace BetterFG.Features.QualificationTime
         public static void OnCleanupLoadingScreens()
         {
             ResetRaceRoundCache();
+            _qualHandled = false;
             _ghostRecording = false;
             _ghostFrames = null;
             foreach (var g in _ghostGos) if (g != null) UnityEngine.Object.Destroy(g);

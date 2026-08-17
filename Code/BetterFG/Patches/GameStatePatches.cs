@@ -69,6 +69,7 @@ namespace BetterFG.Patches.GameStates
 
             FeatureStars.CreateInMenu();
             FeatureQualificationTime.CreateInMenu();
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh(true);
 
             if (__instance._menuFallGuy != null)
                 BeanMonitorService.PushBean(__instance._menuFallGuy);
@@ -197,6 +198,7 @@ namespace BetterFG.Patches.GameStates
             if (__instance._lobbyFallGuy == null) return;
             BeanMonitorService.PushBean(__instance._lobbyFallGuy);
             var bean = __instance._lobbyFallGuy;
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh(false, 0.5f);
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ApplyLobbyBGForegroundNextFrame().WrapToIl2Cpp());
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals(bean);
 
@@ -752,9 +754,14 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance == null) return;
             var game = __instance.TryCast<LoadingGameScreenViewModel>();
-            if (game == null) return;
+            if (game == null)
+            {
+                BetterFG.Services.FGInputLockService.RefreshLoadingScreenLock();
+                return;
+            }
             BetterFG.Tweaks.ChangeSplashScreenTweak.OnLoadingScreenUpdateDisplay();
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnLoadingScreenUpdateDisplay();
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh();
             var ugc = __instance.TryCast<LoadingUGCGameScreenViewModel>();
             string loadingRound = ugc?._loadingGameScreenDto?.levelInfoDto?.Title;
             if (string.IsNullOrEmpty(loadingRound)) loadingRound = game._round?.DisplayNameUnindented;
@@ -777,6 +784,9 @@ namespace BetterFG.Patches.GameStates
                 playerGeneratedName, teamId, squadId, partyId, customisationSelections, isLocalPlayer, isNPC);
 
             BetterFG.Tweaks.CreativeIntroCameraTweak.OnPlayerSpawned(playerId);
+
+            if (pNetObject != null)
+                BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(pNetObject.gameObject);
 
             if (!isLocalPlayer || pNetObject == null) return;
             var bean = pNetObject.gameObject;
@@ -864,9 +874,25 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(StateQualificationScreen), nameof(StateQualificationScreen.ShowNames))]
+    internal static class QualScreenShowNamesHook
+    {
+        [HarmonyPostfix]
+        public static void Postfix(bool show)
+        {
+            BetterFG.Tweaks.KeepNametagsTweak.OnQualScreenNamesToggled(show);
+        }
+    }
+
     [HarmonyPatch(typeof(StateQualificationScreen), nameof(StateQualificationScreen.Teardown))]
     internal static class QualScreenTeardownLeaveHook
     {
+        [HarmonyPrefix]
+        public static void Prefix()
+        {
+            BetterFG.Tweaks.KeepNametagsTweak.OnQualScreenTeardownStarting();
+        }
+
         [HarmonyPostfix]
         public static void Postfix()
         {
@@ -1214,6 +1240,7 @@ namespace BetterFG.Patches.GameStates
         {
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnCleanupLoadingScreens();
             BetterFG.Features.Replay.FeatureReplay.OnCleanupLoadingScreens();
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh(false, 0.5f);
             BetterFG.Tweaks.CreativeIntroCameraTweak.OnCleanupLoadingScreens();
             BetterFG.Nametag.CrownRankFovFix.Forget();
 
@@ -1244,18 +1271,7 @@ namespace BetterFG.Patches.GameStates
 
             CameraUtils.DisableXRayRenderer();
             NetworkClient.Instance?.OnRoundStart();
-
-            var host = NametagTab.Instance;
-            if (host != null)
-                host.StartCoroutine(WaitForNametag().WrapToIl2Cpp());
-            else
-                NametagIconApplicator.ApplyNametag();
-
-            var crownHost = BeanMonitorService.Instance;
-            if (crownHost != null)
-                crownHost.StartCoroutine(ApplyCrownAfterFrames(5).WrapToIl2Cpp());
-
-            NametagIconApplicator.ApplyPlatformIcon();
+            BetterFG.Nametag.NametagPatchHub.OnRoundStart();
 
             BetterFG.Tweaks.ShadowCustomResolutionTweak.ApplyIfEnabled();
         }
@@ -1278,31 +1294,6 @@ namespace BetterFG.Patches.GameStates
                 PlayerScaleService.RestorePlayerScaleToBean(bean);
         }
 
-        private static IEnumerator ApplyCrownAfterFrames(int frames)
-        {
-            for (int i = 0; i < frames; i++) yield return null;
-            BetterFG.Nametag.CrownRankService.ApplyLocal();
-        }
-
-        private static IEnumerator WaitForNametag()
-        {
-            float elapsed = 0f;
-            while (elapsed < 10f)
-            {
-                if (NametagFinder.FindLocalNameTagSprite() != null)
-                {
-                    NametagIconApplicator.ApplyNametag();
-                    yield return new WaitForSeconds(0.3f);
-                    NametagIconApplicator.ApplyNametag();
-                    yield return new WaitForSeconds(0.6f);
-                    NametagIconApplicator.ApplyNametag();
-                    yield break;
-                }
-                yield return new WaitForSeconds(0.25f);
-                elapsed += 0.25f;
-            }
-            Plugin.Log.LogWarning("CLS: nametag never appeared after 10s");
-        }
     }
 
 
@@ -1349,6 +1340,7 @@ namespace BetterFG.Patches.GameStates
 
             BetterFG.Tweaks.BfgTweak.RaiseRoundStart();
             BetterFG.Services.DiscordPresenceService.OnRoundStart();
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh();
 
             var gameStates = GameObject.Find("UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/GameStates");
             var playing = gameStates != null ? gameStates.transform.Find("PlayingState") : null;

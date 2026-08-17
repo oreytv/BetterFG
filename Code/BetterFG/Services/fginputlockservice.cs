@@ -1,5 +1,8 @@
 using System.Collections.Generic;
 using Rewired;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using BetterFG.Utilities;
 
 namespace BetterFG.Services
 {
@@ -18,13 +21,24 @@ namespace BetterFG.Services
     //   - CreativeTypeValueTweak, typing into the GAME's parameter node rather than our own ui
     public static class FGInputLockService
     {
+        // kill switch for the whole background-input block (loading-screen lock, foreground check,
+        // EventSystem/device disable) so a build can go out with none of it active for A/B testing.
+        private const bool BackgroundGateEnabled = true;
+
         private static bool _realFieldLock;
         private static bool _fakeFieldLock;
         private static bool _editorUiLock;
         private static bool _controllerLock;
         private static bool _paramTypeLock;
+        private static bool _loadingScreenLock;
+        private static float _loadingScreenLockUntil;
 
-        public static bool IsLocked => _realFieldLock || _fakeFieldLock || _editorUiLock || _controllerLock || _paramTypeLock;
+        // Application.isFocused/Rewired's own focus tracking sticks "focused" from process start on
+        // this build, so a boot that lands without real OS focus keeps servicing input regardless.
+        // Ground-truth check against the actual foreground window catches that and plain alt-tab too.
+        private static bool OutOfForeground => BackgroundGateEnabled && !Shell32Util.IsGameWindowForeground();
+
+        public static bool IsLocked => _realFieldLock || _fakeFieldLock || _editorUiLock || _controllerLock || _paramTypeLock || _loadingScreenLock || OutOfForeground;
 
         // back-compat: callers that used SetLocked were the fake-field caret paths
         public static void SetLocked(bool locked) => _fakeFieldLock = locked;
@@ -45,6 +59,18 @@ namespace BetterFG.Services
         // sets this on stick/button activity and clears it after a short idle.
         public static void SetControllerLock(bool locked) => _controllerLock = locked;
 
+        // the game's own boot/menu loading veil doesn't stop clicks from reaching whatever's
+        // already loaded underneath it, so a click during that window can land on a real menu
+        // button (shop, etc). GameStatePatches pings this every LoadingScreenViewModel tick
+        // while the general loading screen is up; no matching "hide" event exists so we just
+        // let the lock expire if the pings stop for a moment.
+        public static void RefreshLoadingScreenLock()
+        {
+            if (!BackgroundGateEnabled) return;
+            _loadingScreenLock = true;
+            _loadingScreenLockUntil = Time.unscaledTime + 0.3f;
+        }
+
         // the other locks can be disable-only because the game restores maps on mouse/keyboard input.
         // these two can't: with their maps off nothing reaches the game to trigger that, so input stays
         // dead (pad unusable, or the editor ignoring Escape after you type until you jog the mouse).
@@ -58,8 +84,62 @@ namespace BetterFG.Services
         // fresh interop list per player per frame was constant GC churn
         private static Il2CppSystem.Collections.Generic.List<ControllerMap> _mapsBuf;
 
+        // clicks reach Button.onClick through EventSystem/GraphicRaycaster off the raw OS cursor,
+        // a path Rewired's ControllerMaps never touch. Disabling the EventSystem itself was the
+        // first attempt, but EventSystem.current goes null the moment it's disabled (its own
+        // OnDisable clears the singleton) and plenty of game code — including our own
+        // LobbyCustomiserTweak — dereferences EventSystem.current unguarded, so that took down
+        // NavigableMenuInputHandler.OnLoseFocus with cascading NREs the instant a screen opened.
+        // Disabling just the input module stops all event dispatch the same way without EventSystem
+        // itself, or .current, ever going null.
+        private static BaseInputModule _disabledInputModule;
+
+        // movement/jump/etc also don't all go through mapped Actions — some read the Keyboard/Mouse
+        // Controller directly (GetKey/GetButton), which ControllerMap.enabled=false never touches.
+        // Controller itself has an enabled flag that kills raw polling too, so hit that as well.
+        private static bool _devicesDisabledByUs;
+
         public static void Tick()
         {
+            if (_loadingScreenLock && Time.unscaledTime > _loadingScreenLockUntil)
+                _loadingScreenLock = false;
+
+            bool blockBackground = _loadingScreenLock || OutOfForeground;
+
+            if (blockBackground)
+            {
+                var es = EventSystem.current;
+                var module = es != null ? es.currentInputModule : null;
+                if (module != null && module.enabled)
+                {
+                    module.enabled = false;
+                    _disabledInputModule = module;
+                }
+            }
+            else if (_disabledInputModule != null)
+            {
+                _disabledInputModule.enabled = true;
+                _disabledInputModule = null;
+            }
+
+            if (ReInput.isReady)
+            {
+                var kb = ReInput.controllers.Keyboard;
+                var mouse = ReInput.controllers.Mouse;
+                if (blockBackground)
+                {
+                    if (kb != null) kb.enabled = false;
+                    if (mouse != null) mouse.enabled = false;
+                    _devicesDisabledByUs = true;
+                }
+                else if (_devicesDisabledByUs)
+                {
+                    if (kb != null) kb.enabled = true;
+                    if (mouse != null) mouse.enabled = true;
+                    _devicesDisabledByUs = false;
+                }
+            }
+
             if (!ReInput.isReady) return;
             int n = ReInput.players.playerCount;
 

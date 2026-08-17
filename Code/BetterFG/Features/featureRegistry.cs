@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using BetterFG.Features.AllCosmetics;
+using BetterFG.Features.CustomizeFallGuys;
 using BetterFG.Features.MorePlatformIcon;
 using BetterFG.Features.QualificationTime;
 using BetterFG.Features.Replay;
@@ -17,6 +18,7 @@ namespace BetterFG.Features
             FeatureMorePlatformIcon.feature,
             FeatureTimePlacement.feature,
             FeatureReplay.feature,
+            FeatureCustomizeFallGuys.feature,
             //FeatureAllCosmetics.feature
         };
 

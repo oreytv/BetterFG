@@ -29,6 +29,8 @@ namespace BetterFG.UI.Tab
         const float SETTING_H = 26f;
         const float TOGGLE_W = 54f;
         const float TOGGLE_H = 18f;
+        const float PREVIEW_W = 168f;
+        const float PREVIEW_H = 126f;
 
         static Texture2D _bgTex;
         static Texture2D _hoverTex;
@@ -105,7 +107,11 @@ namespace BetterFG.UI.Tab
             if (all.Count > 0)
             {
                 var last = all[all.Count - 1];
-                float lastH = HEADER_H + (last.settings == null ? 0f : last.settings.Count * SETTING_H);
+                int lastRows = (last.settings == null ? 0 : last.settings.Count)
+                    + (last.choices == null ? 0 : last.choices.Count)
+                    + (last.ranges == null ? 0 : last.ranges.Count);
+                float lastH = HEADER_H + lastRows * SETTING_H;
+                if (last.id == "customizefallguys") lastH += PREVIEW_H + PAD * 2f;
                 float padH = Mathf.Max(0f, _viewportH - lastH);
 
                 var spacer = new GameObject("BottomScrollPad");
@@ -149,6 +155,8 @@ namespace BetterFG.UI.Tab
                     RefreshRows();
                 }));
 
+            if (feature.id == "customizefallguys") BuildPreviewRow();
+
             var settings = feature.settings;
             int rowCount = 0;
             if (settings != null)
@@ -165,6 +173,16 @@ namespace BetterFG.UI.Tab
                 for (int i = 0; i < choices.Count; i++)
                 {
                     BuildChoiceRow(feature, choices[i], rowCount % 2 == 0 ? ROW_BG : Color.clear);
+                    rowCount++;
+                }
+            }
+
+            var ranges = feature.ranges;
+            if (ranges != null)
+            {
+                for (int i = 0; i < ranges.Count; i++)
+                {
+                    BuildRangeRow(feature, ranges[i], rowCount % 2 == 0 ? ROW_BG : Color.clear);
                     rowCount++;
                 }
             }
@@ -203,28 +221,7 @@ namespace BetterFG.UI.Tab
                 feature.enabled ? new Color(1f, 1f, 1f, 0.86f) : new Color(1f, 1f, 1f, 0.35f),
                 TextAnchor.MiddleLeft);
 
-            // hint provided -> wire a tooltip on the label and a 4% white hover background behind it
-            // so it's obvious the label is hoverable.
-            if (!string.IsNullOrEmpty(choice.hint))
-            {
-                var labelRt = choiceLabel.rectTransform;
-                var hoverGo = new GameObject("HoverBG");
-                hoverGo.transform.SetParent(labelRt, false);
-                var hoverRt = hoverGo.AddComponent<RectTransform>();
-                hoverRt.anchorMin = Vector2.zero;
-                hoverRt.anchorMax = Vector2.one;
-                hoverRt.offsetMin = Vector2.zero;
-                hoverRt.offsetMax = Vector2.zero;
-                var hoverImg = hoverGo.AddComponent<Image>();
-                hoverImg.color = new Color(1f, 1f, 1f, 0.04f);
-                hoverImg.raycastTarget = false;
-                hoverGo.transform.SetSiblingIndex(0);
-                hoverGo.SetActive(false);
-
-                var trig = labelRt.gameObject.AddComponent<TooltipTrigger>();
-                trig.text = choice.hint;
-                trig.hoverImage = hoverGo;
-            }
+            AttachHint(choiceLabel, choice.hint);
 
             int selected = choice.optionIds.IndexOf(feature.GetChoice(choice.id));
             if (selected < 0) selected = 0;
@@ -244,6 +241,99 @@ namespace BetterFG.UI.Tab
                 }), FS_SM, ddW, 20f, true, true, true);
         }
 
+        void BuildPreviewRow()
+        {
+            var rowGo = new GameObject("Preview_customizefallguys");
+            rowGo.transform.SetParent(_listRt, false);
+            rowGo.AddComponent<RectTransform>();
+            rowGo.AddComponent<Image>().color = ROW_BG;
+            var le = rowGo.AddComponent<LayoutElement>();
+            le.preferredHeight = PREVIEW_H + PAD * 2f;
+            le.flexibleWidth = 1f;
+
+            float w = _contentW > 0f ? _contentW : TabWidth - PAD * 4f;
+
+            var go = new GameObject("Render");
+            go.transform.SetParent(rowGo.transform, false);
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(w * 0.5f, -PAD);
+            rt.sizeDelta = new Vector2(PREVIEW_W, PREVIEW_H);
+
+            var raw = go.AddComponent<RawImage>();
+            raw.texture = Features.CustomizeFallGuys.FeatureCustomizeFallGuys.PreviewTexture;
+            raw.raycastTarget = false;
+
+            Features.CustomizeFallGuys.FeatureCustomizeFallGuys.SetPreviewPanel(go);
+        }
+
+        static void AttachHint(Text label, string hint)
+        {
+            if (string.IsNullOrEmpty(hint)) return;
+
+            var labelRt = label.rectTransform;
+            var hoverGo = new GameObject("HoverBG");
+            hoverGo.transform.SetParent(labelRt, false);
+            var hoverRt = hoverGo.AddComponent<RectTransform>();
+            hoverRt.anchorMin = Vector2.zero;
+            hoverRt.anchorMax = Vector2.one;
+            hoverRt.offsetMin = Vector2.zero;
+            hoverRt.offsetMax = Vector2.zero;
+            var hoverImg = hoverGo.AddComponent<Image>();
+            hoverImg.color = new Color(1f, 1f, 1f, 0.04f);
+            hoverImg.raycastTarget = false;
+            hoverGo.transform.SetSiblingIndex(0);
+            hoverGo.SetActive(false);
+
+            var trig = labelRt.gameObject.AddComponent<TooltipTrigger>();
+            trig.text = hint;
+            trig.hoverImage = hoverGo;
+        }
+
+        void BuildRangeRow(BfgFeature feature, FeatureRange range, Color bg)
+        {
+            var rowGo = new GameObject("Range_" + feature.id + "_" + range.id);
+            rowGo.transform.SetParent(_listRt, false);
+            rowGo.AddComponent<RectTransform>();
+            rowGo.AddComponent<Image>().color = bg;
+            var le = rowGo.AddComponent<LayoutElement>();
+            le.preferredHeight = SETTING_H;
+            le.flexibleWidth = 1f;
+
+            float w = _contentW > 0f ? _contentW : TabWidth - PAD * 4f;
+            const float SLIDER_W = 118f;
+            const float VAL_W = 40f;
+
+            var label = UGUIShip.CreateLabel(rowGo.transform,
+                new Rect(PAD * 3f, 0f, w - SLIDER_W - VAL_W - PAD * 5f, SETTING_H),
+                range.label,
+                FS,
+                feature.enabled ? new Color(1f, 1f, 1f, 0.86f) : new Color(1f, 1f, 1f, 0.35f),
+                TextAnchor.MiddleLeft);
+            AttachHint(label, range.hint);
+
+            int decimals = range.step >= 1f ? 0 : range.step >= 0.1f ? 1 : 2;
+            string Fmt(float v) => v.ToString("F" + decimals, System.Globalization.CultureInfo.InvariantCulture);
+
+            var readout = UGUIShip.CreateLabel(rowGo.transform,
+                new Rect(w - VAL_W, 0f, VAL_W, SETTING_H),
+                Fmt(feature.GetRange(range.id)), FS_SM, WHITE, TextAnchor.MiddleRight);
+
+            UGUIShip.CreateSlider(rowGo.transform,
+                w - SLIDER_W - VAL_W - PAD, (SETTING_H - TOGGLE_H) * 0.5f, SLIDER_W,
+                "", Mathf.InverseLerp(range.min, range.max, feature.GetRange(range.id)),
+                TOGGLE_H, PAD, FS_SM,
+                new Action<float>(t =>
+                {
+                    float v = Mathf.Round(Mathf.Lerp(range.min, range.max, t) / range.step) * range.step;
+                    feature.SetRange(range.id, v);
+                    readout.text = Fmt(v);
+                }),
+                null, null, false,
+                Mathf.InverseLerp(range.min, range.max, range.defaultValue));
+        }
+
         void BuildMaxRowsRow(BfgFeature feature, Color bg)
         {
             var rowGo = new GameObject("Setting_timeplacement_maxrows");
@@ -255,53 +345,24 @@ namespace BetterFG.UI.Tab
             le.flexibleWidth = 1f;
 
             float w = _contentW > 0f ? _contentW : TabWidth - PAD * 4f;
-            float btnW = 22f;
-            float numW = 34f;
-            float groupW = btnW * 2f + numW;
+            const float INC_W = 96f;
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD * 3f, 0f, w - groupW - PAD * 4f, SETTING_H),
+                new Rect(PAD * 3f, 0f, w - INC_W - PAD * 4f, SETTING_H),
                 "Players to show",
                 FS,
                 feature.enabled ? new Color(1f, 1f, 1f, 0.86f) : new Color(1f, 1f, 1f, 0.35f),
                 TextAnchor.MiddleLeft);
 
-            float btnY = (SETTING_H - TOGGLE_H) * 0.5f;
             string K = Features.TimePlacement.FeatureTimePlacement.MaxRowsKey;
-            int Cur() => Mathf.Clamp(
-                Services.SettingsService.Get(K, Features.TimePlacement.FeatureTimePlacement.MaxRowsDefault.ToString()) is var s
-                    && int.TryParse(s, out int v) ? v : Features.TimePlacement.FeatureTimePlacement.MaxRowsDefault,
+            int Cur() => int.TryParse(Services.SettingsService.Get(K, Features.TimePlacement.FeatureTimePlacement.MaxRowsDefault.ToString()), out int v)
+                ? v : Features.TimePlacement.FeatureTimePlacement.MaxRowsDefault;
+
+            UGUIShip.CreateIncrement(rowGo.transform,
+                new Rect(w - INC_W, (SETTING_H - TOGGLE_H) * 0.5f, INC_W, TOGGLE_H),
                 Features.TimePlacement.FeatureTimePlacement.MaxRowsMin,
-                Features.TimePlacement.FeatureTimePlacement.MaxRowsMax);
-
-            Text numLabel = null;
-            numLabel = UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(w - groupW + btnW, btnY, numW, TOGGLE_H),
-                Cur().ToString(), FS, WHITE, TextAnchor.MiddleCenter);
-
-            UGUIShip.CreateButton(rowGo.transform,
-                new Rect(w - groupW, btnY, btnW, TOGGLE_H),
-                "-", OFF, WHITE, FS_SM,
-                new Action(() =>
-                {
-                    int n = Mathf.Clamp(Cur() - 1,
-                        Features.TimePlacement.FeatureTimePlacement.MaxRowsMin,
-                        Features.TimePlacement.FeatureTimePlacement.MaxRowsMax);
-                    Services.SettingsService.Set(K, n.ToString());
-                    if (numLabel != null) numLabel.text = n.ToString();
-                }));
-
-            UGUIShip.CreateButton(rowGo.transform,
-                new Rect(w - btnW, btnY, btnW, TOGGLE_H),
-                "+", ON, WHITE, FS_SM,
-                new Action(() =>
-                {
-                    int n = Mathf.Clamp(Cur() + 1,
-                        Features.TimePlacement.FeatureTimePlacement.MaxRowsMin,
-                        Features.TimePlacement.FeatureTimePlacement.MaxRowsMax);
-                    Services.SettingsService.Set(K, n.ToString());
-                    if (numLabel != null) numLabel.text = n.ToString();
-                }));
+                Features.TimePlacement.FeatureTimePlacement.MaxRowsMax,
+                Cur, n => Services.SettingsService.Set(K, n.ToString()), false, FS_SM);
         }
 
 

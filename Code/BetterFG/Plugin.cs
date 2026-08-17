@@ -74,6 +74,7 @@ namespace BetterFG
             FallGuysLib.Game.GameStateEvents.OnStateChanged += BetterFG.Patches.GameStates.GameStateDispatcher.OnStateChanged;
             FallGuysLib.Game.LevelEditorEvents.OnLevelEditorPlaytest += BetterFG.Tweaks.BfgTweak.RaiseLevelEditorPlaytest;
             FallGuysLib.Game.LevelEditorEvents.OnLevelEditorPlaytestEnd += BetterFG.Tweaks.BfgTweak.RaiseLevelEditorPlaytestEnd;
+            FallGuysLib.Game.LevelEditorEvents.OnLevelEditorPlaytest += () => BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh(true);
 
             // decode saved custom skin textures now, at load, so the first auto-reapply on menu enter
             // hits the cache instead of reading + decoding the whole png on that frame.
@@ -120,6 +121,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<NetworkClient>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGUnityRounds>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.UnityRound.Editor.CreativeRoundMemory>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.CustomizeFallGuys.FallGuyEyeDriver>();
 
             ClassInjector.RegisterTypeInIl2Cpp<CustomEndzoneTrigger>();
 
@@ -193,6 +195,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<ChangeSplashScreenTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<HideCreatorCodeTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<LobbyAutokickTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<LobbyAudioPromptTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<SpectatorMusicTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<MuteSocialSoundsTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<BringBackFallGuyNoisesTweak>();
@@ -224,7 +227,6 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<DynamicQualScreenTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<InstantLandingIndicatorTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<KeepNametagsTweak>();
-            ClassInjector.RegisterTypeInIl2Cpp<LivelyFallGuysTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<LevelDescriptionOnPauseTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<CreativeTypeValueTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterStickerSelectionTweak>();
@@ -241,6 +243,7 @@ namespace BetterFG
             Spawn<BetterFGUnityRounds>("BetterFG_UnityRounds", persist: true);
             Spawn<BetterFG.Features.UnityRound.Editor.CreativeRoundMemory>("BetterFG_CreativeRoundMemory", persist: true);
             Spawn<BetterFG.UI.Windows.Creative.CreativeSelectionWatcher>("BetterFG_CreativeSelectionWatcher", persist: true);
+            Spawn<BetterFG.Features.CustomizeFallGuys.FallGuyEyeDriver>("BetterFG_FallGuyEyes", persist: true);
 
             Spawn<BeanMonitorService>("BetterFG_BeanMonitor", persist: false);
 

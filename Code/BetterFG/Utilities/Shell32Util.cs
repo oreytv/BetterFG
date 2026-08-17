@@ -46,6 +46,7 @@ namespace BetterFG.Utilities
         [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
 
         [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -96,6 +97,15 @@ namespace BetterFG.Utilities
             _dragReady = true;
             Plugin.Log.LogInfo("drag-drop hook installed");
 #endif
+        }
+
+        // Unity's own Application.isFocused lags/sticks on this build — it reads focused at boot even
+        // before the window has ever really taken focus, and Rewired keeps servicing raw input off
+        // that stale flag. Ground truth is the actual OS foreground window, not what Unity thinks.
+        public static bool IsGameWindowForeground()
+        {
+            if (!Install()) return true;
+            return GetForegroundWindow() == _hwnd;
         }
 
         /// <summary>Windows-only toast. Clicking it brings the game window back to the front.</summary>

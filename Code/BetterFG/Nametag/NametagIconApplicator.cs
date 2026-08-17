@@ -132,6 +132,14 @@ namespace BetterFG.Nametag
         // in-game entry: local display + saved settings.
         public static void ApplyNametag() => ApplyNametagTo(NametagFinder.FindLocalDisplay(), CfgFromSettings());
 
+        // called from patch_SpawnPlayerTag once the local row actually exists — no more blind polling.
+        public static void OnLocalTagSpawned()
+        {
+            ApplyNametag();
+            ApplyPlatformIcon();
+            CrownRankService.ApplyLocal();
+        }
+
         public static RemoteNametagInfo BuildLocalNametagInfo()
         {
             var cfg = CfgFromSettings();

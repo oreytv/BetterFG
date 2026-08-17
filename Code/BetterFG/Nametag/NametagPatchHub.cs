@@ -210,10 +210,18 @@ namespace BetterFG.Nametag
             [HarmonyPostfix]
             public static void Postfix(PlayerInfoHUDBase __instance)
             {
+                if (__instance == null) return;
+
+                if (!_localTagAppliedThisRound && NametagFinder.FindLocalNameTagSprite() != null)
+                {
+                    _localTagAppliedThisRound = true;
+                    NametagIconApplicator.OnLocalTagSpawned();
+                }
+
                 // a spectate switch respawns EVERY row at once, so this fires in a burst. running a
                 // whole-scene RefreshRemoteNametags per tag (each a FindObjectsOfType<NameTagViewModel>
                 // scan) is what froze the game on every switch. collapse the burst into one queued sweep.
-                if (__instance == null || _refreshQueued) return;
+                if (_refreshQueued) return;
                 var host = BeanMonitorService.Instance;
                 if (host == null) { RefreshRemoteNametags(); return; }
                 _refreshQueued = true;
@@ -229,6 +237,9 @@ namespace BetterFG.Nametag
         }
 
         private static bool _refreshQueued;
+        private static bool _localTagAppliedThisRound;
+
+        public static void OnRoundStart() => _localTagAppliedThisRound = false;
 
         private static IEnumerator CoalescedRefresh()
         {

@@ -16,15 +16,15 @@ namespace BetterFG.Tweaks
         public override string TweakId => "creative_intro_camera";
         public override string TweakLabel => "Creative Intro Cameras";
         public override bool DefaultEnabled => true;
-        public override string TweakTooltip => "Creative levels ship without an intro flythrough, so this makes one. Once most players are in, the loading screen drops away, the level name banner plays, and the camera flies the route the players will actually run: the level's collision gets scanned into a grid, a path is walked from the start line to the finish through it, and the camera follows that at a steady speed, riding high enough to clear whatever it's passing over. Points rounds get a tour of the bubbles and score zones instead. It finishes by sweeping back to circle the start line so the last thing you see is the beans.";
+        public override string TweakTooltip => "Creative levels ship without an intro flythrough, so this makes one. Once a third of the players are in, the loading screen drops away, the level name banner plays, and the camera flies the route the players will actually run: the level's collision gets scanned into a grid, a path is walked from the start line to the finish through it, and the camera follows that at a steady speed, riding high enough to clear whatever it's passing over. Points rounds get a tour of the bubbles and score zones instead. It finishes by sweeping back to circle the start line so the last thing you see is the beans.";
 
         public static CreativeIntroCameraTweak Instance { get; private set; }
         void Awake() => Instance = this;
 
-        const float SpawnFraction = 0.8f;
+        const float SpawnFraction = 0.3f;
         const float TravelSpeed = 27f;
         const float MinFlight = 7f;
-        const float MaxFlight = 15f;
+        const float MaxFlight = 10f;
         const float ReturnSweep = 1.9f;
         const float SweepArc = 22f;
         const float OrbitRadius = 26f;
@@ -36,7 +36,11 @@ namespace BetterFG.Tweaks
         const float MaxRise = 34f;
         const float Weave = 13f;
         const float BackOff = 20f;
+        const float EndBackOff = 38f;
+        const float EndRise = 14f;
+        const float TailStart = 0.7f;
         const float LookAhead = 1.7f;
+        const float AimClearance = 16f;
         const float Fov = 55f;
         const float FadeTime = 0.45f;
         const float RestoreDelay = 2f;
@@ -286,11 +290,23 @@ namespace BetterFG.Tweaks
                 Vector3 right = Vector3.Cross(Vector3.up, fwd);
                 float f = i / (float)(n - 1);
 
-                float weave = Mathf.Sin(f * Mathf.PI * 2.6f + _phase) * _side * _swing * Weave;
+                float tail = Mathf.Max(0f, (f - TailStart) / (1f - TailStart));
+                tail = tail * tail * (3f - 2f * tail);
+
+                float weave = Mathf.Sin(f * Mathf.PI * 2.6f + _phase) * _side * _swing * Weave * (1f - tail * 0.65f);
                 float rise = Mathf.Clamp((route.Ceiling[i] + Clearance - pts[i].y) * _heightScale, MinRise, MaxRise);
 
-                _path[i] = pts[i] + right * weave + Vector3.up * rise - fwd * (BackOff * Mathf.Max(0f, 1f - f * 4f));
-                _lookPath[i] = LookAheadPoint(pts, i, spacing * LookAhead) + Vector3.up * EyeHeight;
+                _path[i] = pts[i] + right * weave + Vector3.up * (rise + EndRise * tail)
+                           - fwd * (BackOff * Mathf.Max(0f, 1f - f * 4f) + EndBackOff * tail);
+                if (route.Look == null)
+                {
+                    _lookPath[i] = LookAheadPoint(pts, i, spacing * LookAhead) + Vector3.up * EyeHeight;
+                    continue;
+                }
+
+                _lookPath[i] = route.Look[i];
+                float above = route.Look[i].y + AimClearance;
+                if (_path[i].y < above) _path[i].y = above;
             }
         }
 
@@ -329,8 +345,13 @@ namespace BetterFG.Tweaks
 
             for (int i = 0; i < n; i++)
             {
-                Vector3 spine = _start + flat * Shape[i, 0] - fwd * (BackOff * (1f - Shape[i, 0]));
-                _path[i] = spine + right * (Shape[i, 1] * lat) + Vector3.up * (Shape[i, 2] * _heightScale);
+                float f = Shape[i, 0];
+                float tail = Mathf.Max(0f, (f - TailStart) / (1f - TailStart));
+                tail = tail * tail * (3f - 2f * tail);
+
+                Vector3 spine = _start + flat * f - fwd * (BackOff * (1f - f) + EndBackOff * tail);
+                _path[i] = spine + right * (Shape[i, 1] * lat * (1f - tail * 0.65f))
+                           + Vector3.up * (Shape[i, 2] * _heightScale + EndRise * tail);
                 _lookPath[i] = Vector3.Lerp(_start, _finish, Shape[i, 3]) + Vector3.up * EyeHeight;
             }
         }

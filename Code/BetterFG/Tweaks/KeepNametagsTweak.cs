@@ -34,20 +34,48 @@ namespace BetterFG.Tweaks
             // reparent time and re-Set it after every restore pass.
             public int crownRank;
             public bool hasCrownRank;
+            public GameObject nameLayout;
         }
         static readonly Dictionary<Transform, InfoSnapshot> _snapshots = new();
 
         internal static bool IsOn => Instance != null && Instance.IsEnabled;
 
+        static bool? _namesShown;
+        static bool _namesFrozen;
+
         internal static void OnQualScreenSwitch()
         {
             if (!IsOn) return;
+            _namesShown = null;
+            _namesFrozen = false;
             Instance.StartCoroutine(RunAfterDelay().WrapToIl2Cpp());
+        }
+
+        internal static void OnQualScreenNamesToggled(bool show)
+        {
+            if (!IsOn || _namesFrozen) return;
+            _namesShown = show;
+
+            int n = 0;
+            foreach (var kv in _snapshots)
+            {
+                var go = kv.Value.nameLayout;
+                if (go == null) continue;
+                if (go.activeSelf != show) { go.SetActive(show); n++; }
+            }
+            Plugin.Log.LogInfo($"names toggled {(show ? "on" : "off")}, {n} kept tag(s) followed");
         }
 
         // qual screen teardown fires one last "hide the nametag" pass on some beans (usually the ones
         // that got Qualified/Eliminated late), so their NameLayout is off going into gameplay. wait a
         // frame for teardown's stomps to land, then restore every snapshot we still have.
+        internal static void OnQualScreenTeardownStarting()
+        {
+            if (!IsOn) return;
+            _namesFrozen = true;
+            Plugin.Log.LogInfo($"teardown starting, names locked {(_namesShown.HasValue ? (_namesShown.Value ? "on" : "off") : "at whatever they were on entry")}");
+        }
+
         internal static void OnQualScreenTeardown()
         {
             if (!IsOn) return;
@@ -97,7 +125,11 @@ namespace BetterFG.Tweaks
                 Transform crownT = localCrown != null ? localCrown.transform : null;
 
                 foreach (var (go, active) in snap.actives)
-                    if (go != null && go.activeSelf != active) go.SetActive(active);
+                {
+                    if (go == null) continue;
+                    bool want = go == snap.nameLayout ? (_namesShown ?? active) : active;
+                    if (go.activeSelf != want) go.SetActive(want);
+                }
 
                 foreach (var (tmp, text) in snap.texts)
                 {
@@ -149,20 +181,22 @@ namespace BetterFG.Tweaks
                 var snapTexts = new List<(TMP_Text, string)>();
                 foreach (var tmp in t.GetComponentsInChildren<TMP_Text>(true))
                     if (tmp != null) snapTexts.Add((tmp, tmp.text));
-                var nameLayoutGo = t.Find("NameLayout")?.gameObject;
                 var snapActives = new List<(GameObject, bool)>();
                 foreach (var child in t.GetComponentsInChildren<Transform>(true))
-                {
-                    if (child == null) continue;
-                    var go = child.gameObject;
-                    if (go == nameLayoutGo) continue;
-                    snapActives.Add((go, go.activeSelf));
-                }
+                    if (child != null) snapActives.Add((child.gameObject, child.gameObject.activeSelf));
 
                 int crownRank = 0;
                 bool hasCrown = false;
                 if (badge != null) { crownRank = badge._currentCrownRank; hasCrown = true; }
-                _snapshots[t] = new InfoSnapshot { texts = snapTexts, actives = snapActives, crownRank = crownRank, hasCrownRank = hasCrown };
+                var nameLayout = t.Find("NameLayout");
+                _snapshots[t] = new InfoSnapshot
+                {
+                    texts = snapTexts,
+                    actives = snapActives,
+                    crownRank = crownRank,
+                    hasCrownRank = hasCrown,
+                    nameLayout = nameLayout != null ? nameLayout.gameObject : null,
+                };
 
                 t.SetParent(null, true);
                 moved++;
@@ -262,7 +296,11 @@ namespace BetterFG.Tweaks
             try
             {
                 foreach (var (go, active) in snap.actives)
-                    if (go != null && go.activeSelf != active) go.SetActive(active);
+                {
+                    if (go == null) continue;
+                    bool want = go == snap.nameLayout ? (_namesShown ?? active) : active;
+                    if (go.activeSelf != want) go.SetActive(want);
+                }
             }
             catch (System.Exception ex) { Plugin.Log.LogWarning("KeepNametags: actives loop threw " + ex.Message); }
 

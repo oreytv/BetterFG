@@ -31,6 +31,23 @@ namespace BetterFG.Utilities
             }
             return null;
         }
+        public static Transform FindBoneOnBean(GameObject bean, string boneName)
+        {
+            if (bean == null || string.IsNullOrEmpty(boneName)) return null;
+
+            foreach (var smr in bean.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var bones = smr.bones;
+                for (int i = 0; bones != null && i < bones.Length; i++)
+                    if (bones[i] != null && bones[i].name == boneName) return bones[i];
+            }
+
+            foreach (var t in bean.GetComponentsInChildren<Transform>(true))
+                if (t.name == boneName) return t;
+
+            return null;
+        }
+
         public static void SetLayerRecursively(GameObject obj, int layer)
         {
             if (obj == null) return;

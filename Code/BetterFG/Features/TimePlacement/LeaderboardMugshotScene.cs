@@ -32,9 +32,7 @@ namespace BetterFG.Features.TimePlacement
         public static readonly Color RimColour = new Color(1f, 0.94f, 0.82f);
         public const float RimIntensity = 0.55f;
 
-        static Light[] _lights;
-
-        public static Camera BuildCamera(GameObject host)
+        public static Camera BuildCamera(GameObject host, out Light[] lights)
         {
             var cam = host.AddComponent<Camera>();
             cam.enabled = false;
@@ -48,7 +46,7 @@ namespace BetterFG.Features.TimePlacement
             cam.allowMSAA = false;
             cam.useOcclusionCulling = false;
 
-            _lights = new Light[]
+            lights = new Light[]
             {
                 AddLight(host.transform, "Key", KeyAngles, KeyColour, KeyIntensity),
                 AddLight(host.transform, "Fill", FillAngles, FillColour, FillIntensity),
@@ -88,7 +86,7 @@ namespace BetterFG.Features.TimePlacement
         static AmbientMode _ambientMode;
         static Color _ambientColour;
 
-        public static void PushLighting()
+        public static void PushLighting(Light[] lights)
         {
             _fog = RenderSettings.fog;
             _ambientMode = RenderSettings.ambientMode;
@@ -96,12 +94,12 @@ namespace BetterFG.Features.TimePlacement
             RenderSettings.fog = false;
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = Ambient;
-            foreach (var l in _lights) l.enabled = true;
+            foreach (var l in lights) l.enabled = true;
         }
 
-        public static void PopLighting()
+        public static void PopLighting(Light[] lights)
         {
-            foreach (var l in _lights) l.enabled = false;
+            foreach (var l in lights) l.enabled = false;
             RenderSettings.fog = _fog;
             RenderSettings.ambientMode = _ambientMode;
             RenderSettings.ambientLight = _ambientColour;

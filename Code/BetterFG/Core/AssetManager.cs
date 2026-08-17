@@ -133,6 +133,14 @@ namespace BetterFG.Core
         public readonly Dictionary<string, GameObject> runtimePrefabs = new Dictionary<string, GameObject>();
         public readonly Dictionary<string, AnimationClip> animClips = new Dictionary<string, AnimationClip>();
         public readonly Dictionary<string, Shader> shaders = new Dictionary<string, Shader>();
+        public readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
+
+        public static Material GetMaterial(string key)
+        {
+            if (Instance == null) return null;
+            Instance.materials.TryGetValue(key.ToLowerInvariant(), out var m);
+            return m;
+        }
 
         // shader bundled in bettrfg_ui_shader, used by the pink/grey HUD recolour. key is the bundle
         // asset filename without extension, lowercased.
@@ -171,6 +179,16 @@ namespace BetterFG.Core
                         clip.hideFlags = HideFlags.HideAndDontSave;
                         animClips[key] = clip;
                         Plugin.Log.LogInfo($"AssetManager: loaded clip '{key}' from {res}");
+                        continue;
+                    }
+
+                    var mat = asset.TryCast<Material>();
+                    if (mat != null)
+                    {
+                        mat.hideFlags = HideFlags.HideAndDontSave;
+                        DontDestroyOnLoad(mat);
+                        materials[key] = mat;
+                        Plugin.Log.LogInfo($"AssetManager: material '{key}' ({mat.shader?.name}) out of {res}");
                         continue;
                     }
 

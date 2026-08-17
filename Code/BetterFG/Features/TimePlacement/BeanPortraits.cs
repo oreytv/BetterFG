@@ -11,6 +11,7 @@ namespace BetterFG.Features.TimePlacement
         static RenderTexture _rt;
         static Texture2D _shotA;
         static Texture2D _shotB;
+        static Light[] _lights;
 
         public static Texture Get(string playerKey) =>
             !string.IsNullOrEmpty(playerKey) && _byKey.TryGetValue(playerKey, out var tex) ? tex : null;
@@ -35,7 +36,7 @@ namespace BetterFG.Features.TimePlacement
 
             int w = LeaderboardMugshotScene.Width, h = LeaderboardMugshotScene.Height;
             var camGo = new GameObject("BettrFG_BeanPortraitCam");
-            var cam = LeaderboardMugshotScene.BuildCamera(camGo);
+            var cam = LeaderboardMugshotScene.BuildCamera(camGo, out _lights);
             _rt = new RenderTexture(w, h, 16, RenderTextureFormat.ARGB32);
             _rt.Create();
             _shotA = new Texture2D(w, h, TextureFormat.RGBA32, false);
@@ -105,7 +106,7 @@ namespace BetterFG.Features.TimePlacement
             var prevActive = RenderTexture.active;
             cam.targetTexture = _rt;
 
-            LeaderboardMugshotScene.PushLighting();
+            LeaderboardMugshotScene.PushLighting(_lights);
             cam.backgroundColor = LeaderboardMugshotScene.MaskA;
             cam.Render();
             RenderTexture.active = _rt;
@@ -114,7 +115,7 @@ namespace BetterFG.Features.TimePlacement
             cam.Render();
             RenderTexture.active = _rt;
             _shotB.ReadPixels(full, 0, 0);
-            LeaderboardMugshotScene.PopLighting();
+            LeaderboardMugshotScene.PopLighting(_lights);
 
             RenderTexture.active = prevActive;
             cam.targetTexture = null;

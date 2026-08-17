@@ -78,16 +78,44 @@ namespace BetterFG.Tweaks
 
         public override void DisableTweak() => Close();
 
+        private bool _navSuspended;
+
+        // lets other lobby-scoped tweaks (LobbyAudioPromptTweak) put their own full-screen overlay
+        // over the lobby without our row fighting them for input - hiding just the row isn't enough,
+        // our own Update() keeps polling the vertical axis and flipping _tabsInput/_lobbyInput/
+        // EventSystem.sendNavigationEvents underneath whatever's now on top, which can desync that
+        // global flag and take out navigation for everything, lobby included, once we resume.
+        public void SetNavSuspended(bool suspended)
+        {
+            if (_navSuspended == suspended) return;
+            _navSuspended = suspended;
+            if (_row == null) return;
+
+            if (suspended)
+            {
+                _row.gameObject.SetActive(false);
+                if (_tabsInput != null) _tabsInput.enabled = false;
+                if (_lobbyInput != null) _lobbyInput.enabled = false;
+            }
+            else
+            {
+                _row.gameObject.SetActive(true);
+                if (_tabsInput != null) _tabsInput.enabled = _onTabs;
+                if (_lobbyInput != null) _lobbyInput.enabled = !_onTabs;
+                if (EventSystem.current != null) EventSystem.current.sendNavigationEvents = true;
+            }
+        }
+
         void OnApplicationFocus(bool hasFocus)
         {
             if (!hasFocus) return;
             _heldVert = true;
-            if (_open && _tabsInput != null && !_selectorUp) _tabsInput.enabled = _onTabs;
+            if (_open && _tabsInput != null && !_selectorUp && !_navSuspended) _tabsInput.enabled = _onTabs;
         }
 
         void Update()
         {
-            if (!IsEnabled || !_open) return;
+            if (!IsEnabled || !_open || _navSuspended) return;
 
             var rootGo = GameObject.Find(UiRootPath);
             if (rootGo == null) { Close(); return; }
@@ -104,7 +132,11 @@ namespace BetterFG.Tweaks
                 _selectorUp = selectorUp;
                 SetSelectorMode(selectorUp);
                 if (selectorUp) _vm.OnGainFocus();
-                else _vm.OnLoseFocus();
+                else
+                {
+                    _vm.OnLoseFocus();
+                    Customization.Player.SkinApplicationService.Instance?.ApplyGameColourPatternToAllBeans();
+                }
             }
             if (selectorUp) return;
 
@@ -287,6 +319,8 @@ namespace BetterFG.Tweaks
         {
             if (!_open) return;
             _open = false;
+            _navSuspended = false;
+            Customization.Player.SkinApplicationService.Instance?.ApplyGameColourPatternToAllBeans();
 
             if (_row != null)
             {

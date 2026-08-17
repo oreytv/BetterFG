@@ -580,7 +580,7 @@ namespace BetterFG.Customization.Player
             if (!reapplied) RestampBeanMasks(bean);
         }
 
-        private void ApplyGameColourPatternToAllBeans()
+        public void ApplyGameColourPatternToAllBeans()
         {
             var beans = BeanMonitorService.GetTrackedBeans();
             for (int i = 0; i < beans.Count; i++)

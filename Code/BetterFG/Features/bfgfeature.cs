@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using BetterFG.Services;
+using UnityEngine;
 
 namespace BetterFG.Features
 {
@@ -26,6 +28,17 @@ namespace BetterFG.Features
         public string hint;
     }
 
+    public class FeatureRange
+    {
+        public string id;
+        public string label;
+        public float min;
+        public float max;
+        public float step;
+        public float defaultValue;
+        public string hint;
+    }
+
     public class BfgFeature
     {
         public readonly string id;
@@ -34,23 +47,27 @@ namespace BetterFG.Features
         public readonly bool defaultOn;
         public readonly List<FeatureSetting> settings;
         public readonly List<FeatureChoice> choices;
+        public readonly List<FeatureRange> ranges;
         readonly Action _onOpen;
         readonly Action _onClosed;
         readonly Action<string, bool> _onSettingChanged;
         readonly Action<string, string> _onChoiceChanged;
+        readonly Action<string, float> _onRangeChanged;
 
-        public BfgFeature(string id, string title, bool defaultOn = true, List<FeatureSetting> settings = null, string note = "", Action onOpen = null, Action onClosed = null, Action<string, bool> onSettingChanged = null, List<FeatureChoice> choices = null, Action<string, string> onChoiceChanged = null)
+        public BfgFeature(string id, string title, bool defaultOn = true, List<FeatureSetting> settings = null, string note = "", Action onOpen = null, Action onClosed = null, Action<string, bool> onSettingChanged = null, List<FeatureChoice> choices = null, Action<string, string> onChoiceChanged = null, List<FeatureRange> ranges = null, Action<string, float> onRangeChanged = null)
         {
             this.id = id;
             this.title = title;
             this.defaultOn = defaultOn;
             this.settings = settings;
             this.choices = choices;
+            this.ranges = ranges;
             this.note = note;
             _onOpen = onOpen;
             _onClosed = onClosed;
             _onSettingChanged = onSettingChanged;
             _onChoiceChanged = onChoiceChanged;
+            _onRangeChanged = onRangeChanged;
         }
 
         string key => "feature." + id;
@@ -125,9 +142,37 @@ namespace BetterFG.Features
             return null;
         }
 
+        public float GetRange(string rangeId)
+        {
+            var r = FindRange(rangeId);
+            if (r == null) return 0f;
+            string raw = SettingsService.Get(key + "." + rangeId, r.defaultValue.ToString(CultureInfo.InvariantCulture));
+            if (!float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out float v)) v = r.defaultValue;
+            return Mathf.Clamp(v, r.min, r.max);
+        }
+
+        public void SetRange(string rangeId, float value)
+        {
+            var r = FindRange(rangeId);
+            if (r == null) return;
+            value = Mathf.Clamp(value, r.min, r.max);
+            SettingsService.Set(key + "." + rangeId, value.ToString(CultureInfo.InvariantCulture));
+            OnRangeChanged(rangeId, value);
+        }
+
+        FeatureRange FindRange(string rangeId)
+        {
+            var list = ranges;
+            if (list == null) return null;
+            for (int i = 0; i < list.Count; i++)
+                if (list[i].id == rangeId) return list[i];
+            return null;
+        }
+
         public virtual void OnOpen() { _onOpen?.Invoke(); }
         public virtual void OnClosed() { _onClosed?.Invoke(); }
         public virtual void OnSettingChanged(string settingId, bool value) { _onSettingChanged?.Invoke(settingId, value); }
         public virtual void OnChoiceChanged(string choiceId, string optionId) { _onChoiceChanged?.Invoke(choiceId, optionId); }
+        public virtual void OnRangeChanged(string rangeId, float value) { _onRangeChanged?.Invoke(rangeId, value); }
     }
 }
