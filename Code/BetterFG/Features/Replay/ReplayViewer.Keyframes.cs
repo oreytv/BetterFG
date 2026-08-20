@@ -300,15 +300,14 @@ namespace BetterFG.Features.Replay
         void Minimize()
         {
             _minimized = true;
-            _windowRt.gameObject.SetActive(false);
-            _restoreBtn.gameObject.SetActive(true);
+            CloseContextMenu();
+            SetReplayUiVisible(true);
         }
 
         void Restore()
         {
             _minimized = false;
-            _restoreBtn.gameObject.SetActive(false);
-            _windowRt.gameObject.SetActive(true);
+            SetReplayUiVisible(true);
         }
 
         void OnKeyframeWindowClosed()

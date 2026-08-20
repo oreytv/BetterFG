@@ -74,6 +74,7 @@ namespace BetterFG.Tweaks
     // regen + canvas rebatch at framerate for a readout that only ever changes once a second. it now fires
     // on the second boundary. one postfix, not two — this method is hot enough that a second trampoline
     // dispatch for the threshold check was pure overhead.
+    [Utilities.BfgPatchGate("tweak.always_show_timer")]
     [HarmonyPatch(typeof(GameplayTimerViewModel), "DetermineTimeRemainingState")]
     internal static class DetermineTimeRemainingStatePatch
     {
@@ -100,6 +101,7 @@ namespace BetterFG.Tweaks
 
     // the view binds visibility to these two getters, not the raw field. force them true so the timer text
     // actually renders regardless of round state.
+    [Utilities.BfgPatchGate("tweak.always_show_timer")]
     [HarmonyPatch(typeof(GameplayTimerViewModel), "get_ShouldShowSmallTimeRemaining")]
     internal static class ShouldShowSmallTimeRemainingPatch
     {
@@ -110,6 +112,7 @@ namespace BetterFG.Tweaks
         }
     }
 
+    [Utilities.BfgPatchGate("tweak.always_show_timer")]
     [HarmonyPatch(typeof(GameplayTimerViewModel), "get_ShouldShowTimeRemaining")]
     internal static class ShouldShowTimeRemainingPatch
     {

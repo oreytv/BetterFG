@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using BetterFG.Tweaks;
 using UnityEngine;
 
@@ -70,6 +70,8 @@ namespace BetterFG.Tweaks
             // ── Audio ──
             Add<SpectatorMusicTweak>(TweakCategory.Audio);
             Add<MuteSocialSoundsTweak>(TweakCategory.Audio);
+            Add<DisablePlayerEmoticonsTweak>(TweakCategory.Audio);
+            Add<DisablePlayerPhrasesTweak>(TweakCategory.Audio);
             Add<BringBackFallGuyNoisesTweak>(TweakCategory.Audio);
 
             // ── Lighting ──
@@ -87,6 +89,7 @@ namespace BetterFG.Tweaks
             Add<FallFeedQualTimeTweak>(TweakCategory.Utility);
             Add<MaxFallFeedTweak>(TweakCategory.Utility);
             Add<ShowServerInfoTweak>(TweakCategory.Utility);
+            Add<DisableAgeRatingPopupTweak>(TweakCategory.Utility);
             Add<ShowTilePlaysTweak>(TweakCategory.Utility);
             Add<UpcomingShowsTweak>(TweakCategory.Utility);
             Add<AlwaysShowTimerTweak>(TweakCategory.Utility);

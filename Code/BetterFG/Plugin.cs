@@ -30,7 +30,7 @@ using BepInEx.Unity.IL2CPP.Utils.Collections;
 namespace BetterFG
 {
     [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
-    public class Plugin : BasePlugin
+    public partial class Plugin : BasePlugin
     {
         internal static new ManualLogSource Log;
         internal static Harmony HarmonyInstance;
@@ -57,17 +57,14 @@ namespace BetterFG
             // the `BetterFG_Gateway` here and initialize the mod directly so core features
             // and UI are available even without remote auth.
             InitGameObjects(0);
+            InitCompBuild();
             BetterFGStartupWindow.Show();
             BetterFGUpdateWindow.Show();
             var wheel = SideWheelManager.Create();
             SidewheelRegistry.RegisterAll(wheel);
 
-            var harmony = HarmonyInstance = new Harmony(MyPluginInfo.PLUGIN_GUID);
-            foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
-            {
-                try { new HarmonyLib.PatchClassProcessor(harmony, type).Patch(); }
-                catch (Exception ex) { Log.LogError($"Harmony: Failed to patch {type.FullName}: {ex.Message}"); }
-            }
+            HarmonyInstance = new Harmony(MyPluginInfo.PLUGIN_GUID);
+            ApplyAllPatches();
 
             // FallGuysLib owns the shared game-state patch and re-raises it; we subscribe instead of
             // patching GameStateMachine.ReplaceCurrentState ourselves (one patch across all FGLib mods).
@@ -82,26 +79,27 @@ namespace BetterFG
 
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
 
-            // our NAudio-driven menu/round music bypasses Unity's mixer, so AudioSettings.MuteAudioOnFocusLost
-            // doesn't touch it — players hear our tracks keep playing when they alt-tab. pause both on focus loss.
-            Application.add_focusChanged((Action<bool>)(focused =>
+        static partial void InitCompBuild();
+
+        internal static void ApplyAllPatches()
+        {
+            var harmony = HarmonyInstance;
+            BetterFG.Utilities.PatchGate.ResetForRepatch();
+            foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
             {
-                // honour the game's own "Mute Audio on Focus Lost" setting — Unity already does this
-                // for FMOD/AudioSource based on it, but our NAudio output bypasses that, so mirror it.
-                bool mute = false;
-                try { mute = GlobalGameStateClient.Instance?.PlayerProfile?.AudioSettings?.MuteAudioOnFocusLost ?? false; } catch { }
-                if (!mute) return;
-                if (focused) MenuMusicService.Resume();
-                else MenuMusicService.Pause();
-                BetterFG.Features.UnityRound.RoundMusicService.SetPaused(!focused);
-            }));
+                if (BetterFG.Utilities.PatchGate.Claim(type)) continue;
+                try { new HarmonyLib.PatchClassProcessor(harmony, type).Patch(); }
+                catch (Exception ex) { Log.LogError($"Harmony: Failed to patch {type.FullName}: {ex.Message}"); }
+            }
+            BetterFG.Utilities.PatchGate.ApplyInitial();
         }
 
         private static Assembly ResolveNAudio(object _, ResolveEventArgs args)
         {
-            string libs = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Libs");
-            string path = Path.Combine(libs, new AssemblyName(args.Name).Name + ".dll");
+            string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            string path = Path.Combine(dir, new AssemblyName(args.Name).Name + ".dll");
             return File.Exists(path) ? Assembly.LoadFrom(path) : null;
         }
 
@@ -113,6 +111,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<SkinApplicationService>();
             ClassInjector.RegisterTypeInIl2Cpp<BeanMonitorService>();
             ClassInjector.RegisterTypeInIl2Cpp<PlayerScaleService>();
+            ClassInjector.RegisterTypeInIl2Cpp<BeanVisualRig>();
             ClassInjector.RegisterTypeInIl2Cpp<CostumePollerComponent>();
             ClassInjector.RegisterTypeInIl2Cpp<BoneSyncComponent>();
             ClassInjector.RegisterTypeInIl2Cpp<MenuCustomizationApplication>();
@@ -160,7 +159,11 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<CustomCreativeTextureTab>();
             ClassInjector.RegisterTypeInIl2Cpp<PersonalBestTab>();
             ClassInjector.RegisterTypeInIl2Cpp<ReplayTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<ReplaysTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<ReplayImagesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<PlinthsTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PlinthsInGameTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PlinthsUgcTab>();
             ClassInjector.RegisterTypeInIl2Cpp<RepoSelectorTab>();
 
             // windows
@@ -177,6 +180,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<UnityRoundLoaderWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<ObstacleTextureWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.BatchEditWindow>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.PublishThumbnailWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.CreativeSelectionWatcher>();
             ClassInjector.RegisterTypeInIl2Cpp<WindowDragHandle>();
             ClassInjector.RegisterTypeInIl2Cpp<TweaksWindow>();
@@ -198,6 +202,8 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<LobbyAudioPromptTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<SpectatorMusicTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<MuteSocialSoundsTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<DisablePlayerEmoticonsTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<DisablePlayerPhrasesTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<BringBackFallGuyNoisesTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<StripSizeTagsTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<FallFeedQualTimeTweak>();
@@ -217,6 +223,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<DisableAntiAfkTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<StartupTitleScreenTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<ShowServerInfoTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<DisableAgeRatingPopupTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<ShowTilePlaysTweak>();
             //ClassInjector.RegisterTypeInIl2Cpp<MultiShowSelectTweak>(); // WIP, shelved (see TweakRegistry)
             ClassInjector.RegisterTypeInIl2Cpp<ShadowDistanceTweak>();
@@ -295,8 +302,8 @@ namespace BetterFG
             BetterFGTabRegistry.Register<AllCosmeticsTab>();
             BetterFGTabRegistry.Register<CreativeTab>();
             BetterFGTabRegistry.Register<PersonalBestTab>();
-            BetterFGTabRegistry.Register<ReplayTab>();
-            BetterFGTabRegistry.Register<PlinthsTab>();
+            BetterFGTabRegistry.Register<ReplaysTab>();
+            BetterFGTabRegistry.Register<PlinthsInGameTab>();
 
             var uiManGo = new GameObject("BetterFG_UI");
             uiManGo.hideFlags = HideFlags.HideAndDontSave;

@@ -105,11 +105,11 @@
       <CreatorDeployTarget Include="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').Substring(14))" Condition="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').StartsWith('CREATORDEPLOY:'))" />
       <CreatorDeployTarget Include="$(CreatorDeployDir)" Condition="'$(CreatorDeployDir)' != ''" />
     </ItemGroup>
-    <MakeDir Directories="@(CreatorDeployTarget)" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="%(CreatorDeployTarget.Identity)" SkipUnchangedFiles="true" Condition="Exists('$(TargetPath)')" />
-    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="%(CreatorDeployTarget.Identity)" SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\Skins\group_skins.bat" DestinationFolder="%(CreatorDeployTarget.Identity)" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\Skins\group_skins.bat')" />
-    <Message Importance="high" Text="Creator deployed to %(CreatorDeployTarget.Identity)" />
+    <MakeDir Directories="@(CreatorDeployTarget)" Condition="'@(CreatorDeployTarget)' != ''" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="%(CreatorDeployTarget.Identity)" SkipUnchangedFiles="true" Condition="'@(CreatorDeployTarget)' != '' And Exists('$(TargetPath)')" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="%(CreatorDeployTarget.Identity)" SkipUnchangedFiles="true" Condition="'@(CreatorDeployTarget)' != '' And Exists('$(TargetDir)$(TargetName).pdb')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Skins\group_skins.bat" DestinationFolder="%(CreatorDeployTarget.Identity)" SkipUnchangedFiles="true" Condition="'@(CreatorDeployTarget)' != '' And Exists('$(MSBuildProjectDirectory)\Skins\group_skins.bat')" />
+    <Message Importance="high" Text="Creator deployed to %(CreatorDeployTarget.Identity)" Condition="'@(CreatorDeployTarget)' != ''" />
   </Target>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

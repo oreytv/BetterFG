@@ -19,6 +19,7 @@ namespace BetterFG.Features.CustomizeFallGuys
         static GameObject _bean;
         static readonly List<Renderer> _rends = new List<Renderer>();
         static readonly List<int> _layers = new List<int>();
+        static readonly List<bool> _offscreen = new List<bool>();
 
         public static Texture Ensure()
         {
@@ -31,6 +32,7 @@ namespace BetterFG.Features.CustomizeFallGuys
             _bean = null;
             _rends.Clear();
             _layers.Clear();
+            _offscreen.Clear();
         }
 
         public static void SetBean(GameObject bean)
@@ -39,6 +41,7 @@ namespace BetterFG.Features.CustomizeFallGuys
             _bean = bean;
             _rends.Clear();
             _layers.Clear();
+            _offscreen.Clear();
             if (bean == null) return;
 
             foreach (var r in bean.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -51,7 +54,7 @@ namespace BetterFG.Features.CustomizeFallGuys
             {
                 _layers.Add(_rends[i].gameObject.layer);
                 var smr = _rends[i].TryCast<SkinnedMeshRenderer>();
-                if (smr != null) smr.updateWhenOffscreen = true;
+                _offscreen.Add(smr != null && smr.updateWhenOffscreen);
             }
         }
 
@@ -73,6 +76,8 @@ namespace BetterFG.Features.CustomizeFallGuys
             {
                 body.Encapsulate(_rends[i].bounds);
                 _rends[i].gameObject.layer = LeaderboardMugshotScene.Layer;
+                var smr = _rends[i].TryCast<SkinnedMeshRenderer>();
+                if (smr != null) smr.updateWhenOffscreen = true;
             }
 
             var fwd = _bean.transform.forward;
@@ -90,7 +95,11 @@ namespace BetterFG.Features.CustomizeFallGuys
             RenderTexture.active = prevActive;
 
             for (int i = 0; i < _rends.Count; i++)
+            {
                 _rends[i].gameObject.layer = _layers[i];
+                var smr = _rends[i].TryCast<SkinnedMeshRenderer>();
+                if (smr != null) smr.updateWhenOffscreen = _offscreen[i];
+            }
         }
 
         static void Build()

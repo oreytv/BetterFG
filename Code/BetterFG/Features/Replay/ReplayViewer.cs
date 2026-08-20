@@ -1239,8 +1239,10 @@ namespace BetterFG.Features.Replay
         void SetReplayUiVisible(bool visible)
         {
             _windowRt.gameObject.SetActive(visible && !_minimized);
-            _timelineRt.gameObject.SetActive(visible);
-            _controlsRt.gameObject.SetActive(visible);
+            _timelineRt.gameObject.SetActive(visible && !_minimized);
+            _controlsRt.gameObject.SetActive(visible && !_minimized);
+            _restoreBtn.gameObject.SetActive(visible && _minimized);
+            SetShotPrompt(visible && _minimized);
         }
 
         void KillNavigation()
@@ -1521,6 +1523,8 @@ namespace BetterFG.Features.Replay
                 return;
             }
 
+            if (_shotPrompt != null && _shotPrompt.IsPressed()) TakePicture();
+
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 if (_editingCam) EndCameraEdit();
@@ -1633,6 +1637,8 @@ namespace BetterFG.Features.Replay
             bloomThreshold = k.bloomThreshold,
             sharpenAmount = k.sharpenAmount,
             sharpenRadius = k.sharpenRadius,
+            dofStrength = k.dofStrength,
+            dofDistance = k.dofDistance,
         };
 
 
@@ -1822,6 +1828,7 @@ namespace BetterFG.Features.Replay
             var client = GlobalGameStateClient.Instance;
             if (client != null)
             {
+                ReplayMenuReloadGuard.Arm();
                 client.ForceMainMenuSceneReload = true;
                 client.ReloadGame(true, EnumDisconnectReasonGraceful.NoReason);
             }
@@ -1829,6 +1836,7 @@ namespace BetterFG.Features.Replay
             float remaining = _exitStart + 1f - Time.realtimeSinceStartup;
             if (remaining > 0f) yield return new WaitForSecondsRealtime(remaining);
             yield return new WaitForSecondsRealtime(2f);
+            ReplayMenuReloadGuard.Disarm();
             yield return StartCoroutine(LoadingScreenService.HideRoutine().WrapToIl2Cpp());
 
             Destroy(gameObject);

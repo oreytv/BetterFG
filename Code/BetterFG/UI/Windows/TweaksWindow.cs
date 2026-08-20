@@ -318,7 +318,8 @@ namespace BetterFG.UI.Windows
             incRt.sizeDelta = new Vector2(w, TOGGLE_H);
 
             UGUIShip.CreateIncrement(incGo.transform, new Rect(0f, 0f, w, TOGGLE_H),
-                inc.Min, inc.Max, inc.Get, inc.Set, inc.Wrap, 11);
+                (float)inc.Min, (float)inc.Max, () => inc.Get(), v => inc.Set(Mathf.RoundToInt(v)),
+                inc.Step > 0 ? inc.Step : 1f, false, inc.Wrap, 11);
         }
 
         private static void BuildSettingRow(RectTransform parent, BfgTweak tweak, TweakSetting setting, Color bg)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BetterFG.Core;
 using BetterFG.Features.MorePlatformIcon;
 using BetterFG.Nametag;
@@ -38,7 +38,6 @@ namespace BetterFG.Patches
                     return;
 
                 string localKey = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
-                string localName = LocalPlayerInfo.FGlocalplayerusername ?? "";
                 string localCustomName = LocalPlayerInfo.CustomName ?? "";
 
                 bool changed = false;
@@ -56,7 +55,7 @@ namespace BetterFG.Patches
                     bool hasInfo = info != null;
                     bool hasCustomName = hasInfo && !string.IsNullOrEmpty(info.customName);
                     bool hasStyle = hasInfo && HasNameStyle(info);
-                    bool isLocal = IsLocalKey(fullKey);
+                    bool isLocal = IsLocalKey(fullKey, localKey);
 
 
                     if (hasInfo && (hasCustomName || hasStyle))
@@ -149,9 +148,8 @@ namespace BetterFG.Patches
                    Math.Abs(info.b - 1f) > 0.001f;
         }
 
-        private static bool IsLocalKey(string fullKey)
+        private static bool IsLocalKey(string fullKey, string localKey)
         {
-            string localKey = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
             if (!string.IsNullOrEmpty(localKey) && fullKey.Equals(localKey, StringComparison.OrdinalIgnoreCase))
                 return true;
 

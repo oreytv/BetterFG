@@ -46,16 +46,18 @@ namespace BetterFG.Features.Replay
             return list;
         }
 
+        static HashSet<string> _favSet;
+
         public static bool IsFavourite(string path)
         {
-            foreach (string entry in Favourites())
-                if (string.Equals(entry, path, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
+            if (_favSet == null) _favSet = new HashSet<string>(Favourites(), StringComparer.OrdinalIgnoreCase);
+            return _favSet.Contains(path);
         }
 
         public static bool ToggleFavourite(string path)
         {
             var favs = Favourites();
+            _favSet = null;
             for (int i = 0; i < favs.Count; i++)
                 if (string.Equals(favs[i], path, StringComparison.OrdinalIgnoreCase))
                 {
@@ -129,14 +131,20 @@ namespace BetterFG.Features.Replay
                 if (_listCacheValid && dirStamp == _listCacheDirStamp)
                     return _listCache;
 
-                var paths = new List<string>();
+                var files = new List<FileInfo>();
                 if (Directory.Exists(SaveReplay.ReplayDir))
-                    paths.AddRange(Directory.GetFiles(SaveReplay.ReplayDir, "*" + SaveReplay.Extension));
+                    files.AddRange(new DirectoryInfo(SaveReplay.ReplayDir).GetFiles("*" + SaveReplay.Extension));
 
                 foreach (string entry in Known())
-                    if (File.Exists(entry)) paths.Add(entry);
+                {
+                    var known = new FileInfo(entry);
+                    if (known.Exists) files.Add(known);
+                }
 
-                paths.Sort((a, b) => File.GetLastWriteTimeUtc(b).CompareTo(File.GetLastWriteTimeUtc(a)));
+                files.Sort((a, b) => b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc));
+
+                var paths = new List<string>(files.Count);
+                foreach (var f in files) paths.Add(f.FullName);
 
                 _listCache = paths;
                 _listCacheDirStamp = dirStamp;
@@ -151,15 +159,17 @@ namespace BetterFG.Features.Replay
         }
 
         static readonly Dictionary<string, ReplayMeta> _metaCache = new Dictionary<string, ReplayMeta>();
+        const string PLAYER_ID_KEY = "\"playerId\":";
 
         public static ReplayMeta ReadMeta(string path)
         {
-            var stamp = File.GetLastWriteTime(path);
+            var info = new FileInfo(path);
+            var stamp = info.LastWriteTime;
             if (_metaCache.TryGetValue(path, out var hit) && hit.when == stamp) return hit;
 
-            long size = new FileInfo(path).Length;
-            string framesPath = SaveReplay.FramesPathFor(path);
-            if (File.Exists(framesPath)) size += new FileInfo(framesPath).Length;
+            long size = info.Length;
+            var frames = new FileInfo(SaveReplay.FramesPathFor(path));
+            if (frames.Exists) size += frames.Length;
 
             var meta = new ReplayMeta { path = path, when = stamp, isFav = IsFavourite(path), sizeBytes = size };
             string json = null;
@@ -182,7 +192,8 @@ namespace BetterFG.Features.Replay
                 meta.shareCode = JsonUtil.GetValue(json, "shareCode");
                 meta.isUgc = JsonUtil.GetBool(json, "isUgc");
                 meta.duration = JsonUtil.GetFloat(json, "duration");
-                meta.players = JsonUtil.GetArray(json, "players").Count;
+                for (int i = json.IndexOf(PLAYER_ID_KEY); i >= 0; i = json.IndexOf(PLAYER_ID_KEY, i + PLAYER_ID_KEY.Length))
+                    meta.players++;
             }
 
             if (string.IsNullOrEmpty(meta.label))
@@ -602,6 +613,8 @@ namespace BetterFG.Features.Replay
                     bloomThreshold = JsonUtil.GetFloat(entry, "bloomThreshold", 1f),
                     sharpenAmount = JsonUtil.GetFloat(entry, "sharpenAmount"),
                     sharpenRadius = JsonUtil.GetFloat(entry, "sharpenRadius", 1f),
+                    dofStrength = JsonUtil.GetFloat(entry, "dofStrength"),
+                    dofDistance = JsonUtil.GetFloat(entry, "dofDistance", 10f),
                 });
             }
 

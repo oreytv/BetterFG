@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -670,6 +670,7 @@ namespace BetterFG.Features.QualificationTime
 
         static GameObject _liveTimerGo;
         static FGClient.TimeAttackResultViewModel _liveTimerVm;
+        static TextMeshProUGUI _liveTimerText;
         // SpawnLiveTimer destroys the old timer and assigns the new one in the same frame, so the
         // previous round's 50Hz ticker wakes to a non-null _liveTimerGo (the NEW one) and never
         // exits — one extra ticker per race round, each spamming RaiseAllPropertiesChanged. the
@@ -862,6 +863,10 @@ namespace BetterFG.Features.QualificationTime
             timetexttmp.enableAutoSizing = false;
             timetexttmp.transform.localPosition = new Vector3(0, 0, 0);
 
+            foreach (var b in timetexttmp.GetComponents<Mediatonic.Tools.MVVM.TMPTextBinding>())
+                UnityEngine.Object.Destroy(b);
+            _liveTimerText = timetexttmp;
+
             ApplyTimerColors(clone);
 
             vm.PositionText = "";
@@ -957,6 +962,7 @@ namespace BetterFG.Features.QualificationTime
             var go = _liveTimerGo;
             _liveTimerGo = null;
             _liveTimerVm = null;
+            _liveTimerText = null;
 
             var pbLabel = go.transform.Find("QualTimeLivePbLabel");
             if (pbLabel != null) UnityEngine.Object.DestroyImmediate(pbLabel.gameObject);
@@ -989,6 +995,7 @@ namespace BetterFG.Features.QualificationTime
                 UnityEngine.Object.Destroy(_liveTimerGo);
                 _liveTimerGo = null;
                 _liveTimerVm = null;
+                _liveTimerText = null;
             }
         }
 
@@ -997,17 +1004,18 @@ namespace BetterFG.Features.QualificationTime
             int gen = _liveTimerGen;
             var wait = new WaitForSeconds(1f / 50f);
             string last = null;
+
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+
             while (gen == _liveTimerGen && _liveTimerGo != null)
             {
-                if (_liveTimerVm != null && GlobalGameStateClient.Instance?.GameStateView != null)
+                if (_liveTimerText != null && gsv != null)
                 {
-                    float elapsed = GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed;
-                    TimeSpan t = TimeSpan.FromSeconds(elapsed);
+                    TimeSpan t = TimeSpan.FromSeconds(gsv.GameplayTimeElapsed);
                     string formatted = string.Format("{0:D2}:{1:D2}:{2:D3}", t.Minutes, t.Seconds, t.Milliseconds);
                     if (formatted != last)
                     {
-                        _liveTimerVm.TimeText = formatted;
-                        _liveTimerVm.RaiseAllPropertiesChanged();
+                        _liveTimerText.text = formatted;
                         last = formatted;
                     }
                 }
@@ -1322,7 +1330,7 @@ namespace BetterFG.Features.QualificationTime
                 // overwritten with the faster new time before the ghost finishes, and reading it at
                 // fallfeed time would stamp the ghost with our new PB instead of its own.
                 float ghostPb = PBStore.TryGet(cacheId, type, out float _pb, out _) ? _pb : frames[frames.Count - 1].Item1;
-                BetterFGUIMan.Instance.StartCoroutine(GhostPlayback(ghostGo, ghostAnim, frames, ghostName, ghostPb).WrapToIl2Cpp());
+                BetterFGUIMan.Instance.StartCoroutine(GhostPlayback(ghostGo, ghostAnim, frames, ghostName, ghostPb, gen).WrapToIl2Cpp());
                 Plugin.Log.LogInfo($"Ghost: spawned for {cacheId} [{type}]");
             }
         }
@@ -1412,7 +1420,7 @@ namespace BetterFG.Features.QualificationTime
             }
         }
 
-        static IEnumerator GhostPlayback(GameObject ghostGo, Animator ghostAnim, List<(float t, Vector3 pos, Quaternion rot, int stateHash, float animTime)> frames, string ghostName, float ghostPb)
+        static IEnumerator GhostPlayback(GameObject ghostGo, Animator ghostAnim, List<(float t, Vector3 pos, Quaternion rot, int stateHash, float animTime)> frames, string ghostName, float ghostPb, int gen)
         {
             int idx = 0;
             bool finished = false;
@@ -1424,24 +1432,25 @@ namespace BetterFG.Features.QualificationTime
             bool lastGrounded = true;
             float lastSlopeAngle = 0f;
             float nextGroundCheck = 0f;
-            while (ghostGo != null && _ghostGos.Contains(ghostGo) && idx < frames.Count)
+            var ghostTf = ghostGo.transform;
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            while (ghostGo != null && _ghostGen == gen && idx < frames.Count)
             {
-                float elapsed = GlobalGameStateClient.Instance?.GameStateView != null
-                    ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed
-                    : 0f;
+                float elapsed = gsv != null ? gsv.GameplayTimeElapsed : 0f;
                 while (idx + 1 < frames.Count && frames[idx + 1].t <= elapsed)
                     idx++;
+                Vector3 pos;
                 if (idx + 1 < frames.Count)
                 {
                     float den = frames[idx + 1].t - frames[idx].t;
                     float frac = den > 0f ? Mathf.Clamp01((elapsed - frames[idx].t) / den) : 0f;
-                    ghostGo.transform.position = Vector3.Lerp(frames[idx].pos, frames[idx + 1].pos, frac);
-                    ghostGo.transform.rotation = Quaternion.Slerp(frames[idx].rot, frames[idx + 1].rot, frac);
+                    pos = Vector3.Lerp(frames[idx].pos, frames[idx + 1].pos, frac);
+                    ghostTf.SetPositionAndRotation(pos, Quaternion.Slerp(frames[idx].rot, frames[idx + 1].rot, frac));
                 }
                 else
                 {
-                    ghostGo.transform.position = frames[idx].pos;
-                    ghostGo.transform.rotation = frames[idx].rot;
+                    pos = frames[idx].pos;
+                    ghostTf.SetPositionAndRotation(pos, frames[idx].rot);
                     // hit the last frame with live elapsed already past it — ghost has "qualified".
                     if (elapsed >= frames[idx].t) { finished = true; break; }
                 }
@@ -1465,21 +1474,16 @@ namespace BetterFG.Features.QualificationTime
                         else driftFrames = 0;
                     }
 
-                    // velocity from the ghost's own per-frame movement, not the recorded frame pair whose
-                    // replicated timestamps often match and give dt=0. zVel is XZ speed magnitude, not the
-                    // facing-forward component, which collapsed to ~0 when the bean moved off its facing
-                    Vector3 pos = ghostGo.transform.position;
-
                     // grounded/slope come from a real SphereCast, but ghosts don't need it re-cast every
                     // render frame — 20Hz is way faster than grounded state actually changes. position and
                     // every animator param below still update every frame, so movement stays fully smooth.
                     if (Time.unscaledTime >= nextGroundCheck)
                     {
                         nextGroundCheck = Time.unscaledTime + 1f / 20f;
-                        lastGrounded = BeanAnimationUtil.CheckGrounded(ghostGo.transform, out lastSlopeAngle);
+                        lastGrounded = BeanAnimationUtil.CheckGrounded(ghostTf, out lastSlopeAngle);
                     }
 
-                    BeanAnimationUtil.DriveLocomotion(ghostAnim, ghostGo.transform,
+                    BeanAnimationUtil.DriveLocomotion(ghostAnim, ghostTf,
                         havePrevPos && Time.deltaTime > 0f ? (pos - prevPos) / Time.deltaTime : Vector3.zero,
                         lastGrounded, lastSlopeAngle);
                     prevPos = pos;

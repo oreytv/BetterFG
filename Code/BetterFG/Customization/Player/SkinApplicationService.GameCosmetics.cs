@@ -227,7 +227,7 @@ namespace BetterFG.Customization.Player
             appliedSkins[pendingKey] = new AppliedSkinInfo { instance = clone, bean = bean, type = SkinType.Costume, disabledChildren = disabled, boundRenderers = boundRenderers, addressableInstance = true };
             pendingKeys.Remove(pendingKey);
             ReapplyAllEnabledFromSettings();
-            OnSkinApplied?.Invoke(new SkinApplyEvent { skinInfo = info, bean = bean, reason = reason });
+            RaiseSkinApplied(info, bean, reason);
         }
 
         private List<GameObject> BindGameCosmeticToFallguy(GameObject clone, GameObject bean)
@@ -268,7 +268,11 @@ namespace BetterFG.Customization.Player
                         // only recolours once the SMR is registered as a top/bottom renderer AND
                         // SetCostumeBaseCopyColor runs after that assignment. so: assign, then call.
                         string n = smr.name != null ? smr.name.ToLowerInvariant() : "";
-                        bool isBottom = n.Contains("bottom") || n.Contains("lower") || n.Contains("leg") || n.Contains("feet") || n.Contains("foot");
+                        bool isBottom = HasNameTag(n, "lw") || n.Contains("bottom") || n.Contains("lower") || n.Contains("leg") || n.Contains("feet") || n.Contains("foot");
+
+                        if (fgch._skinnedMeshes != null && !fgch._skinnedMeshes.Contains(smr))
+                            fgch._skinnedMeshes.Add(smr);
+
                         if (isBottom)
                         {
                             if (!fgch._bottomRenderers.Contains(smr)) fgch._bottomRenderers.Add(smr);
@@ -290,6 +294,14 @@ namespace BetterFG.Customization.Player
 
 
             return boundGos;
+        }
+
+        private static bool HasNameTag(string lowerName, string tag)
+        {
+            var parts = lowerName.Split('_');
+            for (int i = 0; i < parts.Length; i++)
+                if (parts[i] == tag) return true;
+            return false;
         }
 
         // the bean's body mask is two shader slots, top and bottom (SetMask picks the slot from the
@@ -637,7 +649,7 @@ namespace BetterFG.Customization.Player
                             var smr = go.GetComponent<SkinnedMeshRenderer>();
                             if (smr == null) continue;
                             string n = smr.name != null ? smr.name.ToLowerInvariant() : "";
-                            bool isBottom = n.Contains("bottom") || n.Contains("lower") || n.Contains("leg") || n.Contains("feet") || n.Contains("foot");
+                            bool isBottom = HasNameTag(n, "lw") || n.Contains("bottom") || n.Contains("lower") || n.Contains("leg") || n.Contains("feet") || n.Contains("foot");
                             var list = isBottom ? fgch._bottomRenderers : fgch._topRenderers;
                             if (!list.Contains(smr)) list.Add(smr);
                         }

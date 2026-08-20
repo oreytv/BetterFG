@@ -22,8 +22,7 @@ namespace BetterFG.Patches.Social
         [HarmonyPrefix]
         public static bool Prefix(MotorFunctionSpeechStateActive __instance, ref int optionId)
         {
-            // mute ranked emoticons if the tweak is on
-            if (MuteSocialSoundsTweak.Active)
+            if (MuteSocialSoundsTweak.Active || DisablePlayerEmoticonsTweak.Active || DisablePlayerPhrasesTweak.Active)
             {
                 try
                 {
@@ -32,10 +31,17 @@ namespace BetterFG.Patches.Social
                     if (lookup != null && lookup.ContainsKey(optionId))
                     {
                         var opt = lookup[optionId];
-                        if (opt != null && MuteSocialSoundsTweak.IsRankAudio(opt._audioEvent))
+                        if (opt != null)
                         {
-                            Plugin.Log?.LogInfo("muteRankSounds: skipped " + opt._audioEvent);
-                            return false;
+                            if (MuteSocialSoundsTweak.Active && MuteSocialSoundsTweak.IsRankAudio(opt._audioEvent))
+                            {
+                                Plugin.Log?.LogInfo("muteRankSounds: skipped " + opt._audioEvent);
+                                return false;
+                            }
+
+                            string group = opt.CMSGroupID;
+                            if (DisablePlayerPhrasesTweak.Active && group == "cosmetics_phrases") return false;
+                            if (DisablePlayerEmoticonsTweak.Active && group == "cosmetics_emoticons") return false;
                         }
                     }
                 }
@@ -140,6 +146,8 @@ namespace BetterFG.Patches.Social
     {
         public static void CancelLocalEmote(MotorAgent agent)
         {
+            if (!EmoteInjectionService.AnyGraphsLive) return;
+
             try
             {
                 if (agent == null) return;

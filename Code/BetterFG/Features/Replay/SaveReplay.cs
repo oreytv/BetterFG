@@ -380,6 +380,8 @@ namespace BetterFG.Features.Replay
                 Float(sb, "bloomThreshold", fx.bloomThreshold);
                 Float(sb, "sharpenAmount", fx.sharpenAmount);
                 Float(sb, "sharpenRadius", fx.sharpenRadius);
+                Float(sb, "dofStrength", fx.dofStrength);
+                Float(sb, "dofDistance", fx.dofDistance);
                 sb.Append('}');
             }
             sb.Append(']');

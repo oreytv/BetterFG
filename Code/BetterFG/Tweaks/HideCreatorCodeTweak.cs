@@ -28,6 +28,24 @@ namespace BetterFG.Tweaks
                 vm.gameObject.SetActive(visible);
             }
         }
+
+        public static void OnLoadingScreenShown(LoadingGameScreenViewModel screen)
+        {
+            var inst = Instance;
+            if (inst == null || !inst.IsEnabled) return;
+            foreach (var vm in screen.GetComponentsInChildren<CreatorIDViewModel>(true))
+            {
+                if (vm == null) continue;
+                vm.gameObject.SetActive(false);
+            }
+        }
+
+        public static void OnCreatorIDPopulated(CreatorIDViewModel vm)
+        {
+            var inst = Instance;
+            if (inst == null || !inst.IsEnabled) return;
+            vm.gameObject.SetActive(false);
+        }
     }
 
     // reapply on every round countdown so it survives scene reloads

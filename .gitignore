@@ -1,6 +1,5 @@
-**/bin/
+﻿**/bin/
 **/obj/
-Code/BetterFG/BuildHash.g.cs
 .vs/
 *.vsidx
 *.user
@@ -20,5 +19,8 @@ _creator_deploy_test/
 Code/BetterFG.Installer/payload_src
 Code/BetterFG/Customization/Profiles/
 Code/BetterFG/UI/Windows/ProfilesWindow.cs
+Code/BetterFG/build/
+Code/BetterFG/Features/Comp/
 Code/BetterFG/Patches/PatchEAC.cs
+Code/BetterFG/build_prompt.state.json
 Code/BetterFG.SkinPackager/creator_deploy.txt

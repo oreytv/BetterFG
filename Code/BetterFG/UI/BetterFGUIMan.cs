@@ -407,6 +407,11 @@ namespace BetterFG.UI
 
         private Tooltip _tooltip;
 
+        private IntPtr _navSelPtr = IntPtr.Zero;
+        private bool _navSelIsField;
+        private bool _navSelUnderMain;
+        private bool _navSelIsOurs;
+
         // ── Lifecycle ─────────────────────────────────────────────────────────
         void Awake()
         {
@@ -520,9 +525,19 @@ namespace BetterFG.UI
 
             bool blockNav = false;
             var selected = cur.currentSelectedGameObject;
-            if (selected != null
-                && (selected.GetComponent<UnityEngine.UI.InputField>() != null
-                    || selected.GetComponent<TMP_InputField>() != null))
+
+            IntPtr selPtr = selected != null ? selected.Pointer : IntPtr.Zero;
+            if (selPtr != _navSelPtr)
+            {
+                _navSelPtr = selPtr;
+                _navSelIsField = selected != null
+                    && (selected.GetComponent<UnityEngine.UI.InputField>() != null
+                        || selected.GetComponent<TMP_InputField>() != null);
+                _navSelUnderMain = _navSelIsField && _canvas != null && selected.transform.IsChildOf(_canvas.transform);
+                _navSelIsOurs = _navSelIsField && !_navSelUnderMain && IsOurField(selected.transform);
+            }
+
+            if (_navSelIsField)
             {
                 // only lock for OUR input fields — a focused Fall Guys input field
                 // (chat, name entry, etc.) must never eat the player's controls.
@@ -535,9 +550,8 @@ namespace BetterFG.UI
                 // only its CanvasGroup alpha goes to 0, so we check that instead). fields under
                 // the main _canvas need _visible; window fields just need to be active. we do NOT
                 // deselect — that would yank focus out of a field you're actively typing in.
-                bool underMain = _canvas != null && selected.transform.IsChildOf(_canvas.transform);
                 blockNav = selected.activeInHierarchy
-                    && (underMain ? _visible : IsOurField(selected.transform));
+                    && (_navSelUnderMain ? _visible : _navSelIsOurs);
             }
 
             // write the real-field latch only; the fake-field caret paths own the

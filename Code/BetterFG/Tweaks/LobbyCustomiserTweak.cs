@@ -25,6 +25,24 @@ namespace BetterFG.Tweaks
         public static LobbyCustomiserTweak Instance { get; private set; }
         void Awake() => Instance = this;
 
+        private static Transform _showSelect, _playerList;
+
+        public static bool PopupOpen
+        {
+            get
+            {
+                if (_showSelect == null || _playerList == null)
+                {
+                    var rootGo = GameObject.Find(UiRootPath);
+                    if (rootGo == null) return false;
+                    _showSelect = rootGo.transform.Find(ShowSelectSub);
+                    _playerList = rootGo.transform.Find(PlayerListSub);
+                }
+                return (_showSelect != null && _showSelect.gameObject.activeSelf) ||
+                       (_playerList != null && _playerList.gameObject.activeSelf);
+            }
+        }
+
         const string UiRootPath = "UICanvas_Client_V2(Clone)/Default";
         const string LobbyCanvasSub = "Prime_UI_PrivateLobby_Canvas(Clone)";
         const string TopBarSub = "Topbar_Prime(Clone)";
@@ -102,7 +120,15 @@ namespace BetterFG.Tweaks
                 _row.gameObject.SetActive(true);
                 if (_tabsInput != null) _tabsInput.enabled = _onTabs;
                 if (_lobbyInput != null) _lobbyInput.enabled = !_onTabs;
-                if (EventSystem.current != null) EventSystem.current.sendNavigationEvents = true;
+                if (EventSystem.current != null)
+                {
+                    EventSystem.current.sendNavigationEvents = true;
+                    if (!_onTabs)
+                    {
+                        var back = _lobbyInput?._lastSelectedGameObject;
+                        if (back != null && back.activeInHierarchy) EventSystem.current.SetSelectedGameObject(back);
+                    }
+                }
             }
         }
 
@@ -140,11 +166,7 @@ namespace BetterFG.Tweaks
             }
             if (selectorUp) return;
 
-            var showSelect = root.Find(ShowSelectSub);
-            var playerList = root.Find(PlayerListSub);
-            bool popupOpen = (showSelect != null && showSelect.gameObject.activeSelf) ||
-                             (playerList != null && playerList.gameObject.activeSelf);
-            if (popupOpen) return;
+            if (PopupOpen) return;
 
             int dy = _navPlayer.GetButton(_vertAction) ? 1 : _navPlayer.GetNegativeButton(_vertAction) ? -1 : 0;
             if (dy != 0 && !_heldVert)
@@ -199,6 +221,12 @@ namespace BetterFG.Tweaks
             }
 
             EventSystem.current.sendNavigationEvents = on || !_onTabs;
+
+            if (!on && !_onTabs)
+            {
+                var back = _lobbyInput?._lastSelectedGameObject;
+                if (back != null && back.activeInHierarchy) EventSystem.current.SetSelectedGameObject(back);
+            }
 
             StartCoroutine(SlideParty(on ? PartyShifted : PartyHome).WrapToIl2Cpp());
         }

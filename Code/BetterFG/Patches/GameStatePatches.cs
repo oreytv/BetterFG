@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -57,7 +57,7 @@ namespace BetterFG.Patches.GameStates
             BetterFG.Tweaks.BfgTweak.RaiseMainMenuEntered();
             BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
             BetterFG.Features.Replay.ReplayViewer.OnMainMenuEntered();
-            BetterFG.Patches.SeasonProgressHoverPatch.Forget();
+            BetterFG.Patches.SeasonProgressHoverPatch.SetMenuActive(true);
 
             BetterFG.UI.Tab.NametagTab.CacheNameAssets();
             BetterFG.UI.BetterFGUIMan.ResolveAsapFont();
@@ -282,6 +282,7 @@ namespace BetterFG.Patches.GameStates
                     MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(builder != null ? builder.transform : null).WrapToIl2Cpp());
             }
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
+            BetterFG.Services.DiscordPresenceService.Push();
         }
     }
 
@@ -1298,12 +1299,13 @@ namespace BetterFG.Patches.GameStates
 
 
     [HarmonyPatch(typeof(GlobalGameStateClient), "HandleServerStartRound")]
-    public class HandleServerStartRoundPa
+    public partial class HandleServerStartRoundPa
     {
         [HarmonyPostfix]
         public static void Postfix()
         {
             BetterFGUnityRounds.StartCustomMusicIfAny();
+            BetterFG.Patches.SeasonProgressHoverPatch.SetMenuActive(false);
 
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
 
@@ -1366,7 +1368,11 @@ namespace BetterFG.Patches.GameStates
             var persis = GameObject.Find("UICanvas_Client_V2(Clone)/Default/InGameUiManager(Clone)/PersistentOverlayUI");
             var fallfeed = persis != null ? persis.transform.Find("PB_UI_FallFeed") : null;
             if (fallfeed != null) fallfeed.localPosition = new Vector3(0f, -66.1997f, 0f);
+
+            CompAnticheatRoundStart();
         }
+
+        static partial void CompAnticheatRoundStart();
 
 
 

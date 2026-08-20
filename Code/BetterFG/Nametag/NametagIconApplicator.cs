@@ -93,7 +93,9 @@ namespace BetterFG.Nametag
         private static readonly Dictionary<int, Sprite> _backingOriginals = new Dictionary<int, Sprite>();
         private static readonly Dictionary<int, string> _nicknameOriginals = new Dictionary<int, string>();
 
-        public static void ClearIconRegistry() { _icon3d.Clear(); _iconUI.Clear(); }
+        private static readonly HashSet<IntPtr> _iconPtrs = new HashSet<IntPtr>();
+
+        public static void ClearIconRegistry() { _icon3d.Clear(); _iconUI.Clear(); _iconPtrs.Clear(); }
 
         public static void SetIconAlphaForDisplay(PlayerInfoDisplayGameObject display, float alpha)
         {
@@ -116,7 +118,7 @@ namespace BetterFG.Nametag
             // the game fades nametag alpha by distance, so this runs for every visible tag every frame.
             // GetInstanceID is an il2cpp round trip, and almost nobody has a custom icon — so when the
             // registries are empty there's nothing to look up and we get out before paying for it.
-            if (_icon3d.Count == 0 && _iconUI.Count == 0) return;
+            if (_iconPtrs.Count == 0 || !_iconPtrs.Contains(txt.m_CachedPtr)) return;
 
             int id = txt.GetInstanceID();
 
@@ -291,11 +293,18 @@ namespace BetterFG.Nametag
         // — fontSharedMaterial never instances, so nametags sharing a base material keep batching.
         private static readonly Dictionary<int, Material> _queueBumpedShared = new Dictionary<int, Material>();
 
+        private static readonly Dictionary<IntPtr, IntPtr> _queueSeen = new Dictionary<IntPtr, IntPtr>();
+
         public static void EnsureNametagRenderQueue(TMP_Text txt)
         {
             if (txt == null) return;
             var shared = txt.fontSharedMaterial;
-            if (shared == null || shared.renderQueue == 4000) return;
+            if (shared == null) return;
+
+            IntPtr tp = txt.Pointer, sp = shared.Pointer;
+            if (_queueSeen.TryGetValue(tp, out var prev) && prev == sp) return;
+
+            if (shared.renderQueue == 4000) { _queueSeen[tp] = sp; return; }
 
             int key = shared.GetInstanceID();
             if (!_queueBumpedShared.TryGetValue(key, out var bumped) || bumped == null)
@@ -305,6 +314,7 @@ namespace BetterFG.Nametag
                 _queueBumpedShared[key] = bumped;
             }
             txt.fontSharedMaterial = bumped;
+            _queueSeen[tp] = bumped.Pointer;
         }
 
         public static void ApplyRenderQueueToAllNametags()
@@ -965,6 +975,7 @@ namespace BetterFG.Nametag
 
         public static void ApplyRemoteToNameplate(TMPro.TextMeshPro tmp3d, string fallbackName, RemoteNametagInfo info)
         {
+            MarkRemoteStyled(tmp3d);
             if (tmp3d == null || info == null) return;
             BetterFG.Customization.Menu.FontReplacementService.ProtectText(tmp3d);
 
@@ -1015,6 +1026,7 @@ namespace BetterFG.Nametag
             // icon should be just as faded on first show, not pop in fully opaque until the next alpha sync.
             sr.color = new Color(1f, 1f, 1f, tmp3d.color.a);
             _icon3d[tmp3d.GetInstanceID()] = sr;
+            _iconPtrs.Add(tmp3d.m_CachedPtr);
 
             MaybeAttachGifAnimator(iconGo, sr, null, info.iconMode, info.iconPath);
 
@@ -1027,6 +1039,7 @@ namespace BetterFG.Nametag
 
         public static void ApplyRemoteToNameplate(TMPro.TextMeshProUGUI tmp, string fallbackName, RemoteNametagInfo info)
         {
+            MarkRemoteStyled(tmp);
             if (tmp == null || info == null) return;
             BetterFG.Customization.Menu.FontReplacementService.ProtectText(tmp);
 
@@ -1065,9 +1078,19 @@ namespace BetterFG.Nametag
         // strips everything we overlay on a remote nametag so a pooled object reused for a
         // profile-less player goes back to the game's default look. the same TMP gets reused for
         // the next player, so our style/material WILL bleed if we don't reset the text here too.
+        private static readonly HashSet<IntPtr> _styledRemote = new HashSet<IntPtr>();
+
+        internal static void MarkRemoteStyled(TMP_Text tmp)
+        {
+            if (tmp != null) _styledRemote.Add(tmp.m_CachedPtr);
+        }
+
         public static void RevertRemote(NameTagViewModel vm)
         {
             if (vm == null) return;
+
+            var probe = vm._playerNameText;
+            if (probe == null || !_styledRemote.Remove(probe.m_CachedPtr)) return;
 
             // 3D icon wrapper + flag
             var tmp3d = vm._playerNameText;
@@ -1075,6 +1098,7 @@ namespace BetterFG.Nametag
             {
                 _icon3d.Remove(tmp3d.GetInstanceID());
                 _iconUI.Remove(tmp3d.GetInstanceID());
+                _iconPtrs.Remove(tmp3d.m_CachedPtr);
 
                 // don't stomp gold famepass names — a profile-less remote who finished the pass has
                 // the "asap-bold sdf_EndFamePass" material on their TMP (possibly an "(Instance)" of it).
@@ -1318,17 +1342,28 @@ namespace BetterFG.Nametag
             return "";
         }
 
+        private static readonly Dictionary<IntPtr, TMP_Text> _nameTextByDisplay = new Dictionary<IntPtr, TMP_Text>();
+
         public static TMP_Text TryGetNameText(PlayerInfoDisplay display)
         {
             if (display == null) return null;
 
+            IntPtr id = display.Pointer;
+            if (_nameTextByDisplay.TryGetValue(id, out var cached) && cached != null) return cached;
+
+            TMP_Text found = null;
             var goDisplay = display.TryCast<PlayerInfoDisplayGameObject>();
-            if (goDisplay != null && goDisplay._text != null) return goDisplay._text;
+            if (goDisplay != null && goDisplay._text != null) found = goDisplay._text;
 
-            var canvasDisplay = display.TryCast<PlayerInfoDisplayCanvas>();
-            if (canvasDisplay != null && canvasDisplay._text != null) return canvasDisplay._text;
+            if (found == null)
+            {
+                var canvasDisplay = display.TryCast<PlayerInfoDisplayCanvas>();
+                if (canvasDisplay != null && canvasDisplay._text != null) found = canvasDisplay._text;
+            }
 
-            return display.gameObject.GetComponentInChildren<TMP_Text>(true);
+            if (found == null) found = display.gameObject.GetComponentInChildren<TMP_Text>(true);
+            if (found != null) _nameTextByDisplay[id] = found;
+            return found;
         }
 
         public static bool ApplyPlatformIcon(GameObject displayObject, bool hide, string customSprite)
@@ -1546,6 +1581,7 @@ namespace BetterFG.Nametag
                 layoutImg.raycastTarget = false;
                 layoutImg.color = new Color(1f, 1f, 1f, tmp.color.a);
                 _iconUI[tmp.GetInstanceID()] = layoutImg;
+            _iconPtrs.Add(tmp.m_CachedPtr);
                 MaybeAttachGifAnimator(iconGo, null, layoutImg, iconMode, iconPath);
                 // canvas tags hide a no-rank crown by disabling its Container while the badge root stays an
                 // active layout child, so the rebuild would still reserve its width. mirror the hide into
@@ -1573,6 +1609,7 @@ namespace BetterFG.Nametag
             img.raycastTarget = false;
             img.color = new Color(1f, 1f, 1f, tmp.color.a);
             _iconUI[tmp.GetInstanceID()] = img;
+            _iconPtrs.Add(tmp.m_CachedPtr);
             MaybeAttachGifAnimator(iconGo, null, img, iconMode, iconPath);
 
             var host = BeanMonitorService.Instance;
@@ -1696,7 +1733,7 @@ namespace BetterFG.Nametag
             sr.sortingOrder = 1;
             // inherit the name's current alpha so a faded nametag's icon comes up faded too, not fully opaque
             sr.color = new Color(1f, 1f, 1f, tmp != null ? tmp.color.a : 1f);
-            if (tmp != null) _icon3d[tmp.GetInstanceID()] = sr;
+            if (tmp != null) { _icon3d[tmp.GetInstanceID()] = sr; _iconPtrs.Add(tmp.m_CachedPtr); }
 
             MaybeAttachGifAnimator(iconGo, sr, null);
 

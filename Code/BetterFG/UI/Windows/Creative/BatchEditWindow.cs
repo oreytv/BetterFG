@@ -1,7 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using BetterFG.Features.CreativeGroups;
 using BetterFG.Features.CreativeIncrements;
-using BetterFG.Features.CreativeText;
+using FallGuysLib.UI;
+using FG.Common.CMS;
+using FGClient.UI;
 using LevelEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -34,7 +37,7 @@ namespace BetterFG.UI.Windows.Creative
 
         protected override float WindowWidth => 310f;
         protected override float WindowHeight => 340f;
-        protected override string WindowTitle => TextOnly ? "Text" : "Batch Edit";
+        protected override string WindowTitle => LibraryOnly ? "Groups" : "Batch Edit";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg_2.png";
         protected override string BgHoverResourceName => "BetterFG.assets.ui.windows.generalbg_2_hover.png";
         protected override bool DraggableFromTitle => true;
@@ -50,7 +53,7 @@ namespace BetterFG.UI.Windows.Creative
         private static readonly Color OK_COL = new Color(0.55f, 0.85f, 0.55f, 1f);
         private static readonly Color STEP_COL = new Color(0.55f, 0.75f, 1f, 0.9f);
 
-        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics", "Link", "Text", "Group" };
+        private static readonly string[] BUILTIN_SUBTABS = { "Recolour", "Scale", "Material", "Physics", "Link", "Group", "Saved" };
         // built-ins first, then whatever external DLLs registered (usually none). rebuilt each open so a
         // plugin that registers after the window's first build still shows up next time it opens.
         private string[] Subtabs()
@@ -101,29 +104,29 @@ namespace BetterFG.UI.Windows.Creative
         private int _groupPick;
         private InputField _groupNameField;
 
+        private int _savedPage;
+        private string _savedName = "";
+
         private Text _countLabel;
         private Text _statusLabel;
-        private Text _textCountLabel;
-        private Text _textSizeLabel;
-        private Text _textDetailLabel;
 
         // ── api ───────────────────────────────────────────────────────────────
 
-        // the carousel's TEXT entry opens the window on its Text page alone: no other subtab, no
-        // selection to act on, so the carousel arrows and the selection auto-close are both off.
-        public static bool TextOnly { get; private set; }
-        private const int TEXT_SUBTAB = 5;
+        public static bool LibraryOnly { get; private set; }
+        private const int SAVED_SUBTAB = 6;
 
-        public static void OpenTextTool()
+        private static bool Solo => LibraryOnly;
+
+        public static void OpenGroupsTool()
         {
             if (Instance != null)
             {
-                if (!TextOnly) Instance.Close();
-                else return;
+                if (LibraryOnly) return;
+                Instance.Close();
             }
-            TextOnly = true;
+            LibraryOnly = true;
             Patches.BatchEditBlockPlacePatch.BlockedAPlace = false;
-            var go = new GameObject("BetterFG_TextToolWindow");
+            var go = new GameObject("BetterFG_GroupsWindow");
             go.AddComponent<BatchEditWindow>().Configure();
         }
 
@@ -131,7 +134,7 @@ namespace BetterFG.UI.Windows.Creative
         {
             Instance = this;
             AnyOpen = true;
-            if (TextOnly) _subtab = TEXT_SUBTAB;
+            if (LibraryOnly) _subtab = SAVED_SUBTAB;
             // selected a controller? that's what you came here for — land on Link, not Recolour
             else if (BatchLink.Controller() != null) _subtab = 4;
             SetAnchorPosition(new Vector2(560f, 30f));
@@ -143,10 +146,9 @@ namespace BetterFG.UI.Windows.Creative
         {
             CommitPending(); // don't lose a pending recolour/scale on close
             BatchScale.BakeOwnerScale(); // hand the editor's multiselect owner back unscaled
-            CreativeText.HidePreview();
             if (Instance == this) Instance = null;
             AnyOpen = false;
-            TextOnly = false;
+            LibraryOnly = false;
             // commit the selection ourselves a frame after close (AnyOpen is false by then, so our own
             // block prefix lets it through) — saves you clicking off the backlog of blocked place attempts.
             CreativeSelectionWatcher.Instance?.PlaceAfterFrame();
@@ -157,7 +159,7 @@ namespace BetterFG.UI.Windows.Creative
         {
             if (Instance == this) Instance = null;
             AnyOpen = false;
-            TextOnly = false;
+            LibraryOnly = false;
             // window closing — let the shown extra tear down its world overlay.
             if (_activeExtra != null)
             {
@@ -176,20 +178,9 @@ namespace BetterFG.UI.Windows.Creative
             float dt = Time.unscaledDeltaTime;
             foreach (var h in _scaleHold) h?.Tick(dt);
 
-            if (_subtab == TEXT_SUBTAB)
-            {
-                if (_textCountDue && Time.unscaledTime - _textCountAt >= 0.3f)
-                {
-                    _textCountDue = false;
-                    RefreshTextLabels();
-                }
-                CreativeText.ShowPreview();
-            }
-            else CreativeText.HidePreview();
-
             if (_subtab == 1) UpdateScaleRowsDim(); // pivot can appear/vanish live in "from selected"
 
-            if (TextOnly) return; // nothing selected to watch, the close button is the only way out
+            if (Solo) return; // nothing selected to watch, the close button is the only way out
             int sel = BatchRecolour.SelectionCount();
             if (sel == 0) { Close(); return; }
             // selection changed mid-edit → checkpoint the pending recolour (its snapshot is now stale)
@@ -239,7 +230,7 @@ namespace BetterFG.UI.Windows.Creative
 
             // ── carousel header: ‹  Style  › ──
             float arrow = 22f;
-            if (TextOnly)
+            if (Solo)
             {
                 MakeLabel(contentRoot, new Rect(PAD, y, w, 22f), subtabs[_subtab], FS_BODY, WHITE, TextAnchor.MiddleCenter);
                 y += 26f;
@@ -269,8 +260,8 @@ namespace BetterFG.UI.Windows.Creative
                 case 2: BuildMaterial(contentRoot, w, ref y); break;
                 case 3: BuildPhysics(contentRoot, w, ref y); break;
                 case 4: BuildLink(contentRoot, w, ref y); break;
-                case 5: BuildText(contentRoot, w, ref y); break;
-                case 6: BuildGroup(contentRoot, w, ref y); break;
+                case 5: BuildGroup(contentRoot, w, ref y); break;
+                case 6: BuildSaved(contentRoot, w, ref y); break;
                 default: BuildExtra(contentRoot, w, ref y); break;
             }
 
@@ -644,146 +635,6 @@ namespace BetterFG.UI.Windows.Creative
             SetStatus(n > 0 ? $"unlinked {n} object(s)" : "none of the selection was linked to it", n > 0 ? OK_COL : HINT_COL);
         }
 
-        // ── text subtab ──────────────────────────────────────────────────────
-
-        private void BuildText(RectTransform root, float w, ref float y)
-        {
-            MakeLabel(root, new Rect(PAD, y, w, 14f), "1  WHAT SHOULD IT SAY", FS_SM, STEP_COL);
-            y += 17f;
-            var field = UGUIShip.CreateInputField(root, new Rect(PAD, y, w, 24f), "type your text", null, WHITE, FS_BODY);
-            UGUIShip.SetInputText(field, CreativeText.Text);
-            field.onEndEdit.AddListener(new Action<string>(v =>
-            {
-                CreativeText.Text = v;
-                CreativeText.Invalidate();
-                RefreshTextCount();
-            }));
-            y += 32f;
-
-            MakeLabel(root, new Rect(PAD, y, w, 14f), "2  FONT", FS_SM, STEP_COL);
-            y += 17f;
-            var fonts = CreativeText.FontOptions();
-            var labels = new List<string>();
-            foreach (var f in fonts) labels.Add(f.Display);
-            var dropdown = UGUIShip.CreateDropdown(root, new Rect(PAD, y, w - 46f, 24f), labels, CreativeText.FontIndex(),
-                new Action<int>(i =>
-                {
-                    if (i < 0 || i >= fonts.Count) return;
-                    CreativeText.FontChoice = fonts[i].Path;
-                    CreativeText.Invalidate();
-                    RefreshTextCount();
-                }), FS_SM, 150f, w - 46f);
-            CreativeTextFontRows.Watch(this, dropdown, fonts);
-            UGUIShip.CreateButton(root, new Rect(PAD + w - 42f, y, 42f, 24f), "FILE", BTN_STEP, WHITE, FS_SM,
-                new Action(PickTextFont));
-            y += 32f;
-
-            MakeLabel(root, new Rect(PAD, y, w, 14f), "3  MADE OUT OF", FS_SM, STEP_COL);
-            y += 17f;
-            float half = (w - 6f) * 0.5f;
-            bool sticker = CreativeText.Sticker;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 24f), "STICKERS",
-                sticker ? BTN_APPLY : BTN_ARROW, WHITE, FS_BODY,
-                new Action(() => { CreativeText.Sticker = true; CreativeText.Invalidate(); RebuildContent(); }));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 24f), "BLOCKS",
-                sticker ? BTN_ARROW : BTN_APPLY, WHITE, FS_BODY,
-                new Action(() => { CreativeText.Sticker = false; CreativeText.Invalidate(); RebuildContent(); }));
-            y += 32f;
-
-            _textSizeLabel = MakeLabel(root, new Rect(PAD, y, w, 14f), "", FS_SM, STEP_COL);
-            y += 17f;
-            UGUIShip.CreateSlider(root, PAD, y, w, "", Norm(CreativeText.Height, CreativeText.MinHeight, CreativeText.MaxHeight),
-                16f, 4f, FS_SM,
-                new Action<float>(v =>
-                {
-                    CreativeText.Height = Denorm(v, CreativeText.MinHeight, CreativeText.MaxHeight);
-                    RefreshTextCount();
-                }), STEP_COL, null, false);
-            y += 26f;
-
-            _textDetailLabel = MakeLabel(root, new Rect(PAD, y, w, 14f), "", FS_SM, STEP_COL);
-            y += 17f;
-            UGUIShip.CreateSlider(root, PAD, y, w, "", Norm(CreativeText.Quality, CreativeText.MinQuality, CreativeText.MaxQuality),
-                16f, 4f, FS_SM,
-                new Action<float>(v =>
-                {
-                    CreativeText.Quality = Denorm(v, CreativeText.MinQuality, CreativeText.MaxQuality);
-                    CreativeText.Invalidate();
-                    RefreshTextCount();
-                }), STEP_COL, null, false);
-            y += 26f;
-
-            var placeBtn = UGUIShip.CreateButton(root, new Rect(PAD, y, w, 30f), "", BTN_APPLY, WHITE, FS_BODY,
-                new Action(PlaceText));
-            _textCountLabel = placeBtn.GetComponentInChildren<Text>();
-            RefreshTextCount();
-            y += 34f;
-        }
-
-        private static float Norm(int v, int lo, int hi) => (v - lo) / (float)(hi - lo);
-
-        private static int Denorm(float v, int lo, int hi) => Mathf.RoundToInt(Mathf.Lerp(lo, hi, v));
-
-        private float _textCountAt;
-        private bool _textCountDue;
-
-        private void RefreshTextCount()
-        {
-            _textCountDue = true;
-            _textCountAt = Time.unscaledTime;
-            RefreshTextLabels();
-        }
-
-        private void RefreshTextLabels()
-        {
-            if (_textSizeLabel != null)
-                _textSizeLabel.text = $"4  SIZE  —  {CreativeText.Height} UNITS TALL";
-
-            if (_textDetailLabel != null)
-            {
-                int usable = CreativeText.UsableQuality();
-                _textDetailLabel.text = usable > 0 && CreativeText.Quality > usable
-                    ? $"5  DETAIL  —  {CreativeText.Quality}, ONLY {usable} FITS THIS SIZE"
-                    : $"5  DETAIL  —  {CreativeText.Quality}";
-            }
-
-            if (_textCountLabel == null) return;
-            if (_textCountDue) { _textCountLabel.text = "WORKING IT OUT..."; return; }
-
-            int n = CreativeText.PlannedObjects(out string note);
-            _textCountLabel.text = n > 0
-                ? (note != null ? $"{n}+ OBJECTS, {note.ToUpperInvariant()}" : $"PLACE {n} OBJECTS")
-                : $"NOTHING TO PLACE ({note ?? "empty"})";
-        }
-
-        private void PickTextFont()
-        {
-            WinDialogs.PickFile("Pick a font (.ttf / .otf)", new Action<string>(path =>
-            {
-                if (string.IsNullOrEmpty(path)) return;
-                CreativeText.FontChoice = path;
-                CreativeText.Invalidate();
-                RebuildContent();
-            }), "Fonts\0*.ttf;*.otf\0All Files\0*.*\0");
-        }
-
-        // dropping the text hands you its middle piece already picked up, so the very next move drags the
-        // whole group (CreativeGroups carries the rest along) — nothing to multi-select by hand.
-        private void PlaceText()
-        {
-            int n = CreativeText.Place(out string note, out var middle);
-            if (n <= 0)
-            {
-                RefreshTextCount();
-                SetStatus(note.Length > 0 ? note : "nothing placed", HINT_COL);
-                return;
-            }
-
-            Plugin.Log.LogInfo($"text down ({note}), handing you {(middle != null ? middle.name : "nothing")} to drag it by");
-            if (middle != null) middle.SelectObject();
-            Close();
-        }
-
         // ── group subtab ─────────────────────────────────────────────────────
 
         private void BuildGroup(RectTransform root, float w, ref float y)
@@ -858,6 +709,107 @@ namespace BetterFG.UI.Windows.Creative
             RebuildContent();
             SetStatus(n > 0 ? $"{n} object(s) out of their group" : "none of the selection was grouped",
                 n > 0 ? OK_COL : HINT_COL);
+        }
+
+        // ── saved groups subtab ──────────────────────────────────────────────
+
+        private void BuildSaved(RectTransform root, float w, ref float y)
+        {
+            int sel = BatchRecolour.SelectionCount();
+            MakeLabel(root, new Rect(PAD, y, w, 14f),
+                sel > 0 ? $"save the {sel} selected object(s) as" : "nothing selected to save right now",
+                FS_SM, sel > 0 ? STEP_COL : HINT_COL);
+            y += 17f;
+
+            float saveW = 66f;
+            var nameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w - saveW - 6f, 24f),
+                "name this group", null, WHITE, FS_BODY);
+            UGUIShip.SetInputText(nameField, _savedName);
+
+            var saveBtn = UGUIShip.CreateButton(root, new Rect(PAD + w - saveW, y, saveW, 24f),
+                SavedGroups.Exists(_savedName) ? "REPLACE" : "SAVE", BTN_APPLY, WHITE, FS_SM,
+                new Action(() => DoSaveGroup(nameField.text)));
+            var saveLabel = saveBtn.GetComponentInChildren<Text>();
+            nameField.onValueChanged.AddListener(new Action<string>(v =>
+            {
+                _savedName = v;
+                saveLabel.text = SavedGroups.Exists(v) ? "REPLACE" : "SAVE";
+            }));
+            y += 30f;
+
+            MakeSeparator(root, new Rect(PAD, y, w, 1f));
+            y += 6f;
+
+            var all = SavedGroups.All();
+            if (all.Count == 0)
+            {
+                MakeLabel(root, new Rect(PAD, y, w, 48f),
+                    "nothing in the library yet — multi-select some objects, give them a name and save. saved groups follow you into every level",
+                    FS_SM, HINT_COL, TextAnchor.UpperLeft);
+                y += 52f;
+                return;
+            }
+
+            int rows = Solo ? 4 : 3;
+            int pages = (all.Count + rows - 1) / rows;
+            _savedPage = Mathf.Clamp(_savedPage, 0, pages - 1);
+
+            for (int i = 0; i < rows; i++)
+            {
+                int idx = _savedPage * rows + i;
+                if (idx >= all.Count) break;
+                var g = all[idx];
+
+                var thumbGo = new GameObject("Thumb");
+                thumbGo.transform.SetParent(root, false);
+                UGUIShip.SetPixelRect(thumbGo.AddComponent<RectTransform>(), new Rect(PAD, y, 60f, 40f));
+                var thumb = thumbGo.AddComponent<RawImage>();
+                var tex = SavedGroups.PreviewOf(g);
+                if (tex != null) thumb.texture = tex;
+                else thumb.color = new Color(1f, 1f, 1f, 0.06f);
+
+                MakeLabel(root, new Rect(PAD + 66f, y, w - 66f - 70f, 40f), g.Name, FS_SM, WHITE);
+                UGUIShip.CreateButton(root, new Rect(PAD + w - 68f, y + 9f, 42f, 22f), "PLACE",
+                    BTN_APPLY, WHITE, FS_SM, new Action(() => DoPlaceGroup(g)));
+                UGUIShip.CreateButton(root, new Rect(PAD + w - 22f, y + 9f, 22f, 22f), "✕",
+                    new Color(0.5f, 0.22f, 0.22f, 1f), WHITE, FS_SM, new Action(() => DoDeleteGroup(g)));
+                y += 44f;
+            }
+
+            if (pages <= 1) return;
+            float arrow = 22f;
+            UGUIShip.CreateButton(root, new Rect(PAD, y, arrow, 20f), "‹", BTN_ARROW, WHITE, FS_BODY,
+                new Action(() => { _savedPage = (_savedPage - 1 + pages) % pages; RebuildContent(); }));
+            MakeLabel(root, new Rect(PAD + arrow, y, w - arrow * 2f, 20f),
+                $"{_savedPage + 1} / {pages}", FS_SM, HINT_COL, TextAnchor.MiddleCenter);
+            UGUIShip.CreateButton(root, new Rect(PAD + w - arrow, y, arrow, 20f), "›", BTN_ARROW, WHITE, FS_BODY,
+                new Action(() => { _savedPage = (_savedPage + 1) % pages; RebuildContent(); }));
+            y += 24f;
+        }
+
+        private void DoSaveGroup(string name)
+        {
+            _savedName = name;
+            int n = SavedGroups.Save(name, out string note);
+            RebuildContent();
+            SetStatus(note, n > 0 ? OK_COL : HINT_COL);
+        }
+
+        private void DoPlaceGroup(SavedGroups.Saved g)
+        {
+            int n = SavedGroups.Place(g, out string note, out var middle);
+            if (n <= 0) { SetStatus(note, HINT_COL); return; }
+
+            Plugin.Log.LogInfo($"{g.Name} placed ({note}), handing you {(middle != null ? middle.name : "nothing")} to drag it by");
+            if (middle != null) middle.SelectObject();
+            Close();
+        }
+
+        private void DoDeleteGroup(SavedGroups.Saved g)
+        {
+            SavedGroups.Delete(g);
+            RebuildContent();
+            SetStatus($"{g.Name} gone", OK_COL);
         }
 
         // ── registered extra subtab ──────────────────────────────────────────
@@ -946,8 +898,7 @@ namespace BetterFG.UI.Windows.Creative
         {
             CommitColourEntry(); // leaving Recolour checkpoints any pending edit
             int len = Subtabs().Length;
-            do _subtab = (_subtab + d + len) % len;
-            while (_subtab == TEXT_SUBTAB);
+            _subtab = (_subtab + d + len) % len;
             RebuildContent();
         }
 

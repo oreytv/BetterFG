@@ -86,6 +86,10 @@ namespace BetterFG.Features.Replay
             Line("Amount", _kf.sharpenAmount.ToString("0.00"), () => StepSharpenAmount(-1), () => StepSharpenAmount(1));
             Line("Radius", _kf.sharpenRadius.ToString("0.00"), () => StepSharpenRadius(-1), () => StepSharpenRadius(1));
 
+            Section("Depth of field");
+            Line("Strength", Mathf.RoundToInt(_kf.dofStrength * 100f) + "%", () => StepDofStrength(-1), () => StepDofStrength(1));
+            Line("Distance", _kf.dofDistance.ToString("0.0") + " m", () => StepDofDistance(-1), () => StepDofDistance(1));
+
             Section("Preview");
             UGUIShip.CreateLabel(_content, new Rect(PAD, _y, _width - PAD * 2f, 14f),
                 "tone curve  ·  colour hints at temperature/tint", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
@@ -235,6 +239,20 @@ namespace BetterFG.Features.Replay
         void StepSharpenRadius(int dir)
         {
             _kf.sharpenRadius = Step(_kf.sharpenRadius, dir, ReplayPostFxKeyframe.SharpenRadiusStep, ReplayPostFxKeyframe.SharpenRadiusMin, ReplayPostFxKeyframe.SharpenRadiusMax);
+            Rebuild();
+        }
+
+        void StepDofStrength(int dir)
+        {
+            _kf.dofStrength = Step(_kf.dofStrength, dir, ReplayPostFxKeyframe.DofStrengthStep, ReplayPostFxKeyframe.DofStrengthMin, ReplayPostFxKeyframe.DofStrengthMax);
+            Rebuild();
+        }
+
+        void StepDofDistance(int dir)
+        {
+            float step = _kf.dofDistance < 5f ? 0.25f : _kf.dofDistance < 20f ? 1f : 5f;
+            _kf.dofDistance = Mathf.Clamp(_kf.dofDistance + dir * step,
+                ReplayPostFxKeyframe.DofDistanceMin, ReplayPostFxKeyframe.DofDistanceMax);
             Rebuild();
         }
     }

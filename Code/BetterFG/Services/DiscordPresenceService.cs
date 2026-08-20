@@ -44,6 +44,9 @@ namespace BetterFG.Services
         private static int? _exportPercent;
         private static bool _showSelectorOpen;
         private static bool _pushPending;
+        private static bool _roundLive;
+        private static bool _localOutSeen;
+        private static bool _skipped;
 
         public static void OnShowSelectorTileSeen()
         {
@@ -90,6 +93,12 @@ namespace BetterFG.Services
 
         public static void OnPlayerProgress(ClientGameManager cgm, GameMessageServerPlayerProgress msg)
         {
+            if (cgm != null && msg != null && !msg.succeeded && cgm.IsMyLocalPlayer(msg.playerId))
+            {
+                _localOutSeen = true;
+                _skipped = msg.isSkipping;
+            }
+
             if (cgm != null && msg != null && !msg.succeeded && !msg.isSkipping)
                 Plugin.Log.LogInfo($"someone out (id {msg.playerId}, dc={msg.isDisconnected}) — property {cgm.EliminatedPlayerCount}, field {cgm._eliminatedPlayerCount}, target {cgm.RequiredEliminatedPlayerCount}");
 
@@ -126,6 +135,7 @@ namespace BetterFG.Services
                 && (badge == null || badge == _loadingBadge)) return;
 
             _atMenu = false;
+            _roundLive = false;
             if (badge != null) _loadingBadge = badge;
             if (!string.IsNullOrEmpty(roundName)) _loadingRoundName = roundName;
             _loadingPlayers = players;
@@ -140,9 +150,22 @@ namespace BetterFG.Services
             if (badge == _loadingBadge && name == _loadingRoundName) return;
 
             _atMenu = false;
+            _roundLive = false;
             if (badge != null) _loadingBadge = badge;
             if (!string.IsNullOrEmpty(name)) _loadingRoundName = name;
             Plugin.Log.LogInfo($"loader says next up is {_loadingRoundName ?? "something unnamed"}, badge {_loadingBadge ?? "none"}");
+            Push();
+        }
+
+        private static void ClearRoundResult()
+        {
+            _status = null;
+            _place = 0;
+            _localOutSeen = false;
+            _skipped = false;
+            _squadUp = 0;
+            _squadOut = 0;
+            _squadSize = 0;
         }
 
         private static string Join(params string[] parts)
@@ -190,6 +213,7 @@ namespace BetterFG.Services
         public static void OnMainMenuEntered(MainMenuManager mainMenu)
         {
             _atMenu = true;
+            _roundLive = false;
             _mainMenu = mainMenu;
             _wonLastShow = false;
             _inRewards = false;
@@ -197,12 +221,8 @@ namespace BetterFG.Services
             _loadingRoundName = null;
             _loadingBadge = null;
             _loadingPlayers = null;
-            _status = null;
-            _place = 0;
-            _squadUp = 0;
-            _squadOut = 0;
-            _squadSize = 0;
             _showSelectorOpen = false;
+            ClearRoundResult();
             Push();
         }
 
@@ -213,16 +233,13 @@ namespace BetterFG.Services
             ggsc?.GameStateView?.GetLiveClientGameManager(out cgm);
 
             _atMenu = false;
+            _roundLive = true;
             _roundName = cgm?._round?.DisplayNameUnindented;
             if (string.IsNullOrEmpty(_roundName)) _roundName = _loadingRoundName;
             _loadingRoundName = null;
             _loadingBadge = null;
             _loadingPlayers = null;
-            _status = null;
-            _place = 0;
-            _squadUp = 0;
-            _squadOut = 0;
-            _squadSize = 0;
+            ClearRoundResult();
 
             Plugin.Log.LogInfo($"presence round: {_roundName} — session counter {ggsc?.RoundCounterInPlaySession}, GameRules index {cgm?.GameRules?.RoundIndex}");
             Push();
@@ -245,7 +262,10 @@ namespace BetterFG.Services
             if (!_enabled) return;
             try
             {
-                var activity = Compose();
+                var composed = Compose();
+                if (!composed.HasValue) return;
+
+                var activity = composed.Value;
                 if (!activity.Equals(_lastComposed))
                 {
                     _lastComposed = activity;
@@ -256,7 +276,7 @@ namespace BetterFG.Services
             catch (Exception ex) { Plugin.Log.LogWarning($"couldn't work out what to tell discord: {ex.Message}"); }
         }
 
-        private static DiscordRpcClient.Activity Compose()
+        private static DiscordRpcClient.Activity? Compose()
         {
             if (_inReplayViewer)
             {
@@ -297,7 +317,7 @@ namespace BetterFG.Services
             gsv?.GetLiveClientGameManager(out cgm);
             var round = cgm?._round;
 
-            if (round != null && !_atMenu)
+            if (round != null && !_atMenu && _roundLive)
             {
                 string level = round.DisplayNameUnindented;
                 if (string.IsNullOrEmpty(level)) level = _roundName;
@@ -322,14 +342,14 @@ namespace BetterFG.Services
                 int total = BetterFG.Tweaks.MatchmakingQueueCountTweak.TotalPlayers;
                 string filling = connected > 0
                     ? (total > 0 ? connected + "/" + total + " players" : connected + " players")
-                    : show;
-                return Build("Searching for a match", filling);
+                    : null;
+                return Build("Searching for a match", Join(show, filling));
             }
 
             if (_inRewards)
             {
                 bool won = ggsc._clientPlayerManager?.LocalPlayerSucceeded ?? false;
-                return Build("Collecting rewards", Join(show, won ? "Just won" : "Eliminated"));
+                return Build("Collecting rewards", Join(show, won ? "Just won" : _skipped ? "Skipped" : "Eliminated"));
             }
 
             if (_wonLastShow)
@@ -339,15 +359,13 @@ namespace BetterFG.Services
             {
                 string next = _loadingRoundName
                     ?? BetterFG.Features.QualificationTime.FeatureQualificationTime.CachedRoundName;
-                string loadingState = Join(show, _loadingPlayers, _status);
-                if (!string.IsNullOrEmpty(next))
-                {
-                    string baseNext = next;
-                    int number = ggsc.RoundCounterInPlaySession + 1;
-                    if (number > 1) next += $" (Round {number})";
-                    return Build("Loading into " + next, loadingState, _loadingBadge, baseNext);
-                }
-                return Build("Loading into a round", loadingState, _loadingBadge, null);
+
+                if (string.IsNullOrEmpty(next)) return null;
+
+                string baseNext = next;
+                int number = ggsc.RoundCounterInPlaySession + 1;
+                if (number > 1) next += $" (Round {number})";
+                return Build("Loading into " + next, Join(show, _loadingPlayers), _loadingBadge, baseNext);
             }
 
             if (_mainMenu != null)
@@ -359,10 +377,17 @@ namespace BetterFG.Services
                 {
                     case MainMenuViews.Customiser:
                         return Build("Customising their bean", null, "tab_customize");
+                    case MainMenuViews.Settings:
+                        return Build("Changing their settings", show);
                     case MainMenuViews.Seasons:
                         return Build("Looking at Fame Pass", show, "tab_famepass");
                     case MainMenuViews.Shop:
+                    case MainMenuViews.SymphonyShop:
                         return Build("Looking at the shop", show, "tab_shop");
+                    case MainMenuViews.LiveEvent:
+                        return Build("Checking out a live event", show);
+                    case MainMenuViews.LevelEditor:
+                        return Build("Heading into Creative", show);
                 }
             }
 
@@ -392,20 +417,23 @@ namespace BetterFG.Services
             else
             {
                 int required = cgm.RequiredQualifiedPlayerCount;
-                counts = required > 1 && required < initial
-                    ? cgm.QualifiedPlayerCount + "/" + required + " qualified"
-                    : null;
+                if (required > 1 && required < initial)
+                    counts = cgm.QualifiedPlayerCount + "/" + required + " qualified";
+                else
+                    counts = initial > 0 ? cgm.QualifiedPlayerCount + "/" + initial + " qualified" : null;
             }
 
             string status = null;
             if (cgm.PlayerSucceeded) status = "QUALIFIED";
-            else if (cgm.PlayerEliminated)
+            else if (cgm.PlayerEliminated && _localOutSeen)
             {
                 var mates = cgm._playerTeamManager;
-                status = cgm.IsSquadShow && mates != null
-                         && mates.CurrentTeamSize(ClientGameManager.LocalPlayerTeamId) > 0
-                    ? "WAITING FOR NOW"
-                    : "ELIMINATED";
+                status = _skipped
+                    ? "SKIPPED"
+                    : cgm.IsSquadShow && mates != null
+                      && mates.CurrentTeamSize(ClientGameManager.LocalPlayerTeamId) > 0
+                        ? "WAITING FOR NOW"
+                        : "ELIMINATED";
             }
 
             if (status != _status)
@@ -455,7 +483,19 @@ namespace BetterFG.Services
         private static string ShowName(GlobalGameStateClient ggsc)
         {
             string name = ggsc.SelectedShow?.ShowName?.Text;
-            if (!string.IsNullOrEmpty(name)) _lastShow = name;
+            if (string.IsNullOrEmpty(name))
+            {
+                var defs = ShowsManager.Instance?.SelectedShowDef;
+                if (defs != null)
+                    foreach (var kvp in defs)
+                        if (kvp.Value) { name = kvp.Key?.ShowSelectorShow?.ShowData?.ShowName?.Text; break; }
+            }
+
+            if (!string.IsNullOrEmpty(name) && name != _lastShow)
+            {
+                _lastShow = name;
+                Plugin.Log.LogInfo($"show is {name}");
+            }
             return _lastShow;
         }
 
@@ -478,7 +518,7 @@ namespace BetterFG.Services
             }
 
             return new DiscordRpcClient.Activity(details, state, LargeImage,
-                "BettrFG " + BetterFGInfo.Version, smallImage, smallText, _stampUnix, size, max);
+                BetterFGInfo.PresenceName + " " + BetterFGInfo.Version, smallImage, smallText, _stampUnix, size, max);
         }
     }
 }

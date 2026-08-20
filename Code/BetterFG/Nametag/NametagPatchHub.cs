@@ -53,7 +53,9 @@ namespace BetterFG.Nametag
             [HarmonyPostfix]
             public static void Postfix(FGClient.Fraggle.CreatorIDViewModel __instance)
             {
-                var vm = __instance?._nametagViewModel;
+                if (__instance == null) return;
+                HideCreatorCodeTweak.OnCreatorIDPopulated(__instance);
+                var vm = __instance._nametagViewModel;
                 if (vm != null)
                     BeanMonitorService.Instance?.StartCoroutine(ApplyNextTick(vm).WrapToIl2Cpp());
             }
@@ -170,6 +172,7 @@ namespace BetterFG.Nametag
         // the game re-centres the name+crown pair on its own schedule (respawn, recolour, any VM refresh), and
         // that's the only place the crown's side is actually decided. racing it from a coroutine was random —
         // so enforce our crown-side swap right here, immediately after every centre, deterministically.
+        [BetterFG.Utilities.BfgPatchGate("crownrank.enabled")]
         [HarmonyPatch(typeof(CrownRankPlayerTagLayoutHelper), nameof(CrownRankPlayerTagLayoutHelper.CenterNameAndCrownRank))]
         internal static class patch_CenterNameAndCrownRank
         {
@@ -183,6 +186,7 @@ namespace BetterFG.Nametag
         // a name change routes through CenterName (name-only re-centre), NOT CenterNameAndCrownRank — so our
         // swap-enforcing postfix above never fired on a name edit and the crown snapped back to the game's
         // default side. same helper, same enforcement, so hook this too.
+        [BetterFG.Utilities.BfgPatchGate("crownrank.enabled")]
         [HarmonyPatch(typeof(CrownRankPlayerTagLayoutHelper), nameof(CrownRankPlayerTagLayoutHelper.CenterName))]
         internal static class patch_CenterName
         {
@@ -212,6 +216,8 @@ namespace BetterFG.Nametag
             {
                 if (__instance == null) return;
 
+                CrownRankFovFix.Invalidate();
+
                 if (!_localTagAppliedThisRound && NametagFinder.FindLocalNameTagSprite() != null)
                 {
                     _localTagAppliedThisRound = true;
@@ -223,12 +229,13 @@ namespace BetterFG.Nametag
                 // scan) is what froze the game on every switch. collapse the burst into one queued sweep.
                 if (_refreshQueued) return;
                 var host = BeanMonitorService.Instance;
-                if (host == null) { RefreshRemoteNametags(); return; }
+                if (host == null) { RefreshRemoteNametags(__instance); return; }
                 _refreshQueued = true;
-                host.StartCoroutine(CoalescedRefresh().WrapToIl2Cpp());
+                host.StartCoroutine(CoalescedRefresh(__instance).WrapToIl2Cpp());
             }
         }
 
+        [BetterFG.Utilities.BfgPatchGate("crownrank.enabled")]
         [HarmonyPatch(typeof(PlayerInfoHUDBase), "LateUpdate")]
         internal static class patch_HudLateUpdate
         {
@@ -236,17 +243,20 @@ namespace BetterFG.Nametag
             public static void Postfix(PlayerInfoHUDBase __instance) => CrownRankFovFix.Apply(__instance);
         }
 
+        private static readonly System.Text.RegularExpressions.Regex StripTags =
+            new System.Text.RegularExpressions.Regex("<[^>]*>", System.Text.RegularExpressions.RegexOptions.Compiled);
+
         private static bool _refreshQueued;
         private static bool _localTagAppliedThisRound;
 
         public static void OnRoundStart() => _localTagAppliedThisRound = false;
 
-        private static IEnumerator CoalescedRefresh()
+        private static IEnumerator CoalescedRefresh(PlayerInfoHUDBase hud)
         {
             yield return null; // let the rest of this frame's spawn burst land first
-            RefreshRemoteNametags();
+            RefreshRemoteNametags(hud);
             yield return new WaitForSeconds(0.5f); // second pass catches late-bound VM text
-            RefreshRemoteNametags();
+            RefreshRemoteNametags(hud);
             _refreshQueued = false;
         }
 
@@ -260,7 +270,7 @@ namespace BetterFG.Nametag
             [HarmonyPostfix]
             public static void Postfix(PlayerInfoDisplayCanvas __instance)
             {
-                if (!FontReplacementService.MasterOn || __instance == null) return;
+                if (!FontReplacementService.MasterOnFast || __instance == null) return;
                 try
                 {
                     var tmp = NametagIconApplicator.TryGetNameText(__instance);
@@ -297,18 +307,25 @@ namespace BetterFG.Nametag
                 FontReplacementService.ApplyToNametag(txt);
         }
 
-        public static void RefreshRemoteNametags()
+        public static void RefreshRemoteNametags() => RefreshRemoteNametags(null);
+
+        public static void RefreshRemoteNametags(PlayerInfoHUDBase hud)
         {
             try
             {
-                var vms = Object.FindObjectsOfType<NameTagViewModel>(true);
-                if (vms != null)
-                    for (int i = 0; i < vms.Length; i++)
-                        HandleViewModel(vms[i], null);
+                if (hud == null)
+                {
+                    var vms = Object.FindObjectsOfType<NameTagViewModel>(true);
+                    if (vms != null)
+                        for (int i = 0; i < vms.Length; i++)
+                            HandleViewModel(vms[i], null);
+                }
 
-                var hudBase = NametagFinder.FindLocalNameTagSprite()?.GetComponentInParent<PlayerInfoHUDBase>();
+                var hudBase = hud ?? NametagFinder.FindLocalNameTagSprite()?.GetComponentInParent<PlayerInfoHUDBase>();
                 var spawned = hudBase?._spawnedInfoObjects;
                 if (spawned == null) return;
+
+                bool anyProfiles = !RemoteProfileStore.IsEmpty;
 
                 for (int i = 0; i < spawned.Count; i++)
                 {
@@ -316,14 +333,19 @@ namespace BetterFG.Nametag
                     var display = row?.playerInfo;
                     if (display == null) continue;
 
-                    string key = row.fgcc != null ? BeanNetworkUtil.TryGetPlayerKeyForBean(row.fgcc.gameObject) : "";
-                    var profile = RemoteProfileStore.TryGet(key);
                     var tmp = NametagIconApplicator.TryGetNameText(display);
-                    if (profile?.nametag == null && tmp != null)
+
+                    PlayerRemoteProfile profile = null;
+                    if (anyProfiles)
                     {
-                        profile = RemoteProfileStore.TryGet(tmp.text);
-                        if (profile?.nametag == null)
-                            profile = RemoteProfileStore.TryGet(System.Text.RegularExpressions.Regex.Replace(tmp.text ?? "", "<[^>]*>", "").Trim());
+                        string key = row.fgcc != null ? BeanNetworkUtil.TryGetPlayerKeyForBean(row.fgcc.gameObject) : "";
+                        profile = RemoteProfileStore.TryGet(key);
+                        if (profile?.nametag == null && tmp != null)
+                        {
+                            profile = RemoteProfileStore.TryGet(tmp.text);
+                            if (profile?.nametag == null)
+                                profile = RemoteProfileStore.TryGet(StripTags.Replace(tmp.text ?? "", "").Trim());
+                        }
                     }
                     // font replacement is independent of profiles — a profile-less player still gets the
                     // custom font. apply it here too so HUD rows that never hit a NameTagViewModel (3D
@@ -383,13 +405,17 @@ namespace BetterFG.Nametag
             var txt = vm._playerNameText;
             if (txt == null) return;
 
+            PlayerRemoteProfile profile = null;
             // _playerName in the private lobby carries rich-text/decoration the store isn't keyed on,
             // so try the raw value, then a stripped version, then whatever the actual TMP shows.
-            string stripped = System.Text.RegularExpressions.Regex.Replace(playerKey, "<[^>]*>", "").Trim();
-            string strippedTxt = System.Text.RegularExpressions.Regex.Replace(txt.text ?? "", "<[^>]*>", "").Trim();
-            var profile = RemoteProfileStore.TryGet(playerKey)
+            string stripped = StripTags.Replace(playerKey, "").Trim();
+            string strippedTxt = StripTags.Replace(txt.text ?? "", "").Trim();
+            if (!RemoteProfileStore.IsEmpty)
+            {
+                profile = RemoteProfileStore.TryGet(playerKey)
                        ?? RemoteProfileStore.TryGet(stripped)
                        ?? RemoteProfileStore.TryGet(strippedTxt);
+            }
 
 #if PROFILES
             // the private lobby never feeds RemoteProfileStore (only the in-round pipeline does) — the

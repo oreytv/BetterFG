@@ -21,7 +21,15 @@ namespace BetterFG.Patches
         // ColorUpdate fires for every tween colour write in the game, every frame, and the menu runs
         // dozens at once. walking the parent chain looking for the banner on each of those was the bulk
         // of BettrFG's idle menu cost, so the answer is memoised per image. -1 = not a banner image.
-        private static readonly Dictionary<int, int> _bannerOf = new Dictionary<int, int>();
+        private static readonly Dictionary<System.IntPtr, int> _bannerOf = new Dictionary<System.IntPtr, int>();
+
+        private static bool _menuActive;
+
+        internal static void SetMenuActive(bool active)
+        {
+            _menuActive = active;
+            if (!active) Forget();
+        }
 
         // menu rebuild invalidates the ids we cached against
         internal static void Forget()
@@ -60,13 +68,13 @@ namespace BetterFG.Patches
             [HarmonyPostfix]
             public static void Postfix(UITweenLayerProxy proxy)
             {
-                if (proxy == null) return;
+                if (!_menuActive || proxy == null) return;
                 var comp = proxy.LayerComponent;
                 if (comp == null) return;
                 var img = comp.TryCast<Image>();
                 if (img == null) return;
 
-                int id = img.GetInstanceID();
+                System.IntPtr id = img.Pointer;
                 if (!_bannerOf.TryGetValue(id, out int bannerId))
                 {
                     var banner = img.GetComponentInParent<SeasonProgressViewModel>();

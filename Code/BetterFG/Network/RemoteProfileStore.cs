@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
 using BetterFG.Nametag;
@@ -159,9 +159,11 @@ namespace BetterFG.Network
         /// <summary>
         /// Looks up by full key (e.g. xb1_oreyre9000) or clean name (e.g. oreyre9000).
         /// </summary>
+        public static bool IsEmpty => _byKey.Count == 0;
+
         public static PlayerRemoteProfile TryGet(string key)
         {
-            if (string.IsNullOrEmpty(key)) return null;
+            if (_byKey.Count == 0 || string.IsNullOrEmpty(key)) return null;
             if (_byKey.TryGetValue(key, out var p)) return p;
             string cleaned = PlayerUtils.CleanPlayerName(key);
             if (cleaned != key && _byKey.TryGetValue(cleaned, out var pc)) return pc;

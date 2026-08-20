@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using System.Reflection;
 using System.Threading;
 using BetterFG.Tweaks;
@@ -9,9 +9,7 @@ using Mediatonic.Networking;
 namespace BetterFG.Patches
 {
     // patches the Hazel transport's send + receive entry points to tally bytes/sec for the
-    // server info readout. trampolines are unavoidably per-packet here, but the bodies are a
-    // single Interlocked.Add — no allocation, no logic, no decisions. only thing this affects
-    // is the byte counter on ShowServerInfoTweak.
+    [Utilities.BfgPatchGate("tweak.show_server_info", true)]
     [HarmonyPatch]
     internal static class NetByteCounterSendPatch
     {
@@ -30,6 +28,7 @@ namespace BetterFG.Patches
         }
     }
 
+    [Utilities.BfgPatchGate("tweak.show_server_info", true)]
     [HarmonyPatch(typeof(HazelNetworkTransport), "OnDataReceived", new[] { typeof(DataReceivedEventArgs) })]
     internal static class NetByteCounterRecvPatch
     {

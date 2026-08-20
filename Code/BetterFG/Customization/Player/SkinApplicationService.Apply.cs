@@ -183,6 +183,8 @@ namespace BetterFG.Customization.Player
             {
                     prefab = req.asset.Cast<GameObject>();
                     clone = GameObject.Instantiate(prefab, beanGEO.position, beanGEO.rotation);
+                    int stripped = GameObjectHelper.StripPhysics(clone);
+                    if (stripped > 0) Plugin.Log.LogInfo($"costume '{slot.skinInfo.file}' shipped {stripped} physics components, gone");
             }
             catch (Exception ex) { applyEx = ex; }
 
@@ -248,7 +250,7 @@ namespace BetterFG.Customization.Player
             appliedSkins[pendingKey] = new AppliedSkinInfo { instance = clone, bean = bean, type = SkinType.Costume, disabledChildren = disabled, beanGEO = beanGEO, restoreAllBaseGEO = IsLocalInRoundBean(bean) };
             pendingKeys.Remove(pendingKey);
             Plugin.Log.LogInfo($"done '{slot.skinInfo.name}' -> {bean.name}");
-            OnSkinApplied?.Invoke(new SkinApplyEvent { skinInfo = slot.skinInfo, bean = bean, reason = reason });
+            RaiseSkinApplied(slot.skinInfo, bean, reason);
             for (int f = 0; f < 5; f++) yield return null;
         }
 
@@ -276,6 +278,8 @@ namespace BetterFG.Customization.Player
             {
                 GameObject prefab = req.asset.Cast<GameObject>();
                 clone = GameObject.Instantiate(prefab, parent.position, parent.rotation);
+                int stripped = GameObjectHelper.StripPhysics(clone);
+                if (stripped > 0) Plugin.Log.LogInfo($"accessory '{slot.skinInfo.file}' shipped {stripped} physics components, gone");
             }
             catch (Exception ex) { applyEx = ex; }
 
@@ -322,7 +326,7 @@ namespace BetterFG.Customization.Player
             appliedSkins[pendingKey] = new AppliedSkinInfo { instance = clone, bean = bean, type = SkinType.Accessory };
             pendingKeys.Remove(pendingKey);
             Plugin.Log.LogInfo($"done '{slot.skinInfo.name}' -> {bean.name}");
-            OnSkinApplied?.Invoke(new SkinApplyEvent { skinInfo = slot.skinInfo, bean = bean, reason = reason });
+            RaiseSkinApplied(slot.skinInfo, bean, reason);
         }
 
         // ── Item ──────────────────────────────────────────────────────────────
@@ -508,6 +512,7 @@ namespace BetterFG.Customization.Player
             if (!spawnLeft && !spawnRight && !appliedSkins.ContainsKey(pendingKey))
             {
                 GameObject clone = GameObject.Instantiate(prefab, bean.transform.position, bean.transform.rotation);
+                GameObjectHelper.StripPhysics(clone);
                 clone.transform.SetParent(bean.transform, true);
                 clone.transform.localScale = Vector3.one * slot.skinInfo.scale;
                 SetRenderQueue(clone, 3000);
@@ -519,7 +524,7 @@ namespace BetterFG.Customization.Player
                 }
                 KillExistingAppliedAtKey(pendingKey);
                 appliedSkins[pendingKey] = new AppliedSkinInfo { instance = clone, bean = bean, type = SkinType.Item };
-                OnSkinApplied?.Invoke(new SkinApplyEvent { skinInfo = slot.skinInfo, bean = bean, reason = reason });
+                RaiseSkinApplied(slot.skinInfo, bean, reason);
             }
 
             pendingKeys.Remove(pendingKey);
@@ -532,11 +537,13 @@ namespace BetterFG.Customization.Player
             if (handInfo == null) return;
 
             string handBoneName = isLeft ? "Wrist_L_jnt" : "Wrist_R_jnt1";
-            Transform searchRoot = bean.transform.Find("BetterFG_ScaleWrapper") ?? bean.transform;
+            Transform rig = bean.transform.Find(BeanVisualRig.RIG_NAME);
+            Transform searchRoot = rig != null ? rig : bean.transform;
             Transform handBone = FindBoneDeep(searchRoot, handBoneName);
             Transform parent = handBone ?? searchRoot;
 
             GameObject clone = GameObject.Instantiate(prefab, parent.position, parent.rotation);
+            GameObjectHelper.StripPhysics(clone);
             clone.transform.SetParent(parent, false);
 
             string hk = isLeft ? "l" : "r";
@@ -567,7 +574,7 @@ namespace BetterFG.Customization.Player
             }
             KillExistingAppliedAtKey(key);
             appliedSkins[key] = new AppliedSkinInfo { instance = clone, bean = bean, type = SkinType.Item };
-            OnSkinApplied?.Invoke(new SkinApplyEvent { skinInfo = skinInfo, bean = bean, reason = ApplyReason.FromMenu });
+            RaiseSkinApplied(skinInfo, bean, ApplyReason.FromMenu);
         }
 
         private static Transform FindBoneDeep(Transform root, string boneName)

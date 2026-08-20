@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using Rewired;
 using BetterFG.Features.Replay;
@@ -46,6 +46,8 @@ namespace BetterFG.UI
         {
             Stick = Vector2.zero;
             if (!ReInput.isReady || ReInput.players.playerCount == 0) return;
+
+            if (ReInput.controllers.joystickCount == 0) return;
 
             var p = ReInput.players.GetPlayer(0);
             if (p == null) return;

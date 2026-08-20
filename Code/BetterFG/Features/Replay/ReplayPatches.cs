@@ -36,7 +36,7 @@ namespace BetterFG.Features.Replay
             Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlayOneShotAttached), new[] { typeof(string), typeof(GameObject) }), typeof(ReplayAttachedAudioPatch), false);
             foreach (var m in ReplayCreateAudioPatch.Targets()) Hook(m, typeof(ReplayCreateAudioPatch), true);
             Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.StopAndReleaseAudioEvent)), typeof(ReplayStopAudioPatch), false);
-            Hook(AccessTools.Method(typeof(PlayAudioStateBehaviour), nameof(PlayAudioStateBehaviour.OnStateEnter)), typeof(ReplayAnimatorAudioPatch), false);
+            Hook(AccessTools.Method(typeof(PlayAudioStateBehaviour), nameof(PlayAudioStateBehaviour.OnStateEnter), new[] { typeof(Animator), typeof(AnimatorStateInfo), typeof(int) }), typeof(ReplayAnimatorAudioPatch), false);
             Hook(AccessTools.Method(typeof(Levels.Obstacles.COMMON_PrefabSpawnerBase), nameof(Levels.Obstacles.COMMON_PrefabSpawnerBase.OnInstantiateObject)), typeof(ReplaySpawnerPatch), true);
             Hook(AccessTools.Method(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForUse)), typeof(ReplayPoolGetPatch), true);
             Hook(AccessTools.Method(typeof(FG.Common.GameObjectPool), nameof(FG.Common.GameObjectPool.PrepareObjectForStorage)), typeof(ReplayPoolReturnPatch), false);
@@ -262,6 +262,34 @@ namespace BetterFG.Features.Replay
         {
             if (FeatureReplay.Live == null) return;
             FeatureReplay.CaptureStarchartButtonPress(__instance);
+        }
+    }
+
+    internal static class ReplayMenuReloadGuard
+    {
+        static MethodBase _target;
+        static MethodInfo _patch;
+
+        public static void Arm()
+        {
+            if (_target != null) return;
+            _target = AccessTools.Method(typeof(FGClient.MainMenuManager), nameof(FGClient.MainMenuManager.HideChallenges));
+            _patch = AccessTools.Method(typeof(ReplayMenuReloadGuard), nameof(Skip));
+            Plugin.HarmonyInstance.Patch(_target, prefix: new HarmonyMethod(_patch));
+        }
+
+        public static void Disarm()
+        {
+            if (_target == null) return;
+            Plugin.HarmonyInstance.Unpatch(_target, _patch);
+            _target = null;
+            _patch = null;
+        }
+
+        static bool Skip()
+        {
+            Plugin.Log.LogInfo("held the menu's challenges teardown off the exit reload — it NREs when the reload starts from the menu, and that throw is what kills StateMainMenu.Initialise");
+            return false;
         }
     }
 }

@@ -56,6 +56,8 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         const float LookOffset = 0.03f;
 
+        internal static bool On;
+
         static bool _blink, _look, _squint, _localOnly, _work;
         static float _dist, _height, _rot, _scale, _yscale;
         static string _eyeMat;
@@ -72,8 +74,9 @@ namespace BetterFG.Features.CustomizeFallGuys
             _rot = feature.GetRange("eyerot");
             _scale = feature.GetRange("eyescale");
             _yscale = feature.GetRange("eyeyscale");
-            _eyeMat = feature.enabled ? feature.GetChoice("eyemat") : "none";
-            _work = feature.enabled && (_blink || _look || _squint
+            On = feature.enabled;
+            _eyeMat = On ? feature.GetChoice("eyemat") : "none";
+            _work = On && (_blink || _look || _squint
                 || _eyeMat != "none"
                 || !Mathf.Approximately(_dist, 0f)
                 || !Mathf.Approximately(_height, 0f)
@@ -95,6 +98,8 @@ namespace BetterFG.Features.CustomizeFallGuys
             public float lookHold;
             public float squintPhase;
             public GameObject eyeGo;
+            public Vector3 lastScaleL;
+            public Vector3 lastScaleR;
         }
 
         static Eyes[] _eyes = new Eyes[64];
@@ -280,6 +285,8 @@ namespace BetterFG.Features.CustomizeFallGuys
             _eyes[_count].lookRate = 6f;
             _eyes[_count].lookHold = UnityEngine.Random.Range(0.2f, 2f);
             _eyes[_count].squintPhase = UnityEngine.Random.Range(0f, 6.28f);
+            _eyes[_count].lastScaleL = _restScaleL;
+            _eyes[_count].lastScaleR = _restScaleR;
             _count++;
         }
 
@@ -332,6 +339,9 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         public static void TickPreview()
         {
+            if (!feature.enabled) return;
+            var ui = BetterFG.UI.BetterFGUIMan.Instance;
+            if (ui == null || !ui.IsVisible) return;
             if (_previewPanel == null || !_previewPanel.activeInHierarchy || _previewBean == null) return;
             EyePreview.SetBean(_previewBean);
             EyePreview.Render();
@@ -370,11 +380,9 @@ namespace BetterFG.Features.CustomizeFallGuys
                 if (blink)
                 {
                     float c = _eyes[i].blinkCursor + dt * _eyes[i].blinkSpeed;
-                    if (c >= _bakedFrames) c -= _bakedFrames * Mathf.Floor(c / _bakedFrames);
                     _eyes[i].blinkCursor = c;
 
-                    int idx = (int)c;
-                    if (idx >= _bakedFrames) idx = _bakedFrames - 1;
+                    int idx = (int)Mathf.PingPong(c, _bakedFrames - 1);
                     pl = _lPos[idx]; ql = _lRot[idx]; sl = _lScale[idx];
                     pr = _rPos[idx]; qr = _rRot[idx]; sr = _rScale[idx];
                 }
@@ -393,9 +401,16 @@ namespace BetterFG.Features.CustomizeFallGuys
                 float yr = sr.y * _scale * _yscale * squint;
 
                 l.SetLocalPositionAndRotation(pl, hasRot ? ql * rotL : ql);
-                l.localScale = new Vector3(sl.x * _scale, yl, sl.z * _scale);
                 r.SetLocalPositionAndRotation(pr, hasRot ? qr * rotR : qr);
-                r.localScale = new Vector3(sr.x * _scale, yr, sr.z * _scale);
+
+                float ease = 1f - Mathf.Exp(-dt * 25f);
+                var targetL = new Vector3(sl.x * _scale, yl, sl.z * _scale);
+                var scaleL = Vector3.Lerp(_eyes[i].lastScaleL, targetL, ease);
+                if (scaleL != _eyes[i].lastScaleL) { l.localScale = scaleL; _eyes[i].lastScaleL = scaleL; }
+
+                var targetR = new Vector3(sr.x * _scale, yr, sr.z * _scale);
+                var scaleR = Vector3.Lerp(_eyes[i].lastScaleR, targetR, ease);
+                if (scaleR != _eyes[i].lastScaleR) { r.localScale = scaleR; _eyes[i].lastScaleR = scaleR; }
             }
         }
 
@@ -433,7 +448,11 @@ namespace BetterFG.Features.CustomizeFallGuys
             StartCoroutine(PreviewLoop().WrapToIl2Cpp());
         }
 
-        void LateUpdate() => FeatureCustomizeFallGuys.Tick();
+        void LateUpdate()
+        {
+            if (!FeatureCustomizeFallGuys.On) return;
+            FeatureCustomizeFallGuys.Tick();
+        }
 
         static IEnumerator PreviewLoop()
         {

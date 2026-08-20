@@ -35,6 +35,12 @@ namespace BetterFG.Customization.Player
             SetupBoneReferences();
         }
 
+        public void Rebind()
+        {
+            _playerBonesByName.Clear();
+            SetupBoneReferences();
+        }
+
         public void SetBoneOffsets(List<BoneOffsetEntry> offsets)
         {
             boneOffsets = offsets ?? new List<BoneOffsetEntry>();

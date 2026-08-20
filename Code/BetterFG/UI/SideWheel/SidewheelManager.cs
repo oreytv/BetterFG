@@ -176,14 +176,24 @@ namespace BetterFG.UI.SideWheel
 
         }
 
+        private static IntPtr _typingSelPtr = IntPtr.Zero;
+        private static bool _typingSelIsField;
+
         private static bool IsTyping()
         {
             var cur = UnityEngine.EventSystems.EventSystem.current;
-            if (cur == null || cur.currentSelectedGameObject == null) return false;
+            if (cur == null || cur.currentSelectedGameObject == null) { _typingSelPtr = IntPtr.Zero; return false; }
             var go = cur.currentSelectedGameObject;
             if (!go.activeInHierarchy) return false;
-            return go.GetComponent<UnityEngine.UI.InputField>() != null
-                || go.GetComponent<TMPro.TMP_InputField>() != null;
+
+            IntPtr ptr = go.Pointer;
+            if (ptr != _typingSelPtr)
+            {
+                _typingSelPtr = ptr;
+                _typingSelIsField = go.GetComponent<UnityEngine.UI.InputField>() != null
+                    || go.GetComponent<TMPro.TMP_InputField>() != null;
+            }
+            return _typingSelIsField;
         }
 
         private float _apDiameter = -1f, _apPeek;

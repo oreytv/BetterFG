@@ -195,8 +195,8 @@ namespace BetterFG.Services
         // actually changed since the last one. wired into BetterFGUIMan.Update.
         public static void TickBackup()
         {
-            if (!BackupEnabled) return;
             if (!_dirtySinceBackup) return;
+            if (!BackupEnabled) return;
             float now = Time.realtimeSinceStartup;
             if (now - _lastBackupTime < BackupIntervalMinutes * 60f) return;
             BackupNow("auto");

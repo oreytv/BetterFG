@@ -422,6 +422,7 @@ namespace BetterFG.UI.Windows
         private RawImage _hoverImage;
         private bool _dragging;
         private Vector2 _offset;
+        private Color _hoverColour = new Color(-1f, -1f, -1f, -1f);
         private static WindowDragHandle _activeDrag;
 
         private static readonly Color HOVER_ON = new Color(1f, 1f, 1f, 0.08f);
@@ -456,7 +457,8 @@ namespace BetterFG.UI.Windows
             if (_hoverImage != null)
             {
                 var t = TabHoverStyle.Tint;
-                _hoverImage.color = (over || _dragging) ? new Color(t.r, t.g, t.b, HOVER_ON.a) : Color.clear;
+                var want = (over || _dragging) ? new Color(t.r, t.g, t.b, HOVER_ON.a) : Color.clear;
+                if (_hoverColour != want) { _hoverImage.color = want; _hoverColour = want; }
             }
 
             if (Input.GetMouseButtonDown(0) && over && (_activeDrag == null || _activeDrag == this))

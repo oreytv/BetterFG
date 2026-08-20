@@ -90,6 +90,7 @@ namespace BetterFG.Patches
                 Plugin.Log.LogInfo($"ScreenBg: DoFadeIn caught loading screen {loading.GetType().Name}, screen={LoadingScreenBg.ScreenFor(loading)}");
                 LoadingScreenBg.Active = loading;
                 LoadingScreenBg.Dispatch(loading);
+                BetterFG.Tweaks.HideCreatorCodeTweak.OnLoadingScreenShown(loading);
                 return;
             }
 
@@ -106,6 +107,13 @@ namespace BetterFG.Patches
             if (browser != null && MenuCustomizationApplication.Instance != null)
             {
                 MenuCustomizationApplication.Instance.StartCoroutine(ApplyCreativeNextFrame(browser.transform, true, null, false).WrapToIl2Cpp());
+                return;
+            }
+
+            var publish = __instance.TryCast<LevelEditorPublishPopupViewModel>();
+            if (publish != null)
+            {
+                BetterFG.UI.Windows.Creative.PublishThumbnailWindow.Open(publish);
                 return;
             }
 

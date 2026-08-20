@@ -74,8 +74,15 @@ namespace BetterFG.Services
             if (applying != null && !string.IsNullOrEmpty(applying.file))
                 return (applying.file, applying.skinScale > 0f ? applying.skinScale : 0f);
 
-            // equipped loadout comes from the profile store (skin.multi.*), not live scene slots.
-            // the baked per-costume scale is saved alongside as skin.<file>.scale.
+            var svc = BetterFG.Customization.Player.SkinApplicationService.Instance;
+            if (svc != null)
+            {
+                var live = svc.ActiveCostumeSkin();
+                if (live == null) return (null, 0f);
+                return (live.file, SettingsService.TryGetSkinScale(live.file, out float livesc)
+                    ? livesc : (live.skinScale > 0f ? live.skinScale : 0f));
+            }
+
             var local = BetterFG.Network.RemoteProfileStore.LocalLoadout();
             if (local != null)
                 foreach (var entry in local.skins)
@@ -165,6 +172,15 @@ namespace BetterFG.Services
             }
         }
 
+        public static void RefreshVisualRig(GameObject bean)
+        {
+            if (bean == null) return;
+            var rig = BeanVisualRig.Get(bean);
+            if (rig == null) return;
+            rig.Rebind();
+            BetterFG.Customization.Player.SkinApplicationService.Instance?.ScaleAppliedSkins(bean, rig.transform.localScale.x);
+        }
+
         public static void ApplySkinScaleToBean(GameObject bean, float skinScale, BeanScaleMode mode = BeanScaleMode.Local)
         {
             if (Instance == null || bean == null) return;
@@ -182,53 +198,57 @@ namespace BetterFG.Services
         private void ScaleBean(GameObject bean, float scale, BeanScaleMode mode = BeanScaleMode.Local, ScaleReason reason = ScaleReason.Auto, BetterFG.Customization.Player.SkinInfo applyingCostume = null)
         {
             if (bean == null) return;
-            int id = bean.GetInstanceID();
+            bool inRound = IsInRoundBean(bean);
+            float resolved = scale;
 
             if (mode == BeanScaleMode.Local)
             {
                 // YOUR bean anywhere — menu, lobby, victory, or in a round. the scale is never taken from
                 // the caller; it's resolved from current state so every path agrees. the passed value is
                 // only "what you asked for", so we can tell you when a public round overrode it.
-                float resolved = ResolveLocalScale(applyingCostume);
-                bool inRound = IsInRoundBean(bean);
+                resolved = ResolveLocalScale(applyingCostume);
                 // only worth a line when we didn't give you what you asked for
                 if (!Mathf.Approximately(resolved, scale))
                     Plugin.Log.LogInfo($"{bean.name} wanted {scale}, got {resolved} (inRound={inRound}, {reason})");
                 if (reason == ScaleReason.Manual && InLivePublicRound() && !Mathf.Approximately(resolved, scale))
                     UI.BetterFGUIMan.Instance?.ShowTooltipTimed("Couldn't scale you, you're in a public lobby.", 2f);
-
-                // in-round beans carry scale on a wrapper under Character; menu/lobby beans just take it
-                // on their own transform.
-                if (inRound)
-                {
-                    var wrapper = GetOrCreateWrapper(bean);
-                    if (wrapper != null)
-                    {
-                        wrapper.localScale = new Vector3(resolved, resolved, resolved);
-                        _wrappers[id] = wrapper;
-                    }
-                }
-                else
-                    bean.transform.localScale = new Vector3(resolved, resolved, resolved);
             }
-            else
+            else if (bean != BeanMonitorService.LocalPlayerBean)
             {
-                if (bean != BeanMonitorService.LocalPlayerBean)
+                Transform character = bean.transform.Find("Character");
+                if (character != null)
                 {
-                    Transform character = bean.transform.Find("Character");
-                    if (character != null)
+                    var ikController = character.GetComponent<FallGuyIkController>();
+                    if (ikController != null)
                     {
-                        var ikController = character.GetComponent<FallGuyIkController>();
-                        if (ikController != null)
-                        {
-                            ikController.enabled = false;
-                            Plugin.Log.LogInfo($"PlayerScale: destroyed ik on {bean.name}");
-                        }
+                        ikController.enabled = false;
+                        Plugin.Log.LogInfo($"PlayerScale: destroyed ik on {bean.name}");
                     }
                 }
-
-                bean.transform.localScale = new Vector3(scale, scale, scale);
             }
+
+            if (!inRound && bean.GetComponent<Rigidbody>() == null)
+            {
+                bean.transform.localScale = new Vector3(resolved, resolved, resolved);
+                return;
+            }
+
+            bean.transform.localScale = Vector3.one;
+            var rig = BeanVisualRig.Get(bean);
+
+            if (Mathf.Approximately(resolved, 1f))
+            {
+                if (rig == null) return;
+                rig.Teardown();
+                BetterFG.Customization.Player.SkinApplicationService.Instance?.ScaleAppliedSkins(bean, 1f);
+                return;
+            }
+
+            if (rig == null) rig = BeanVisualRig.Create(bean);
+            if (rig == null) return;
+            rig.Rebind();
+            rig.SetScale(resolved);
+            BetterFG.Customization.Player.SkinApplicationService.Instance?.ScaleAppliedSkins(bean, resolved);
         }
 
         private Transform GetOrCreateWrapper(GameObject bean)

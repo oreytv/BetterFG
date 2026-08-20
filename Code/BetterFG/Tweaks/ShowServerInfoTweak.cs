@@ -94,6 +94,10 @@ namespace BetterFG.Tweaks
                 var go = new GameObject("BFG_ServerInfo");
                 go.transform.SetParent(defaultGo.transform, false);
 
+                var isolate = go.AddComponent<Canvas>();
+                isolate.overrideSorting = true;
+                isolate.sortingOrder = 1;
+
                 _label = go.AddComponent<TextMeshProUGUI>();
                 _label.fontSize = 20f;
                 _label.fontStyle = FontStyles.Bold;
@@ -150,11 +154,9 @@ namespace BetterFG.Tweaks
             while (gen == _runGen && _label != null)
             {
                 var ggsc = GlobalGameStateClient.Instance;
-                var gsv = ggsc?.GameStateView;
-                float latency = gsv != null ? gsv.CurrentEstimatedLatency : 0f;
-                int ms = Mathf.RoundToInt(latency * 1000f);
-
                 var nm = ggsc?.NetworkManager;
+                int ms = nm != null ? Mathf.RoundToInt(nm.RTT * 1000f) : 0;
+
                 var unm = nm != null ? nm.TryCast<FG_UnityInternetNetworkManager>() : null;
                 bool sampled = false;
                 if (unm != null)
@@ -197,9 +199,11 @@ namespace BetterFG.Tweaks
                         ? $"{ms}ms  {ppsOut}pps  {lossPct}% loss\n↑ {upKBs:0.0} KB/s   ↓ {downKBs:0.0} KB/s\n{region}"
                         : $"{ms}ms\n{region}";
                 }
-                yield return null;
+                yield return _tick;
             }
         }
+
+        private static readonly WaitForSeconds _tick = new WaitForSeconds(0.2f);
 
         private static IEnumerator FetchRegion(string addr)
         {

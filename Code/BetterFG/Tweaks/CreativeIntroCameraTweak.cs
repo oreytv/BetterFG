@@ -1,5 +1,8 @@
-using System;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
+using BetterFG.Nametag;
 using FG.Common;
 using FGClient;
 using Levels.Progression;
@@ -45,6 +48,8 @@ namespace BetterFG.Tweaks
         const float FadeTime = 0.45f;
         const float RestoreDelay = 2f;
         const int ArcSamples = 96;
+        const float NametagPollStep = 0.5f;
+        const int NametagPolls = 6;
 
         static readonly float[,] Shape =
         {
@@ -172,6 +177,7 @@ namespace BetterFG.Tweaks
 
             HideLoadingScreen();
             PlayIntroBanner();
+            StartCoroutine(PollNametags().WrapToIl2Cpp());
 
             if (_path != null) Plugin.Log.LogInfo($"creative intro rolling, {_spawned.Count}/{total} in — {_flightLength:0}u of camera track over {_flightDuration:0.0}s");
             else Plugin.Log.LogInfo($"creative intro rolling, {_spawned.Count}/{total} in — no route to fly, circling the start instead");
@@ -423,6 +429,23 @@ namespace BetterFG.Tweaks
             _bannerWasActive = _bannerState.activeSelf;
             _bannerState.SetActive(true);
             banner.Play();
+        }
+
+        IEnumerator PollNametags()
+        {
+            for (int i = 0; i < NametagPolls; i++)
+            {
+                if (!_running) yield break;
+
+                var tag = NametagFinder.FindLocalNameTagSprite();
+                if (tag != null)
+                {
+                    NametagIconApplicator.OnLocalTagSpawned();
+                    NametagPatchHub.RefreshRemoteNametags(tag.GetComponentInParent<PlayerInfoHUDBase>());
+                }
+
+                yield return new WaitForSeconds(NametagPollStep);
+            }
         }
 
         void HideLoadingScreen()

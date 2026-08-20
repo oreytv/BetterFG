@@ -5,7 +5,6 @@
 	     Lands in obj\...\BuildHash.g.cs as a partial of BetterFGInfo. -->
 	<PropertyGroup>
 	  <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
-	  <BuildHashFile>$(IntermediateOutputPath)BuildHash.g.cs</BuildHashFile>
 	  <!-- all default off. CopyBuildsToSteam / CopyBuildsToEpic drop the plugin into that store's Fall Guys
 	       (folders auto-discovered like the installer does); CopyBuildsToDownloads drops the built installer
 	       exe + bettrfg_plugin.zip into Downloads. plain build does none. -->
@@ -46,6 +45,10 @@
 	  </Task>
 	</UsingTask>
 	<Target Name="GenerateBuildHash" BeforeTargets="BeforeCompile;CoreCompile">
+	  <PropertyGroup>
+	    <BuildHashFile>$(IntermediateOutputPath)BuildHash.g.cs</BuildHashFile>
+	  </PropertyGroup>
+	  <MakeDir Directories="$(IntermediateOutputPath)" />
 	  <ComputeBettrFGSourceHash ProjectDir="$(MSBuildProjectDirectory)\">
 	    <Output TaskParameter="HashValue" PropertyName="BuildHashValue" />
 	  </ComputeBettrFGSourceHash>
@@ -88,6 +91,12 @@
 	    <BettrFGDownloadsFlag Condition="$(BettrFGPromptOut.Contains('DL=0'))"></BettrFGDownloadsFlag>
 	    <KillAndRestartGame Condition="$(BettrFGPromptOut.Contains('KILL=0'))">false</KillAndRestartGame>
 	    <SkipLaunch Condition="$(BettrFGPromptOut.Contains('KILL=0'))">true</SkipLaunch>
+	    <!-- early access drives IsPublicRelease, which is what puts the "not for public release" +
+	         "Early access!" lines on the watermark. The unchecked case has to actively strip the constant,
+	         otherwise picking an EarlyAcesss Configuration in VS would keep stamping those lines on
+	         a build the window says is a normal one. -->
+	    <DefineConstants Condition="$(BettrFGPromptOut.Contains('EA=1'))">$(DefineConstants);EARLYACESSS</DefineConstants>
+	    <DefineConstants Condition="$(BettrFGPromptOut.Contains('EA=0'))">$(DefineConstants.Replace('EARLYACESSS', ''))</DefineConstants>
 	  </PropertyGroup>
 	  <Message Importance="high" Text="BettrFG build choices: $(BettrFGPromptOut)" />
 	</Target>
@@ -114,7 +123,7 @@
 	<Target Name="PublishSkinPackager" AfterTargets="PublishBetterFGInstaller">
 	  <PropertyGroup>
 	    <SkinPackagerConfiguration>Release</SkinPackagerConfiguration>
-	    <SkinPackagerConfiguration Condition="'$(Configuration)' == 'Debug' Or '$(Configuration)' == 'Release' Or '$(Configuration)' == 'EarlyAcesss' Or '$(Configuration)' == 'EarlyAccess_xb1'">$(Configuration)</SkinPackagerConfiguration>
+	    <SkinPackagerConfiguration Condition="'$(Configuration)' == 'Debug' Or '$(Configuration)' == 'Release' Or '$(Configuration)' == 'EarlyAcesss'">$(Configuration)</SkinPackagerConfiguration>
 	    <SkinPackagerProject>$(MSBuildProjectDirectory)\..\BetterFG.SkinPackager\BetterFG.Creator.csproj</SkinPackagerProject>
 	    <SkinPackagerOutput>$(MSBuildProjectDirectory)\..\BetterFG.SkinPackager\bin\$(SkinPackagerConfiguration)\BetterFG.Creator.dll</SkinPackagerOutput>
 	    <SkinPackagerGroupBat>$(MSBuildProjectDirectory)\..\BetterFG.SkinPackager\group_skins.bat</SkinPackagerGroupBat>
@@ -144,14 +153,18 @@
       https://nuget.samboy.dev/v3/index.json
     </RestoreAdditionalProjectSources>
     <RootNamespace>BetterFG</RootNamespace>
-    <Configurations>Debug;Release;Release_Profiles;XB1;EarlyAcesss;EarlyAccess_xb1</Configurations>
+    <Configurations>Debug;Release;Release_Profiles;EarlyAcesss</Configurations>
   </PropertyGroup>
+
+  <Import Project="build\Comp.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Comp.targets')" />
+  <Import Project="build\PlatformTag.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\PlatformTag.targets')" />
+  <Import Project="build\Obfuscation.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Obfuscation.targets')" />
 
   <!-- Profiles is a config-gated feature. Epic doesn't like it shipping in normal Release, so it's
        only compiled in when PROFILES is defined: Debug (so dev builds keep it) + Release_Profiles.
        Plain Release (and the console variants) leave it out entirely - source files are excluded
        from compilation below and every call site is wrapped in #if PROFILES. -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Debug' Or '$(Configuration)' == 'Release_Profiles'">
+  <PropertyGroup Condition="('$(Configuration)' == 'Debug' Or '$(Configuration)' == 'Release_Profiles') And Exists('$(MSBuildProjectDirectory)\Customization\Profiles\ProfileService.cs')">
     <DefineConstants>$(DefineConstants);PROFILES</DefineConstants>
   </PropertyGroup>
 
@@ -164,14 +177,6 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'EarlyAcesss'">
     <DefineConstants>$(DefineConstants);EARLYACESSS</DefineConstants>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)' == 'EarlyAccess_xb1'">
-    <DefineConstants>$(DefineConstants);EARLYACCESS_XB1</DefineConstants>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)' == 'XB1'">
-    <DefineConstants>$(DefineConstants);XB1</DefineConstants>
   </PropertyGroup>
 
 <Target Name="CopyDll" AfterTargets="CopyLibs" Condition="'$(SkipCopyDll)' != 'true' And ('$(CopyBuildsToSteam)' == 'true' Or '$(CopyBuildsToEpic)' == 'true')">

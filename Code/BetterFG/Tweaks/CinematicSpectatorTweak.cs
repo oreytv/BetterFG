@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.Core;
 using BetterFG.Features.QualificationTime;
@@ -111,12 +111,18 @@ namespace BetterFG.Tweaks
         // GlobalGameStateClient on every single frame of normal play and tore down a prompt that was
         // already gone. only run the teardown on the edge, and only look the manager up while we're live.
         bool _torndown = true;
+        float _nextCgmProbe;
 
         void Update()
         {
             if (!IsEnabled || _sessionOver) { ShutdownOnce(); return; }
 
-            if (_cgm == null) GlobalGameStateClient.Instance?.GameStateView?.GetLiveClientGameManager(out _cgm);
+            if (_cgm == null)
+            {
+                if (Time.unscaledTime < _nextCgmProbe) { ShutdownOnce(); return; }
+                _nextCgmProbe = Time.unscaledTime + 0.25f;
+                GlobalGameStateClient.Instance?.GameStateView?.GetLiveClientGameManager(out _cgm);
+            }
             if (_cgm == null || !_cgm.IsSpectatorMode) { ShutdownOnce(); return; }
             if (FeatureQualificationTime.QualPopupOpen) { ShutdownOnce(); return; }
 

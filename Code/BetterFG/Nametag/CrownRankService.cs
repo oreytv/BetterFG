@@ -38,7 +38,20 @@ namespace BetterFG.Nametag
         const string KEY_OUT_B = "crownrank.out.b";
         const string KEY_SWAP_SIDE = "crownrank.swapside";
 
-        public static bool Enabled => SettingsService.Get(KEY_ENABLED, "false") == "true";
+        static int _enabledFrame = -1;
+        static bool _enabledCached;
+
+        public static bool Enabled
+        {
+            get
+            {
+                int frame = Time.frameCount;
+                if (_enabledFrame == frame) return _enabledCached;
+                _enabledFrame = frame;
+                _enabledCached = SettingsService.Get(KEY_ENABLED, "false") == "true";
+                return _enabledCached;
+            }
+        }
         public static bool TextOn => SettingsService.Get(KEY_TEXT_ON, "false") == "true";
         public static bool RecolourOn => SettingsService.Get(KEY_RECOLOUR_ON, "false") == "true";
         // crown on the left of the name instead of the right.
@@ -70,7 +83,11 @@ namespace BetterFG.Nametag
             set { SettingsService.Set(KEY_OUT_R, value.r.ToString(CI)); SettingsService.Set(KEY_OUT_G, value.g.ToString(CI)); SettingsService.Set(KEY_OUT_B, value.b.ToString(CI)); }
         }
 
-        public static void SetEnabled(bool on) => SettingsService.Set(KEY_ENABLED, on ? "true" : "false");
+        public static void SetEnabled(bool on)
+        {
+            SettingsService.Set(KEY_ENABLED, on ? "true" : "false");
+            Utilities.PatchGate.SetActive(KEY_ENABLED, on);
+        }
         public static void SetTextOn(bool on) => SettingsService.Set(KEY_TEXT_ON, on ? "true" : "false");
         public static void SetRecolourOn(bool on) => SettingsService.Set(KEY_RECOLOUR_ON, on ? "true" : "false");
         public static void SetSwapSide(bool on) => SettingsService.Set(KEY_SWAP_SIDE, on ? "true" : "false");
@@ -277,8 +294,12 @@ namespace BetterFG.Nametag
             // canvas nametag (UGUI): the crown is a layout child, so its SIDE is just its sibling index — first
             // sibling = left of the name, last = right. no position math, and it leaves the icon where it is
             // (to the right of the name). handles both swap states, so run regardless of SwapSide.
-            if (crown.GetComponentInParent<PlayerInfoDisplayCanvas>() != null)
+            if (IsCanvasTag(crown))
             {
+                var parent = crown.parent;
+                if (parent == null) return;
+                int want = SwapSide ? 0 : parent.childCount - 1;
+                if (crown.GetSiblingIndex() == want) return;
                 if (SwapSide) crown.SetAsFirstSibling();
                 else crown.SetAsLastSibling();
                 return;
@@ -301,9 +322,24 @@ namespace BetterFG.Nametag
             var np = nameT.localPosition;
             // ABSOLUTE placement: crown to the negative side, name to the positive side, every time. idempotent
             // so multiple re-centres in a frame don't parity-flip back to the right.
-            crown.localPosition = new Vector3(-Mathf.Abs(cp.x), cp.y, cp.z);
-            nameT.localPosition = new Vector3(Mathf.Abs(np.x), np.y, np.z);
+            var wantCrown = new Vector3(-Mathf.Abs(cp.x), cp.y, cp.z);
+            var wantName = new Vector3(Mathf.Abs(np.x), np.y, np.z);
+            if (cp != wantCrown) crown.localPosition = wantCrown;
+            if (np != wantName) nameT.localPosition = wantName;
         }
+
+        static readonly Dictionary<System.IntPtr, bool> _isCanvasTag = new Dictionary<System.IntPtr, bool>();
+
+        static bool IsCanvasTag(Transform crown)
+        {
+            System.IntPtr id = crown.Pointer;
+            if (_isCanvasTag.TryGetValue(id, out bool v)) return v;
+            v = crown.GetComponentInParent<PlayerInfoDisplayCanvas>() != null;
+            _isCanvasTag[id] = v;
+            return v;
+        }
+
+        public static void ForgetTagCache() => _isCanvasTag.Clear();
 
         // respawn re-runs the game's layout and drags things back. re-assert a frame later so it lands after
         // the game's re-layout: re-run the name/icon apply, then place the crown for whichever mode we're in.

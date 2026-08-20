@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using FGClient.FallFeed;
 using HarmonyLib;
 using UnityEngine;
@@ -63,14 +63,14 @@ namespace BetterFG.Tweaks
             var parent = __instance._notificationContainer;
             if (parent == null) return true;
 
+            int max = t.Max;
             int live = 0;
-            for (int i = 0; i < parent.childCount; i++)
+            int n = parent.childCount;
+            for (int i = 0; i < n; i++)
             {
                 var child = parent.GetChild(i)?.GetComponent<FallFeedNotificationViewModel>();
-                if (child != null && !child._disposed) live++;
+                if (child != null && !child._disposed && ++live > max) return true;
             }
-
-            if (live > t.Max) return true;
 
             return false;
         }

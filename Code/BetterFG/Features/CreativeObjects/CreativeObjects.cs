@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.UI.Windows.Creative;
 using BetterFG.Utilities;
@@ -29,8 +29,8 @@ namespace BetterFG.Features.CreativeObjects
 
         static CreativeObjects()
         {
-            Register("Text", "Spell something out in blocks or stickers, a placed object per stroke",
-                "BetterFG.assets.creativeobjects.text.png", BatchEditWindow.OpenTextTool);
+            Register("Groups", "Drop in a selection you saved earlier, from this level or any other",
+                "BetterFG.assets.creativeobjects.groups.png", BatchEditWindow.OpenGroupsTool);
         }
 
         public static void Register(string name, string description, string iconResource, Action picked) =>

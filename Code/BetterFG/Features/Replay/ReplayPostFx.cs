@@ -15,6 +15,7 @@ namespace BetterFG.Features.Replay
         readonly Vignette _vignette;
         readonly ChromaticAberration _chroma;
         readonly Bloom _bloom;
+        readonly DepthOfField _dof;
 
         readonly GameObject _sharpenGo;
         readonly Material _sharpenMat;
@@ -51,6 +52,13 @@ namespace BetterFG.Features.Replay
             _bloom.enabled.Override(true);
             _bloom.intensity.overrideState = true;
             _bloom.threshold.overrideState = true;
+
+            _dof = profile.AddSettings<DepthOfField>();
+            _dof.enabled.Override(false);
+            _dof.focusDistance.overrideState = true;
+            _dof.aperture.overrideState = true;
+            _dof.focalLength.overrideState = true;
+            _dof.kernelSize.Override(KernelSize.Medium);
 
             _volume = _go.AddComponent<PostProcessVolume>();
             _volume.isGlobal = true;
@@ -116,6 +124,15 @@ namespace BetterFG.Features.Replay
             _chroma.intensity.value = Mathf.Clamp01(b != null ? Mathf.Lerp(a.chromaticAberration, b.chromaticAberration, raw) : a.chromaticAberration);
             _bloom.intensity.value = Mathf.Max(0f, b != null ? Mathf.Lerp(a.bloomIntensity, b.bloomIntensity, raw) : a.bloomIntensity);
             _bloom.threshold.value = Mathf.Max(0f, b != null ? Mathf.Lerp(a.bloomThreshold, b.bloomThreshold, raw) : a.bloomThreshold);
+
+            float dof = Mathf.Clamp01(b != null ? Mathf.Lerp(a.dofStrength, b.dofStrength, raw) : a.dofStrength);
+            _dof.enabled.value = dof > 0.001f;
+            if (_dof.enabled.value)
+            {
+                _dof.focusDistance.value = Mathf.Max(0.1f, b != null ? Mathf.Lerp(a.dofDistance, b.dofDistance, raw) : a.dofDistance);
+                _dof.aperture.value = Mathf.Lerp(22f, 1.4f, dof);
+                _dof.focalLength.value = Mathf.Lerp(20f, 130f, dof);
+            }
 
             if (_sharpenRenderer == null) return;
 

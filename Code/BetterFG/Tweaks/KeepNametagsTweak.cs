@@ -35,6 +35,7 @@ namespace BetterFG.Tweaks
             public int crownRank;
             public bool hasCrownRank;
             public GameObject nameLayout;
+            public Transform parent;
         }
         static readonly Dictionary<Transform, InfoSnapshot> _snapshots = new();
 
@@ -117,6 +118,8 @@ namespace BetterFG.Tweaks
                 if (t == null) continue;
                 var snap = kv.Value;
 
+                if (snap.parent != null && t.parent != snap.parent) t.SetParent(snap.parent, true);
+
                 // is THIS the local player's tag AND are we overriding the crown text? if so, force our crown
                 // text instead of the snapshot's real value — this teardown restore was the last thing stomping
                 // it back to 58. skip restoring the crown label's TMP text for the local override too.
@@ -196,6 +199,7 @@ namespace BetterFG.Tweaks
                     crownRank = crownRank,
                     hasCrownRank = hasCrown,
                     nameLayout = nameLayout != null ? nameLayout.gameObject : null,
+                    parent = t.parent,
                 };
 
                 t.SetParent(null, true);

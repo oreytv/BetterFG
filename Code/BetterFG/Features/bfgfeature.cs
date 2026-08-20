@@ -78,6 +78,7 @@ namespace BetterFG.Features
         {
             if (enabled == on) return;
             SettingsService.Set(key, on ? "true" : "false");
+            Utilities.PatchGate.SetActive(key, on);
             if (on) OnOpen();
             else OnClosed();
         }

@@ -1,0 +1,45 @@
+using System;
+using System.Collections.Generic;
+using BetterFG.Customization.Menu;
+using BetterFG.Utilities;
+using UnityEngine;
+
+namespace BetterFG.UI.Tab
+{
+    public class PlinthsInGameTab : PlinthsTab
+    {
+        public PlinthsInGameTab(IntPtr ptr) : base(ptr) { }
+
+        public override string TabTitle => "Plinths";
+        protected override string TitleDisplay => "Plinths - In-game";
+
+        protected override string SwitchLabel => "UGC →";
+        protected override BetterFGTab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<PlinthsUgcTab>();
+
+        static readonly Dictionary<string, Texture2D> _covers = new Dictionary<string, Texture2D>();
+
+        protected override void BuildRows()
+        {
+            string active = PlinthApp?.ActiveGameId;
+            foreach (var gp in MenuCustomizationApplication.GamePlinths)
+            {
+                var captured = gp;
+                var img = BuildRow(gp.Label, "from the game", gp.Id == active, new Action(() =>
+                {
+                    PlinthApp?.ApplyGamePlinth(captured);
+                    SetStatus($"Applying {captured.Label}...");
+                }));
+
+                if (!_covers.TryGetValue(gp.Id, out var tex) || tex == null)
+                {
+                    tex = EmbeddedResourceandUnity.LoadTexture(gp.Cover);
+                    if (tex != null) _covers[gp.Id] = tex;
+                }
+                if (tex != null) ApplyCover(img, tex);
+                else UGUIShip.CreateStretchLabel(img.transform, "No Preview", FS_SM, HINT);
+            }
+
+            SetStatus($"{MenuCustomizationApplication.GamePlinths.Length} game plinths.");
+        }
+    }
+}

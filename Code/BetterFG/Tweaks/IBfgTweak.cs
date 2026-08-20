@@ -33,6 +33,7 @@ namespace BetterFG.Tweaks
         public Func<int> Get;
         public Action<int> Set;
         public bool Wrap;              // loop min<->max instead of clamping
+        public int Step;               // 0 = step by 1
         public float Width;            // 0 = default (62)
     }
 
@@ -85,6 +86,7 @@ namespace BetterFG.Tweaks
             if (IsEnabled == enabled) return;
             IsEnabled = enabled;
             SettingsService.Set(SettingKey, enabled ? "true" : "false");
+            Utilities.PatchGate.SetActive(SettingKey, enabled);
             if (enabled)
             {
                 if (!_live.Contains(this)) _live.Add(this);

@@ -6,6 +6,7 @@ using FGClient.UI;
 using FGClient.UI.Core;
 using FGClient.UI.PrivateLobby;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace BetterFG.Tweaks
 {
@@ -55,6 +56,8 @@ namespace BetterFG.Tweaks
             if (_settingsOpen && Time.unscaledTime - _settingsOpenedAt > 0.5f
                 && (_settingsViewGo == null || !_settingsViewGo.activeInHierarchy))
                 CloseSettings();
+
+            if (!_settingsOpen && LobbyCustomiserTweak.PopupOpen) { DestroyPrompt(); return; }
 
             if (_prompt == null || !_prompt.IsAlive)
             {
@@ -147,8 +150,12 @@ namespace BetterFG.Tweaks
             LobbyCustomiserTweak.Instance?.SetNavSuspended(!visible);
 
             if (_lobbyVm == null) _lobbyVm = FindLobbyVm();
-            if (visible) _lobbyVm?.OnGainFocus();
-            else _lobbyVm?.OnLoseFocus();
+            if (visible && EventSystem.current != null)
+            {
+                EventSystem.current.sendNavigationEvents = true;
+                var back = _lobbyVm?._inputHandler?._lastSelectedGameObject;
+                if (back != null && back.activeInHierarchy) EventSystem.current.SetSelectedGameObject(back);
+            }
         }
 
         private static MainMenuBuilder FindBuilder()

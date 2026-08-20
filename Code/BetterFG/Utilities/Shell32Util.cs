@@ -47,7 +47,9 @@ namespace BetterFG.Utilities
         [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+        [DllImport("kernel32.dll")] private static extern uint GetCurrentProcessId();
 
         [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool Shell_NotifyIcon(uint dwMessage, ref NOTIFYICONDATA lpData);
@@ -104,8 +106,10 @@ namespace BetterFG.Utilities
         // that stale flag. Ground truth is the actual OS foreground window, not what Unity thinks.
         public static bool IsGameWindowForeground()
         {
-            if (!Install()) return true;
-            return GetForegroundWindow() == _hwnd;
+            var fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) return false;
+            GetWindowThreadProcessId(fg, out uint pid);
+            return pid == GetCurrentProcessId();
         }
 
         /// <summary>Windows-only toast. Clicking it brings the game window back to the front.</summary>

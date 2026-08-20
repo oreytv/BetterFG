@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$GameRoot = "C:\Program Files (x86)\Steam\steamapps\common\Fall Guys",
     [string]$BuildOutput = "",
     [switch]$CopyBuildsToDownloads
@@ -98,11 +98,11 @@ if ($BuildOutput -and (Test-Path $BuildOutput)) {
 
     $libsSource = Join-Path $BuildOutput "Libs"
     if (Test-Path $libsSource) {
-        $libsDest = Join-Path $pluginOnlyFolder "Libs"
-        if (Test-Path $libsDest) {
-            Remove-Item -LiteralPath $libsDest -Recurse -Force
-        }
-        Copy-Item -LiteralPath $libsSource -Destination $libsDest -Recurse -Force
+        Copy-Item -Path (Join-Path $libsSource "*") -Destination $pluginOnlyFolder -Force
+    }
+    $staleLibs = Join-Path $pluginOnlyFolder "Libs"
+    if (Test-Path $staleLibs) {
+        Remove-Item -LiteralPath $staleLibs -Recurse -Force
     }
 }
 

@@ -351,6 +351,8 @@ namespace BetterFG.Features.Replay
         public float bloomThreshold = 1f;
         public float sharpenAmount;
         public float sharpenRadius = 1f;
+        public float dofStrength;
+        public float dofDistance = 10f;
 
         public const float ExposureMin = -3f, ExposureMax = 3f, ExposureStep = 0.1f;
         public const float GradeMin = -100f, GradeMax = 100f, GradeStep = 5f;
@@ -360,6 +362,8 @@ namespace BetterFG.Features.Replay
         public const float BloomThresholdMin = 0f, BloomThresholdMax = 2f, BloomThresholdStep = 0.1f;
         public const float SharpenAmountMin = 0f, SharpenAmountMax = 5f, SharpenAmountStep = 0.25f;
         public const float SharpenRadiusMin = 0.25f, SharpenRadiusMax = 4f, SharpenRadiusStep = 0.25f;
+        public const float DofStrengthMin = 0f, DofStrengthMax = 1f, DofStrengthStep = 0.05f;
+        public const float DofDistanceMin = 0.5f, DofDistanceMax = 80f;
     }
 
     public class ReplayRecording

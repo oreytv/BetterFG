@@ -517,6 +517,8 @@ namespace BetterFG.Customization.Social
         }
 
         // stop the emote currently playing on a given agent's bean (e.g. they grabbed).
+        public static bool AnyGraphsLive => _graphAgents.Count > 0;
+
         public static void StopEmoteForAgent(MotorAgent agent)
         {
             if (agent == null) return;

@@ -1,4 +1,5 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using FGClient;
 using Rewired;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -36,9 +37,27 @@ namespace BetterFG.Services
         // Application.isFocused/Rewired's own focus tracking sticks "focused" from process start on
         // this build, so a boot that lands without real OS focus keeps servicing input regardless.
         // Ground-truth check against the actual foreground window catches that and plain alt-tab too.
-        private static bool OutOfForeground => BackgroundGateEnabled && !Shell32Util.IsGameWindowForeground();
+        private static bool _outOfForegroundCached;
+        private static int _foregroundFrame = -1;
+
+        private static bool OutOfForeground
+        {
+            get
+            {
+                if (!BackgroundGateEnabled) return false;
+                int frame = Time.frameCount;
+                if (_foregroundFrame != frame)
+                {
+                    _foregroundFrame = frame;
+                    _outOfForegroundCached = !Shell32Util.IsGameWindowForeground();
+                }
+                return _outOfForegroundCached;
+            }
+        }
 
         public static bool IsLocked => _realFieldLock || _fakeFieldLock || _editorUiLock || _controllerLock || _paramTypeLock || _loadingScreenLock || OutOfForeground;
+
+        private static bool _musicMuted;
 
         // back-compat: callers that used SetLocked were the fake-field caret paths
         public static void SetLocked(bool locked) => _fakeFieldLock = locked;
@@ -71,13 +90,8 @@ namespace BetterFG.Services
             _loadingScreenLockUntil = Time.unscaledTime + 0.3f;
         }
 
-        // the other locks can be disable-only because the game restores maps on mouse/keyboard input.
-        // these two can't: with their maps off nothing reaches the game to trigger that, so input stays
-        // dead (pad unusable, or the editor ignoring Escape after you type until you jog the mouse).
         // re-enable ONLY the maps we turned off, a blanket one force-ons maps the game meant to be off
         // and scrambles the bindings.
-        private static bool RestoreOnRelease => _controllerLock || _paramTypeLock;
-
         private static readonly HashSet<int> _selfDisabled = new HashSet<int>();
         private static bool _selfWasLocked;
         // reused across ticks — the controller lock holds every frame the UI is up with a pad, and a
@@ -92,7 +106,7 @@ namespace BetterFG.Services
         // NavigableMenuInputHandler.OnLoseFocus with cascading NREs the instant a screen opened.
         // Disabling just the input module stops all event dispatch the same way without EventSystem
         // itself, or .current, ever going null.
-        private static BaseInputModule _disabledInputModule;
+        private static readonly List<BaseInputModule> _disabledInputModules = new List<BaseInputModule>();
 
         // movement/jump/etc also don't all go through mapped Actions — some read the Keyboard/Mouse
         // Controller directly (GetKey/GetButton), which ControllerMap.enabled=false never touches.
@@ -101,10 +115,40 @@ namespace BetterFG.Services
 
         public static void Tick()
         {
+            bool outOfForeground = OutOfForeground;
+
+            bool shouldMute = false;
+            if (outOfForeground)
+            {
+                try { shouldMute = GlobalGameStateClient.Instance?.PlayerProfile?.AudioSettings?.MuteAudioOnFocusLost ?? false; } catch { }
+            }
+            if (shouldMute != _musicMuted)
+            {
+                _musicMuted = shouldMute;
+                if (shouldMute)
+                {
+                    MenuMusicService.Pause();
+                    BetterFG.Features.UnityRound.RoundMusicService.SetPaused(true);
+                }
+                else
+                {
+                    MenuMusicService.Resume();
+                    BetterFG.Features.UnityRound.RoundMusicService.SetPaused(false);
+                }
+            }
+
             if (_loadingScreenLock && Time.unscaledTime > _loadingScreenLockUntil)
                 _loadingScreenLock = false;
 
-            bool blockBackground = _loadingScreenLock || OutOfForeground;
+            bool blockBackground = _loadingScreenLock || outOfForeground;
+
+            if (blockBackground && !_devicesDisabledByUs && Input.anyKey) blockBackground = false;
+
+            bool locked = _realFieldLock || _fakeFieldLock || _editorUiLock || _controllerLock
+                          || _paramTypeLock || _loadingScreenLock || outOfForeground;
+            if (!locked && !blockBackground && !_selfWasLocked
+                && !_devicesDisabledByUs && _disabledInputModules.Count == 0)
+                return;
 
             if (blockBackground)
             {
@@ -113,13 +157,14 @@ namespace BetterFG.Services
                 if (module != null && module.enabled)
                 {
                     module.enabled = false;
-                    _disabledInputModule = module;
+                    if (!_disabledInputModules.Contains(module)) _disabledInputModules.Add(module);
                 }
             }
-            else if (_disabledInputModule != null)
+            else if (_disabledInputModules.Count > 0)
             {
-                _disabledInputModule.enabled = true;
-                _disabledInputModule = null;
+                for (int i = 0; i < _disabledInputModules.Count; i++)
+                    if (_disabledInputModules[i] != null) _disabledInputModules[i].enabled = true;
+                _disabledInputModules.Clear();
             }
 
             if (ReInput.isReady)
@@ -146,7 +191,7 @@ namespace BetterFG.Services
             // must run BEFORE we re-evaluate IsLocked: a typing lock starting the same frame a stick
             // lock ends would otherwise never restore, leaving those maps off for good (and any later
             // re-enable doubles the input path, so presses register twice).
-            if (_selfWasLocked && !RestoreOnRelease)
+            if (_selfWasLocked && !locked)
             {
                 _selfWasLocked = false;
                 if (_selfDisabled.Count > 0)
@@ -169,10 +214,10 @@ namespace BetterFG.Services
                 }
             }
 
-            if (IsLocked)
+            if (locked)
             {
                 // fresh snapshot so we don't carry stale ids from a previous lock session
-                if (RestoreOnRelease && !_selfWasLocked) _selfDisabled.Clear();
+                if (!_selfWasLocked) _selfDisabled.Clear();
 
                 for (int i = 0; i < n; i++)
                 {
@@ -185,11 +230,11 @@ namespace BetterFG.Services
                     {
                         var map = maps[m];
                         if (map == null || !map.enabled) continue;
-                        if (RestoreOnRelease) _selfDisabled.Add(map.id);
+                        _selfDisabled.Add(map.id);
                         map.enabled = false;
                     }
                 }
-                _selfWasLocked = RestoreOnRelease;
+                _selfWasLocked = true;
                 return;
             }
         }

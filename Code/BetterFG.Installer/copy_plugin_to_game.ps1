@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][ValidateSet("Steam", "Epic")][string]$Store,
     [Parameter(Mandatory = $true)][string]$BuildOutput
 )
@@ -89,9 +89,11 @@ foreach ($game in $folders) {
 
     $libsSource = Join-Path $BuildOutput "Libs"
     if (Test-Path $libsSource) {
-        $libsDest = Join-Path $pluginDir "Libs"
-        New-Item -ItemType Directory -Path $libsDest -Force | Out-Null
-        Copy-Item -Path (Join-Path $libsSource "*") -Destination $libsDest -Force
+        Copy-Item -Path (Join-Path $libsSource "*") -Destination $pluginDir -Force
+    }
+    $staleLibs = Join-Path $pluginDir "Libs"
+    if (Test-Path $staleLibs) {
+        Remove-Item -LiteralPath $staleLibs -Recurse -Force
     }
     Write-Host "$Store -> plugin copied to $pluginDir"
 }

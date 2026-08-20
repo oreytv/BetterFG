@@ -44,6 +44,33 @@ namespace BetterFG.Customization.Player
 
         public List<ActiveSkinSlot> GetActiveSlots() => new List<ActiveSkinSlot>(activeSlots);
 
+        public SkinInfo ActiveCostumeSkin()
+        {
+            foreach (var s in activeSlots)
+                if (s?.skinInfo != null && s.type == SkinType.Costume && !string.IsNullOrEmpty(s.skinInfo.file))
+                    return s.skinInfo;
+            return null;
+        }
+
+        public void ScaleAppliedSkins(GameObject bean, float scale)
+        {
+            string prefix = bean.GetInstanceID() + "|";
+            var s = new Vector3(scale, scale, scale);
+            foreach (var kvp in appliedSkins)
+            {
+                if (!kvp.Key.StartsWith(prefix)) continue;
+                var entry = kvp.Value;
+                if (entry == null || entry.instance == null || entry.type == SkinType.Item) continue;
+                entry.instance.transform.localScale = s;
+            }
+        }
+
+        private void RaiseSkinApplied(SkinInfo skinInfo, GameObject bean, ApplyReason reason)
+        {
+            PlayerScaleService.RefreshVisualRig(bean);
+            OnSkinApplied?.Invoke(new SkinApplyEvent { skinInfo = skinInfo, bean = bean, reason = reason });
+        }
+
         // ── Bundles ───────────────────────────────────────────────────────────
         // single source of truth for ALL loaded bundles — local player AND remote
         private Dictionary<string, AssetBundle> loadedBundles = new Dictionary<string, AssetBundle>();
@@ -616,6 +643,14 @@ namespace BetterFG.Customization.Player
                 // re-composite when nothing was stashed (cosmetics added after the costume, etc).
                 if (!RestoreStashedGameCosmetics())
                     StartCoroutine(RestoreMenuBeanGEOSoon().WrapToIl2Cpp());
+            }
+
+            var localBean = BeanMonitorService.LocalPlayerBean;
+            if (localBean != null) PlayerScaleService.ApplyToBean(localBean, 1f, PlayerScaleService.BeanScaleMode.Local);
+            foreach (var bean in BeanMonitorService.GetTrackedBeans())
+            {
+                if (bean == null || bean == localBean || IsRemoteInRoundBean(bean)) continue;
+                PlayerScaleService.ApplyToBean(bean, 1f, PlayerScaleService.BeanScaleMode.Local);
             }
 
             SpawnGameCosmeticPoof();
@@ -1393,8 +1428,6 @@ namespace BetterFG.Customization.Player
                         if (kv.Key == null) continue;
                         kv.Key.materials = kv.Value;
                         kv.Key.enabled = true;
-                        kv.Key.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-                        kv.Key.receiveShadows = true;
                     }
                     hiddenRendererMaterials.Remove(matKey);
                 }

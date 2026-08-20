@@ -35,17 +35,34 @@ namespace BetterFG.Utilities
         {
             if (bean == null || string.IsNullOrEmpty(boneName)) return null;
 
+            Transform hit = null;
             foreach (var smr in bean.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var bones = smr.bones;
-                for (int i = 0; bones != null && i < bones.Length; i++)
-                    if (bones[i] != null && bones[i].name == boneName) return bones[i];
+                for (int i = 0; bones != null && i < bones.Length && hit == null; i++)
+                    if (bones[i] != null && bones[i].name == boneName) hit = bones[i];
+                if (hit != null) break;
             }
 
-            foreach (var t in bean.GetComponentsInChildren<Transform>(true))
-                if (t.name == boneName) return t;
+            if (hit == null)
+                foreach (var t in bean.GetComponentsInChildren<Transform>(true))
+                    if (t.name == boneName) { hit = t; break; }
 
-            return null;
+            var rig = BetterFG.Services.BeanVisualRig.Get(bean);
+            return rig != null ? rig.RealBone(hit) : hit;
+        }
+
+        public static int StripPhysics(GameObject clone)
+        {
+            if (clone == null) return 0;
+            int killed = 0;
+            foreach (var j in clone.GetComponentsInChildren<Joint>(true))
+                if (j != null) { UnityEngine.Object.DestroyImmediate(j); killed++; }
+            foreach (var rb in clone.GetComponentsInChildren<Rigidbody>(true))
+                if (rb != null) { UnityEngine.Object.DestroyImmediate(rb); killed++; }
+            foreach (var c in clone.GetComponentsInChildren<Collider>(true))
+                if (c != null) { UnityEngine.Object.DestroyImmediate(c); killed++; }
+            return killed;
         }
 
         public static void SetLayerRecursively(GameObject obj, int layer)

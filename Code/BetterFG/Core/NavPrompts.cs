@@ -40,12 +40,25 @@ namespace BetterFG.Core
         private static readonly Dictionary<(NavPrompt, string), NavigationPromptData> _cloneCache
             = new Dictionary<(NavPrompt, string), NavigationPromptData>();
 
+        private static NavigationOverlayManager _manager;
+
+        internal static NavigationOverlayManager Manager
+        {
+            get
+            {
+                if (_manager != null) return _manager;
+                foreach (var mgr in Resources.FindObjectsOfTypeAll<NavigationOverlayManager>())
+                    if (mgr != null && mgr.gameObject.scene.IsValid()) { _manager = mgr; break; }
+                return _manager;
+            }
+        }
+
         internal static NavigationPromptData GetOrCloneData(NavPrompt source, string labelKey, string labelText)
         {
             var key = (source, labelKey);
             if (_cloneCache.TryGetValue(key, out var existing) && existing != null) return existing;
 
-            var mgr = UnityEngine.Object.FindObjectOfType<NavigationOverlayManager>();
+            var mgr = Manager;
             if (mgr == null) return null;
             var dict = mgr._navPromptsDictionary;
             if (dict == null || !dict.TryGetValue(source, out var srcData) || srcData == null) return null;
@@ -60,7 +73,7 @@ namespace BetterFG.Core
 
         internal static GameObject GetPromptPrefab()
         {
-            var mgr = UnityEngine.Object.FindObjectOfType<NavigationOverlayManager>();
+            var mgr = Manager;
             if (mgr == null) return null;
             var prefab = mgr._navPromptPrefab;
             return prefab != null ? prefab.gameObject : null;

@@ -1,3 +1,4 @@
+﻿using System;
 using System.Collections.Generic;
 using FGClient;
 using UnityEngine;
@@ -10,25 +11,27 @@ namespace BetterFG.Nametag
         {
             public Transform root;
             public Transform container;
-            public Vector3 basePos;
-            public Vector3 baseScale;
             public Vector3 lastScale;
         }
 
-        static readonly Dictionary<int, Entry> _tags = new Dictionary<int, Entry>();
-        static readonly HashSet<int> _skip = new HashSet<int>();
+        class HudRows
+        {
+            public int count = -1;
+            public readonly List<Entry> entries = new List<Entry>();
+        }
+
+        static readonly Dictionary<IntPtr, HudRows> _huds = new Dictionary<IntPtr, HudRows>();
         static Camera _levelCam;
         static Camera _uiCam;
         static int _crownLayer = 5;
+
+        public static void Invalidate() => _huds.Clear();
 
         public static void Apply(PlayerInfoHUDBase hud)
         {
             var cam = Camera.main;
             if (cam == null) cam = hud._levelCamera;
             if (cam == null || cam.orthographic) return;
-
-            var spawned = hud._spawnedInfoObjects;
-            if (spawned == null || spawned.Count == 0) return;
 
             if (_levelCam != cam)
             {
@@ -48,65 +51,85 @@ namespace BetterFG.Nametag
             if (mainTan <= 0.0001f) return;
             float k = Mathf.Tan(_uiCam.fieldOfView * 0.5f * Mathf.Deg2Rad) / mainTan;
 
-            var view = cam.worldToCameraMatrix;
-            var world = cam.cameraToWorldMatrix;
+            bool identity = Mathf.Abs(k - 1f) < 0.0005f;
 
-            for (int i = 0; i < spawned.Count; i++)
+            var rows = Rows(hud);
+            if (rows == null) return;
+
+            Matrix4x4 view = Matrix4x4.identity, world = Matrix4x4.identity;
+            if (!identity)
             {
-                var display = spawned[i].playerInfo;
-                if (display == null) continue;
+                view = cam.worldToCameraMatrix;
+                world = cam.cameraToWorldMatrix;
+            }
 
-                int id = display.GetInstanceID();
-                if (_skip.Contains(id)) continue;
+            var list = rows.entries;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var e = list[i];
+                if (e.container == null) { rows.count = -1; return; }
 
-                if (!_tags.TryGetValue(id, out var e) || e.container == null)
+                var scale = new Vector3(k, k, 1f);
+                if (e.lastScale != scale) { e.container.localScale = scale; e.lastScale = scale; }
+
+                if (identity)
                 {
-                    e = Build(display, id);
-                    if (e == null) continue;
+                    if (!e.container.hasChanged) continue;
+                    if (e.container.localPosition != Vector3.zero) e.container.localPosition = Vector3.zero;
+                    e.container.hasChanged = false;
+                    continue;
                 }
 
-                // .position/.localScale each box through runtime_invoke; the PositionAndRotation pair are
-                // direct calls, which matters when this runs for every tag on screen every frame
                 e.root.GetPositionAndRotation(out var rootPos, out _);
                 e.container.GetPositionAndRotation(out _, out var rot);
 
                 var v = view.MultiplyPoint3x4(rootPos);
                 e.container.SetPositionAndRotation(world.MultiplyPoint3x4(new Vector3(v.x * k, v.y * k, v.z)), rot);
-
-                var scale = new Vector3(e.baseScale.x * k, e.baseScale.y * k, e.baseScale.z);
-                if (e.lastScale != scale) { e.container.localScale = scale; e.lastScale = scale; }
             }
         }
 
-        static Entry Build(PlayerInfoDisplay display, int id)
+        static HudRows Rows(PlayerInfoHUDBase hud)
         {
-            var go = display.TryCast<PlayerInfoDisplayGameObject>();
-            var helper = go != null ? go._crownRankPlayerTagLayoutHelper : null;
-            var crown = helper != null ? helper.crownRankObject : null;
+            var spawned = hud._spawnedInfoObjects;
+            if (spawned == null) return null;
+            int count = spawned.Count;
+            if (count == 0) return null;
 
-            if (go == null || (crown != null && crown.layer == display.gameObject.layer))
+            IntPtr hudId = hud.Pointer;
+            if (!_huds.TryGetValue(hudId, out var rows))
             {
-                _skip.Add(id);
-                return null;
+                rows = new HudRows();
+                _huds[hudId] = rows;
             }
-            if (crown == null || crown.transform.childCount == 0) return null;
+            if (rows.count == count) return rows;
 
-            var container = crown.transform.GetChild(0);
-            var e = new Entry
+            rows.count = count;
+            rows.entries.Clear();
+
+            for (int i = 0; i < count; i++)
             {
-                root = crown.transform,
-                container = container,
-                basePos = Vector3.zero,
-                baseScale = Vector3.one,
-            };
-            _tags[id] = e;
-            return e;
+                var display = spawned[i].playerInfo;
+                if (display == null) continue;
+
+                var go = display.TryCast<PlayerInfoDisplayGameObject>();
+                var helper = go != null ? go._crownRankPlayerTagLayoutHelper : null;
+                var crown = helper != null ? helper.crownRankObject : null;
+
+                if (go == null || crown == null || crown.transform.childCount == 0) continue;
+                if (crown.layer == display.gameObject.layer) continue;
+
+                rows.entries.Add(new Entry
+                {
+                    root = crown.transform,
+                    container = crown.transform.GetChild(0),
+                });
+            }
+            return rows;
         }
 
         public static void Forget()
         {
-            _tags.Clear();
-            _skip.Clear();
+            _huds.Clear();
             _levelCam = null;
             _uiCam = null;
         }
