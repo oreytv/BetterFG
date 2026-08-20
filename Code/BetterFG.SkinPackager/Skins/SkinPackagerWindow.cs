@@ -56,8 +56,8 @@ namespace BetterFG.Editor
         private const float PAD_Y = 18f;
         private const float ROW = 22f;
 
-        private enum Step { Repo, Mode, Source, Details, Cover, Options, Build }
-        private static readonly string[] STEP_TITLES = { "Repository", "Start", "Skin Root", "Details", "Cover Image", "Settings", "Build" };
+        private enum Step { Repo, Mode, Kind, Source, Details, Cover, Options, Build }
+        private static readonly string[] STEP_TITLES = { "Repository", "Start", "Skin Type", "Skin Root", "Details", "Cover Image", "Settings", "Build" };
 
         private enum SkinKind { Costume, Accessory, Item, Plinth }
         private static readonly string[] KIND_LABELS = { "Costume", "Accessory", "Item", "Plinth" };
@@ -255,6 +255,7 @@ namespace BetterFG.Editor
                 {
                     case Step.Repo: DrawRepoStep(); break;
                     case Step.Mode: DrawModeStep(); break;
+                    case Step.Kind: DrawKindStep(); break;
                     case Step.Source: DrawSourceStep(); break;
                     case Step.Details: DrawDetailsStep(); break;
                 }
@@ -419,7 +420,7 @@ namespace BetterFG.Editor
                 if (GUILayout.Button("New Skin", _bigButton, GUILayout.Height(56f)))
                 {
                     ResetForNew();
-                    GoTo(Step.Source);
+                    GoTo(Step.Kind);
                 }
 
                 GUILayout.Space(12);
@@ -658,21 +659,29 @@ namespace BetterFG.Editor
                 GUILayout.Space(16);
                 GUILayout.Label(_sourceObject.name, _big);
 
-                GUILayout.Space(10);
-                Transform check = _sourceObject.transform.Find("Main FG/Body_LOD0 (merge)/Torso_C_jnt_NoStrechSquash");
-                if (check == null)
+                if (_kind == SkinKind.Costume || _kind == SkinKind.Accessory)
                 {
-                    var warn = new GUIStyle(_small) { normal = { textColor = new Color(0.95f, 0.55f, 0.35f) } };
-                    GUILayout.Label("doesn't look like it was exported/made using the base rig.blend file — missing Main FG/Body_LOD0 (merge)/Torso_C_jnt_NoStrechSquash", warn);
+                    GUILayout.Space(10);
+                    Transform check = _sourceObject.transform.Find("Main FG/Body_LOD0 (merge)/Torso_C_jnt_NoStrechSquash");
+                    if (check == null)
+                    {
+                        var warn = new GUIStyle(_small) { normal = { textColor = new Color(0.95f, 0.55f, 0.35f) } };
+                        GUILayout.Label("doesn't look like it was exported/made using the base rig.blend file — missing Main FG/Body_LOD0 (merge)/Torso_C_jnt_NoStrechSquash", warn);
+                    }
                 }
             }
         }
 
+        private void DrawKindStep()
+        {
+            GUILayout.Space(24);
+            GUILayout.Label("What are you making?", _big);
+            GUILayout.Space(16);
+            _kind = (SkinKind)GUILayout.Toolbar((int)_kind, KIND_LABELS, _toolbar, GUILayout.Height(26f));
+        }
+
         private void DrawDetailsStep()
         {
-            _kind = (SkinKind)GUILayout.Toolbar((int)_kind, KIND_LABELS, _toolbar, GUILayout.Height(26f));
-            GUILayout.Space(14);
-
             _name = EditorGUILayout.TextField("Display name", _name, _field, GUILayout.Height(ROW));
             GUILayout.Space(7);
             _author = EditorGUILayout.TextField("Author", _author, _field, GUILayout.Height(ROW));
@@ -883,9 +892,10 @@ namespace BetterFG.Editor
             }
             else if (_kind == SkinKind.Item)
             {
+                if (_sourceObject != null) _itemScale = _sourceObject.transform.localScale.x;
                 GUILayout.Label("Item scale", _label);
                 GUILayout.Space(4);
-                _itemScale = EditorGUILayout.Slider(_itemScale, 0.1f, 4f);
+                GUILayout.Label(_itemScale.ToString("0.###"), _value);
                 GUILayout.Space(16);
                 GUILayout.Label("Left hand", _label);
                 GUILayout.Space(4);
