@@ -1,3 +1,4 @@
+﻿using System;
 using BetterFG.Services;
 using UnityEngine;
 
@@ -45,16 +46,18 @@ namespace BetterFG.Utilities
 
         public static void DriveLocomotion(Animator anim, Transform bean, Vector3 v)
         {
-            if (anim == null || bean == null) return;
+            if (anim is null || bean is null || anim.m_CachedPtr == IntPtr.Zero || bean.m_CachedPtr == IntPtr.Zero) return;
             bool grounded = CheckGrounded(bean, out float slopeAngle);
             DriveLocomotion(anim, bean, v, grounded, slopeAngle);
         }
 
         // grounded/slope passed in directly — for callers throttling their own CheckGrounded calls
         // instead of paying a SphereCast every frame.
+        // replay drives one of these per bean per frame, so the destroyed-check is m_CachedPtr —
+        // Object.op_Equality is a boxed il2cpp invoke and there are two of them here.
         public static void DriveLocomotion(Animator anim, Transform bean, Vector3 v, bool grounded, float slopeAngle = 0f)
         {
-            if (anim == null || bean == null) return;
+            if (anim is null || bean is null || anim.m_CachedPtr == IntPtr.Zero || bean.m_CachedPtr == IntPtr.Zero) return;
             if (!_paramsCached) CacheParams();
 
             anim.SetBool(_grounded, grounded);

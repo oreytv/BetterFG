@@ -15,9 +15,9 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using BetterFG.Customization.Menu;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class CustomizationTab : BetterFGTab
+    public class CustomizationTab : UGCTab
     {
         public CustomizationTab(IntPtr ptr) : base(ptr) { }
 
@@ -279,20 +279,10 @@ namespace BetterFG.UI.Tab
             return end == -1 ? "" : json.Substring(i, end - i);
         }
 
-        private SkinRepo _lastFetchedRepo;
-
-        private void FetchActiveRepo()
-        {
-            if (catalogService == null) return;
-            var active = repoRegistry?.Active;
-            if (active == null) return;
-            catalogService.FetchSkins(active);
-        }
-
         private void OnReposChanged()
         {
             
-            FetchActiveRepo();
+            FetchSelectedRepo();
             RefreshSkinList();
         }
 
@@ -459,7 +449,7 @@ namespace BetterFG.UI.Tab
         private void Refresh()
         {
             RefreshFilterBar();
-            FetchActiveRepo();
+            FetchSelectedRepo();
             RefreshSkinList();
         }
 
@@ -612,8 +602,8 @@ namespace BetterFG.UI.Tab
             }
 
             // Featured Repos section: filter bar makes no sense (a repo isn't sortable by costume/item)
-            SetFilterBarVisible(!RepoSelectorTab.FeaturedSelected);
-            if (RepoSelectorTab.FeaturedSelected)
+            SetFilterBarVisible(!FeaturedSelected);
+            if (FeaturedSelected)
             {
                 RenderFeaturedRepos();
                 LayoutRebuilder.ForceRebuildLayoutImmediate(_scrollContent);
@@ -621,7 +611,7 @@ namespace BetterFG.UI.Tab
             }
 
             string q = _searchQuery?.ToLower() ?? "";
-            string activeRaw = repoRegistry?.Active?.RawBase;
+            string activeRaw = SelectedRaw;
             int display = 0;
             var shownGroups = new Dictionary<string, List<(SkinInfo skin, int index)>>(StringComparer.OrdinalIgnoreCase);
             var groupNames = new List<string>();
@@ -629,7 +619,7 @@ namespace BetterFG.UI.Tab
             for (int i = 0; i < availableSkins.Count; i++)
             {
                 var s = availableSkins[i];
-                if (RepoSelectorTab.ImportedSelected)
+                if (ImportedSelected)
                 {
                     if (!s.isLocalImport) continue;
                 }
@@ -713,7 +703,7 @@ namespace BetterFG.UI.Tab
             }
             else
             {
-                bool hasRepo = repoRegistry?.Active != null;
+                bool hasRepo = SelectedRepo != null;
                 string msg = !hasRepo
                     ? EMPTY_NO_REPO
                     : !string.IsNullOrEmpty(q)
@@ -992,7 +982,7 @@ namespace BetterFG.UI.Tab
             }
 
             // delete button — only visible when "Imported Skins" repo is active
-            if (RepoSelectorTab.ImportedSelected && skin.isLocalImport && !string.IsNullOrEmpty(skin.localPath))
+            if (ImportedSelected && skin.isLocalImport && !string.IsNullOrEmpty(skin.localPath))
             {
                 string capturedFolder = Path.GetDirectoryName(skin.localPath);
                 var delBtn = UGUIShip.CreateButton(
@@ -1159,9 +1149,10 @@ namespace BetterFG.UI.Tab
         {
             var repo = repoRegistry?.FindRepo(url);
             if (repo == null) return;
+            SelectedRepo = repo;
+            FeaturedSelected = false;
             repoRegistry.SetActive(repo);
-            RepoSelectorTab.ClearFeatured();
-            RefreshSkinList();
+            OnRepoChanged();
         }
 
         private void OnDeleteImportedSkin(string folderPath)
@@ -1501,7 +1492,7 @@ namespace BetterFG.UI.Tab
 
         private void OnFeaturedLoaded()
         {
-            if (RepoSelectorTab.FeaturedSelected) RefreshSkinList();
+            if (FeaturedSelected) RefreshSkinList();
         }
 
         private void OnSkinCoverLoaded(string key, Texture2D tex)
@@ -1587,7 +1578,7 @@ namespace BetterFG.UI.Tab
 
             if (_fetchCountLabel != null && catalogService != null)
             {
-                string activeRaw = repoRegistry?.Active?.RawBase;
+                string activeRaw = SelectedRaw;
                 int repoTotal = catalogService.GetCatalogTotalForRepo(activeRaw);
                 if (repoTotal > 0)
                     _fetchCountLabel.text = $"{catalogService.GetFetchedCountForRepo(activeRaw)} / {repoTotal} fetched";
@@ -1634,7 +1625,7 @@ namespace BetterFG.UI.Tab
             skinCovers.Clear();
             _restoredOnce = false;
             RefreshSkinList();
-            FetchActiveRepo();
+            FetchSelectedRepo();
         }
 
         private void OnImport()

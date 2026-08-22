@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
@@ -127,7 +127,7 @@ namespace BetterFG.Services
 
         void LateUpdate()
         {
-            if (_real.Count == 0 || _real[0] == null) return;
+            if (_real.Count == 0 || _real[0] is null || _real[0].m_CachedPtr == IntPtr.Zero) return;
             for (int i = 0; i < _real.Count; i++)
             {
                 _real[i].GetLocalPositionAndRotation(out var p, out var r);

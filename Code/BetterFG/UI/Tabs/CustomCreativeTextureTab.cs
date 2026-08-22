@@ -6,13 +6,13 @@ using BetterFG.Features.UnityRound.Editor;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     // Drill-in tab reached from CreativeTab's Configuration step "Custom textures" button. Not in the
     // tab registry (never shows in the slot dropdown) — you get here by button and leave via the back
     // button, which swaps the slot back to Creative. Overrides live obstacle textures on the loaded
     // BettrFG unity round and persist to texture.json next to its info.json.
-    public class CustomCreativeTextureTab : BetterFGTab
+    public class CustomCreativeTextureTab : Tab
     {
         public CustomCreativeTextureTab(IntPtr ptr) : base(ptr) { }
 

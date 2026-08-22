@@ -68,19 +68,21 @@ namespace BetterFG.Services
 
         // ── Beans ─────────────────────────────────────────────────────────────
 
-        public static void PushBean(GameObject bean)
+        public static void PushBean(GameObject bean, bool isLocalPlayer = true)
         {
             if (Instance == null || bean == null) return;
-            Instance.HandleBean(bean);
+            Instance.HandleBean(bean, isLocalPlayer);
         }
 
-        public static void PushBeans(List<GameObject> beans)
+        public static void PushBeans(List<GameObject> beans, bool isLocalPlayer = true)
         {
             if (Instance == null || beans == null) return;
             foreach (var b in beans)
-                Instance.HandleBean(b);
+                Instance.HandleBean(b, isLocalPlayer);
         }
 
+        // local player's own bean across every screen it reappears on (menu/lobby/round/qual/victory/reward) -
+        // this is what skin reapply walks, so it must never pick up someone else's bean
         public static List<GameObject> GetTrackedBeans()
         {
             if (Instance == null) return new List<GameObject>();
@@ -90,9 +92,14 @@ namespace BetterFG.Services
             return result;
         }
 
-        private void HandleBean(GameObject bean)
+        private void HandleBean(GameObject bean, bool isLocalPlayer)
         {
             if (bean == null) return;
+
+            // eyes are a client-side render tweak meant for every fall guy in view, so it gets every bean;
+            // your own skin loadout only ever belongs on your own bean
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(bean, isLocalPlayer);
+            if (!isLocalPlayer) return;
 
             if (skinApplicationService == null)
                 skinApplicationService = SkinApplicationService.Instance;
@@ -195,7 +202,6 @@ namespace BetterFG.Services
         public static IEnumerator PollAndPushRewardPlinth()
         {
             float elapsed = 0f;
-            bool first = true;
             while (elapsed < 10f)
             {
                 if (GameObject.Find(REWARD_PLINTH_HOLDER) != null)
@@ -203,7 +209,8 @@ namespace BetterFG.Services
                     PushRewardPlinth();
                     yield break;
                 }
-                if (first) { yield return null; first = false; }
+                yield return new WaitForSeconds(0.25f);
+                elapsed += 0.25f;
             }
             Plugin.Log.LogWarning("PlinthMonitor: timed out waiting for reward plinth");
         }

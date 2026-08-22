@@ -145,7 +145,7 @@ namespace BetterFG.Tweaks
                 var fg = lobbyScreen.transform.Find("ForegroundCanvas");
                 if (fg != null) fg.gameObject.SetActive(visible);
             }
-            if (visible) UI.Tab.UITab.ApplyCanvasScalingFromSettings();
+            if (visible) UI.Tabs.UIScalingTab.ApplyCanvasScalingFromSettings();
 
             LobbyCustomiserTweak.Instance?.SetNavSuspended(!visible);
 

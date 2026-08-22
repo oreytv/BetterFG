@@ -42,15 +42,25 @@ namespace BetterFG.UI
             return go.AddComponent<ControllerManager>();
         }
 
+        private float _nextPadProbe;
+        private bool _padPresent;
+
         void Update()
         {
             Stick = Vector2.zero;
-            if (!ReInput.isReady || ReInput.players.playerCount == 0) return;
 
-            if (ReInput.controllers.joystickCount == 0) return;
+            // three rewired interop calls a frame just to find out nothing is plugged in. a pad
+            // appearing can wait a quarter second, so probe on a timer and keep the answer.
+            if (Time.unscaledTime >= _nextPadProbe)
+            {
+                _nextPadProbe = Time.unscaledTime + 0.25f;
+                _padPresent = ReInput.isReady && ReInput.players.playerCount > 0
+                              && ReInput.controllers.joystickCount > 0;
+            }
+            if (!_padPresent) { FGInputLockService.SetRewiredMouseSuppressed(false); return; }
 
             var p = ReInput.players.GetPlayer(0);
-            if (p == null) return;
+            if (p == null) { FGInputLockService.SetRewiredMouseSuppressed(false); return; }
 
             // toggle binds run even while the UI is hidden so a controller-only player can open it.
             // skip while a bind is being recorded so the press being captured doesn't also toggle.
@@ -79,14 +89,23 @@ namespace BetterFG.UI
             // mouse cursor on screen, so the stick should move it in both.
             bool uiUp = (BetterFGUIMan.Instance != null && BetterFGUIMan.Instance.IsVisible) || editorUp;
             bool wheelUp = SideWheel.SideWheelManager.Instance != null && SideWheel.SideWheelManager.Instance.IsWheelVisible;
-            if (!uiUp && !wheelUp)
+            // the PB top-bar tab wants a cursor too, but we DON'T lock the pad there — the tab-switch
+            // bumpers have to stay live so you can navigate off it (the tab's Customiser backdrop is
+            // de-focused separately so its stick input doesn't fight the cursor).
+            bool pbUp = BetterFG.Features.QualificationTime.PBTabView.IsOpen;
+            if (!uiUp && !wheelUp && !pbUp)
             {
                 if (_leftHeld) { mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero); _leftHeld = false; }
                 if (_rightHeld) { mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero); _rightHeld = false; }
                 _scrollAccum = 0f;
                 FGInputLockService.SetControllerLock(false);
+                FGInputLockService.SetRewiredMouseSuppressed(false);
                 return;
             }
+
+            // we're about to move the OS cursor from the stick. keep Rewired's Mouse controller off so
+            // it doesn't register that as activity and strobe the game's glyphs pad<->kbm every frame.
+            FGInputLockService.SetRewiredMouseSuppressed(true);
 
             // pull the raw sticks straight off any connected joystick so we don't depend on the game's
             // action-map names. axes 0/1 = left stick X/Y (cursor), axes 2/3 = right stick X/Y (scroll).
@@ -141,11 +160,9 @@ namespace BetterFG.UI
             if (rightNow && !_rightHeld) { mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, IntPtr.Zero); _rightHeld = true; }
             else if (!rightNow && _rightHeld) { mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero); _rightHeld = false; }
 
-            // we only reach here while our UI/wheel is up, so keep the game's pad input locked the
-            // WHOLE time it's open — not just on stick activity. gating on activity left a gap
-            // between presses where a fresh button push fired in the game before the lock re-armed
-            // (the "some presses leak through" bug).
-            FGInputLockService.SetControllerLock(true);
+            // lock the pad whenever OUR full UI/wheel owns the screen. the PB tab is the exception —
+            // it leaves the pad live so the top-bar bumpers can still change tabs.
+            FGInputLockService.SetControllerLock(uiUp || wheelUp);
         }
     }
 }

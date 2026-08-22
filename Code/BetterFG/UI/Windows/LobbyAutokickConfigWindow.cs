@@ -12,11 +12,15 @@ namespace BetterFG.UI.Windows
 
         public static LobbyAutokickConfigWindow Instance { get; private set; }
 
-        protected override float WindowWidth => 320f;
-        protected override float WindowHeight => 180f;
+        protected override float WindowWidth => 310f;
+        protected override float WindowHeight => 340f;
         protected override string WindowTitle => "Lobby Autokick";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
+        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg_2.png";
+        protected override string BgHoverResourceName => "BetterFG.assets.ui.windows.generalbg_2_hover.png";
         protected override bool DraggableFromTitle => true;
+
+        protected override Vector3 InitialBgPosition => new Vector3(184f, 18.5f, 0f);
+        protected override Vector3 InitialBgScale => new Vector3(1.41f, 1.6f, 1f);
 
         private readonly List<string> _checks = new List<string>();
         private ScrollRect _scroll;
@@ -47,6 +51,19 @@ namespace BetterFG.UI.Windows
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
+        }
+
+        protected override void BuildTitleExtras(Transform titleRoot)
+        {
+            var go = new GameObject("CloseBtn");
+            go.transform.SetParent(titleRoot, false);
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(1f, 1f);
+            rt.sizeDelta = new Vector2(30f, 28f);
+            rt.anchoredPosition = new Vector2(24f, 18f);
+            UGUIShip.CreateButton(go.transform, new Rect(0f, 0f, 30f, 28f),
+                "✕", new Color(0.5f, 0.22f, 0.22f, 1f), WHITE, FS_SM, new Action(Close));
         }
 
         private void Reload()
@@ -93,12 +110,10 @@ namespace BetterFG.UI.Windows
 
         protected override void BuildContent(RectTransform contentRoot)
         {
-            BgPosition = new Vector3(179.7451f, 70.46f, 0f);
-            BgScale = new Vector3(1.2833f, 4.3332f, 1f);
-            ContentPosition = new Vector3(177.6421f, -4.4f, 0f);
+            ContentPosition = new Vector3(190.6421f, 4.4f, 0f);
             ContentScale = new Vector3(1.0473f, 1f, 1f);
             Pivot = new Vector2(0f, 0.5f);
-            TitlePosition = new Vector3(32.5674f, -7f, 0f);
+            TitlePosition = new Vector3(32.5674f, -1f, 0f);
             TitleScale = new Vector3(1.1818f, 1.3491f, 1f);
 
             float w = WindowWidth - PAD * 2f;

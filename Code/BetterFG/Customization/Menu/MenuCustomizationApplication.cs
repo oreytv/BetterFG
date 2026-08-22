@@ -27,7 +27,7 @@ namespace BetterFG.Customization.Menu
         // true = next ShowMainMenu reapply hits full UICanvas_Client_V2(Clone), then flips false
         public static bool _fullCanvasReapplyPending = false;
 
-        void Awake() { Instance = this; MigrateOldBgKeys(); MigrateBgSplit(); }
+        void Awake() { Instance = this; MigrateOldBgKeys(); MigrateBgSplit(); MigrateOldBgImageEntry(); }
 
         private static MainMenuManager _menuManager;
 

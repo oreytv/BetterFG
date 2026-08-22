@@ -12,7 +12,7 @@ using FG.Common;
 using FG.Common.CMS;
 using BetterFG.Customization.Menu;
 using BetterFG.Network;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using Il2CppInterop.Runtime;
 
 namespace BetterFG.Customization.Player
@@ -515,6 +515,7 @@ namespace BetterFG.Customization.Player
                 GameObjectHelper.StripPhysics(clone);
                 clone.transform.SetParent(bean.transform, true);
                 clone.transform.localScale = Vector3.one * slot.skinInfo.scale;
+                clone.AddComponent<InvisibilitySyncComponent>().playerObject = bean;
                 SetRenderQueue(clone, 3000);
                 if (SlotDead(slot))
                 {
@@ -561,6 +562,7 @@ namespace BetterFG.Customization.Player
             clone.transform.localEulerAngles = baseRot + new Vector3(rrx, rry, rrz);
 
             clone.transform.localScale = Vector3.one * skinInfo.scale;
+            clone.AddComponent<InvisibilitySyncComponent>().playerObject = bean;
 
             if (GameObjectHelper.IsUICharacter(bean) || GameObjectHelper.IsLobbyCharacter(bean))
                 GameObjectHelper.SetLayerRecursively(clone, LayerMask.NameToLayer("PlayerUI"));
@@ -596,6 +598,7 @@ namespace BetterFG.Customization.Player
             var sync = clone.AddComponent<BoneSyncComponent>();
             sync.playerObject = bean;
             sync.isRemote = IsRemoteInRoundBean(bean);
+            clone.AddComponent<InvisibilitySyncComponent>().playerObject = bean;
 
             if (skinInfo.boneOffsets != null && skinInfo.boneOffsets.Count > 0)
             {

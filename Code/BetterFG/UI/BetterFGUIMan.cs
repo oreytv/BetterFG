@@ -111,7 +111,7 @@ namespace BetterFG.UI
         public struct TabEntry
         {
             public string Title;
-            public Func<BetterFGTab> Factory;
+            public Func<Tab> Factory;
         }
 
         private static readonly List<TabEntry> _entries = new List<TabEntry>();
@@ -119,7 +119,7 @@ namespace BetterFG.UI
 
         // a tab's identity and its display name are both just its own TabTitle — the registry never
         // takes a separate string, so the two can never drift apart and one tab can't be added twice
-        public static void Register<T>() where T : BetterFGTab
+        public static void Register<T>() where T : Tab
         {
             string title = ReadTitle<T>();
             if (string.IsNullOrEmpty(title)) return;
@@ -131,7 +131,7 @@ namespace BetterFG.UI
             _entries.Add(new TabEntry { Title = title, Factory = () => NewTab<T>() });
         }
 
-        public static BetterFGTab CreateTab(string title)
+        public static Tab CreateTab(string title)
         {
             if (string.IsNullOrEmpty(title)) return null;
             for (int i = 0; i < _entries.Count; i++)
@@ -142,7 +142,7 @@ namespace BetterFG.UI
 
         // build a tab instance directly by type — used for drill-in tabs that aren't registered (so
         // they never appear in the slot dropdown) but are reached from an in-tab button.
-        public static T NewTab<T>() where T : BetterFGTab
+        public static T NewTab<T>() where T : Tab
         {
             var go = new GameObject("BetterFG_" + typeof(T).Name);
             go.hideFlags = HideFlags.HideAndDontSave;
@@ -152,7 +152,7 @@ namespace BetterFG.UI
 
         // read TabTitle off an inactive throwaway: keeping it inactive defers Awake so its bindings
         // never fire, and TabTitle is a plain constant getter that doesn't need the instance built
-        private static string ReadTitle<T>() where T : BetterFGTab
+        private static string ReadTitle<T>() where T : Tab
         {
             var go = new GameObject("_tmpTab");
             go.SetActive(false);
@@ -166,7 +166,7 @@ namespace BetterFG.UI
     public class TabHoverTint : MonoBehaviour
     {
         public TabHoverTint(IntPtr ptr) : base(ptr) { }
-        public BetterFGTab Tab;
+        public Tab Tab;
         private bool _hovering = false;
         private bool _idlePushed = false;
         private RectTransform _rt;
@@ -237,6 +237,11 @@ namespace BetterFG.UI
 
         void Update()
         {
+            // a timed tab tooltip can't do anything while the main panel is down (SetVisible already
+            // hid whatever was up), and there's one of these on every tweak row — so take the managed
+            // bool check before any of the il2cpp work below.
+            if (!instant && BetterFGUIMan.Instance != null && !BetterFGUIMan.Instance.IsVisible) { _t = 0f; return; }
+
             if (!BetterFGUIMan.UnityMouseReady())
             {
                 if (_shown) { BetterFGUIMan.Instance?.HideTooltip(); _shown = false; }
@@ -385,24 +390,36 @@ namespace BetterFG.UI
         private TextMeshProUGUI _creativeHintText;
         private CanvasGroup _rootCg;
 
-        private List<BetterFGTab> _tabs = new List<BetterFGTab>();
+        private List<Tab> _tabs = new List<Tab>();
         private List<RectTransform> _tabRoots = new List<RectTransform>();
-        private BetterFGTab _openTab = null;
-        private Dictionary<BetterFGTab, Coroutine> _anims = new Dictionary<BetterFGTab, Coroutine>();
-        private readonly Dictionary<BetterFGTab, GameObject> _parkedContent = new Dictionary<BetterFGTab, GameObject>();
-        private readonly Dictionary<BetterFGTab, BetterFGTab> _parkedHost = new Dictionary<BetterFGTab, BetterFGTab>();
+        private Tab _openTab = null;
+        private Dictionary<Tab, Coroutine> _anims = new Dictionary<Tab, Coroutine>();
+        private readonly Dictionary<Tab, GameObject> _parkedContent = new Dictionary<Tab, GameObject>();
+        private readonly Dictionary<Tab, Tab> _parkedHost = new Dictionary<Tab, Tab>();
 
         private SlotDropdown _dropdown = new SlotDropdown();
-        private BetterFGTab _pendingDropdownTab;
-        private BetterFGTab _dropdownForcedOpenTab;
+        private Tab _pendingDropdownTab;
+        private Tab _dropdownForcedOpenTab;
+
+        // every hover ticker, tooltip trigger and the tooltip itself asks this once a frame, so the
+        // answer (5 il2cpp round trips, one of them boxing mousePosition) is worked out once per frame
+        // and handed to the rest of them.
+        private static int _mouseReadyFrame = -1;
+        private static bool _mouseReadyCached;
 
         internal static bool UnityMouseReady()
         {
+            int frame = Time.frameCount;
+            if (_mouseReadyFrame == frame) return _mouseReadyCached;
+            _mouseReadyFrame = frame;
+
+            _mouseReadyCached = false;
             if (!Application.isFocused) return false;
             if (!Input.mousePresent) return false;
 
             var p = Input.mousePosition;
-            return p.x >= 0f && p.y >= 0f && p.x <= Screen.width && p.y <= Screen.height;
+            _mouseReadyCached = p.x >= 0f && p.y >= 0f && p.x <= Screen.width && p.y <= Screen.height;
+            return _mouseReadyCached;
         }
 
         private Tooltip _tooltip;
@@ -420,20 +437,33 @@ namespace BetterFG.UI
             if (_canvas == null) InitCanvas();
         }
 
+        private float _nextHousekeeping;
+
         void Start()
         {
             bool shouldHide = SettingsService.Get(KEY_UI_HIDDEN, "false") == "true";
             if (shouldHide) SetVisible(false);
         }
 
+        void OnApplicationQuit() => SettingsService.Flush();
+
         void Update()
         {
-            WinDialogs.Tick();
-            Shell32Util.Init(); // one-shot; self-guards once the game window exists
             UpdateInputNavState();
             FGInputLockService.Tick();
-            MenuMusicService.TickVolume();
-            SettingsService.TickBackup();
+
+            // housekeeping, not input. none of it has to land on a specific frame, and at 250+ fps
+            // running it every frame was paying interop for a dialog queue, a window handle and a
+            // volume write hundreds of times a second. ten times a second is indistinguishable.
+            if (Time.unscaledTime >= _nextHousekeeping)
+            {
+                _nextHousekeeping = Time.unscaledTime + 0.1f;
+                WinDialogs.Tick();
+                Shell32Util.Init(); // one-shot; self-guards once the game window exists
+                MenuMusicService.TickVolume();
+                SettingsService.Flush();
+                SettingsService.TickBackup();
+            }
 
             if (!IsTyping())
             {
@@ -448,12 +478,16 @@ namespace BetterFG.UI
                 if (f1Now && !_prevF1)
                     SetCursorFree(!_cursorFree);
                 _prevF1 = f1Now;
+
             }
 
             // the game steals the cursor back (locks+hides it to center) the moment it sees controller
             // input, fighting our controller-driven cursor. re-assert our desired state every frame
             // while the UI/wheel is up so it can't win — F1 flips _cursorFree if the player wants it locked.
-            if (_visible || (SideWheelManager.Instance?.IsWheelVisible ?? false))
+            // the PB top-bar tab wants a cursor too; force it free there even if _cursorFree was toggled off.
+            if (BetterFG.Features.QualificationTime.PBTabView.IsOpen)
+            { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+            else if (_visible || (SideWheelManager.Instance?.IsWheelVisible ?? false))
                 ApplyCursorState();
 
             if (_pendingDropdownTab != null)
@@ -593,7 +627,7 @@ namespace BetterFG.UI
         }
 
         // ── Tab registration (initial slots) ──────────────────────────────────
-        public void RegisterTab(BetterFGTab tab)
+        public void RegisterTab(Tab tab)
         {
             if (_canvas == null) InitCanvas();
             if (_tabs.Count >= MAX_SLOTS) return;
@@ -624,7 +658,7 @@ namespace BetterFG.UI
         }
 
         // ── Core slot management ──────────────────────────────────────────────
-        private void AddTabToSlot(int idx, BetterFGTab tab)
+        private void AddTabToSlot(int idx, Tab tab)
         {
             while (_tabs.Count <= idx) _tabs.Add(null);
             while (_tabRoots.Count <= idx) _tabRoots.Add(null);
@@ -720,7 +754,7 @@ namespace BetterFG.UI
         }
 
         // first registered tab that isn't already sitting in a slot
-        private BetterFGTab CreateFirstAvailableTab()
+        private Tab CreateFirstAvailableTab()
         {
             foreach (var e in BetterFGTabRegistry.All)
             {
@@ -752,12 +786,12 @@ namespace BetterFG.UI
         }
 
         // ── Dropdown ──────────────────────────────────────────────────────────
-        public void RequestSlotDropdown(BetterFGTab owner)
+        public void RequestSlotDropdown(Tab owner)
         {
             _pendingDropdownTab = owner;
         }
 
-        private void OpenSlotDropdown(BetterFGTab owner)
+        private void OpenSlotDropdown(Tab owner)
         {
             int ownerIdx = _tabs.IndexOf(owner);
             if (owner == null || ownerIdx < 0) return;
@@ -798,12 +832,12 @@ namespace BetterFG.UI
         {
             if (!_visible) SetVisible(true);
 
-            var social = FindTab<BetterFG.UI.Tab.EmoticonsPhrasesTab>();
+            var social = FindTab<BetterFG.UI.Tabs.EmoticonsPhrasesTab>();
             if (social == null)
             {
                 int slot = Math.Min(2, MAX_SLOTS - 1); // "3rd tab"
                 SwapSlot(slot, "Phrases", save: true);
-                social = (slot < _tabs.Count) ? _tabs[slot] as BetterFG.UI.Tab.EmoticonsPhrasesTab : null;
+                social = (slot < _tabs.Count) ? _tabs[slot] as BetterFG.UI.Tabs.EmoticonsPhrasesTab : null;
             }
             if (social == null) return;
 
@@ -814,7 +848,7 @@ namespace BetterFG.UI
             StartCoroutine(HighlightPasteNextFrame(social).WrapToIl2Cpp());
         }
 
-        private IEnumerator HighlightPasteNextFrame(BetterFG.UI.Tab.EmoticonsPhrasesTab social)
+        private IEnumerator HighlightPasteNextFrame(BetterFG.UI.Tabs.EmoticonsPhrasesTab social)
         {
             yield return null;
             yield return null;
@@ -822,23 +856,22 @@ namespace BetterFG.UI
             if (rt != null) HighlightObject(HighlightType.ArrowBottom, rt);
         }
 
-        // open the UI tab and jump to its Screen sub-tab. if UI isn't in a slot yet,
-        // drop it into the 3rd slot first. used by the Main Menu tab's "Take me there" notice.
+        // open the UI Background tab. if UI isn't in a slot yet, drop it into the 3rd slot first.
+        // used by the Main Menu tab's "Take me there" notice.
         public void OpenUIScreen()
         {
             if (!_visible) SetVisible(true);
 
-            var ui = FindTab<BetterFG.UI.Tab.UITab>();
+            var ui = FindTab<BetterFG.UI.Tabs.UITab>();
             if (ui == null)
             {
                 int slot = Math.Min(2, MAX_SLOTS - 1); // "3rd tab"
                 SwapSlot(slot, "UI", save: true);
-                ui = (slot < _tabs.Count) ? _tabs[slot] as BetterFG.UI.Tab.UITab : null;
+                ui = (slot < _tabs.Count) ? _tabs[slot] as BetterFG.UI.Tabs.UITab : null;
             }
             if (ui == null) return;
 
-            if (_openTab != ui) ToggleTab(ui);
-            ui.ShowScreenSubTab();
+            ui.OpenBackground();
         }
 
         // open the Creative tab and jump to its Args sub-tab. if Creative isn't in a slot yet,
@@ -847,12 +880,12 @@ namespace BetterFG.UI
         {
             if (!_visible) SetVisible(true);
 
-            var creative = FindTab<BetterFG.UI.Tab.CreativeTab>();
+            var creative = FindTab<BetterFG.UI.Tabs.CreativeTab>();
             if (creative == null)
             {
                 int slot = Math.Min(2, MAX_SLOTS - 1); // "3rd tab"
                 SwapSlot(slot, "Creative", save: true);
-                creative = (slot < _tabs.Count) ? _tabs[slot] as BetterFG.UI.Tab.CreativeTab : null;
+                creative = (slot < _tabs.Count) ? _tabs[slot] as BetterFG.UI.Tabs.CreativeTab : null;
             }
             if (creative == null) return;
 
@@ -860,7 +893,7 @@ namespace BetterFG.UI
             creative.ShowArgsSubTab();
         }
 
-        private T FindTab<T>() where T : BetterFGTab
+        private T FindTab<T>() where T : Tab
         {
             for (int i = 0; i < _tabs.Count; i++)
                 if (_tabs[i] is T t) return t;
@@ -873,7 +906,7 @@ namespace BetterFG.UI
         // saved: on relaunch the slot restores to whatever registered tab was there.
         // drill into a temporary tab without tearing the host down: the host's built UI is moved
         // aside intact and moved back on pop, so returning costs nothing but a reparent
-        public void PushSlotTab(BetterFGTab host, BetterFGTab temp)
+        public void PushSlotTab(Tab host, Tab temp)
         {
             int idx = _tabs.IndexOf(host);
             if (idx < 0 || temp == null) return;
@@ -913,7 +946,7 @@ namespace BetterFG.UI
             ToggleTab(temp);
         }
 
-        public void PopSlotTab(BetterFGTab temp)
+        public void PopSlotTab(Tab temp)
         {
             if (!_parkedContent.TryGetValue(temp, out var park)) return;
             var host = _parkedHost[temp];
@@ -943,7 +976,7 @@ namespace BetterFG.UI
             ToggleTab(host);
         }
 
-        public BetterFGTab SwitchSlotTab(BetterFGTab from, BetterFGTab replacement)
+        public Tab SwitchSlotTab(Tab from, Tab replacement)
         {
             int slot = _tabs.IndexOf(from);
             if (slot < 0 || replacement == null) return null;
@@ -953,7 +986,7 @@ namespace BetterFG.UI
         }
 
         // ── Tab toggle ────────────────────────────────────────────────────────
-        public void ToggleTab(BetterFGTab tab)
+        public void ToggleTab(Tab tab)
         {
             if (_openTab == tab)
             {
@@ -1044,6 +1077,8 @@ namespace BetterFG.UI
             // alpha 0 alone still submits every tab's geometry to the GPU each frame — disabling the
             // canvas actually stops the draw. GameObjects stay active so tab coroutines/events live on
             if (_canvas != null) _canvas.enabled = visible;
+            SetHoverTickersEnabled(visible);
+            if (visible) Features.CustomizeFallGuys.FallGuyEyeDriver.EnsurePreviewLoop();
             UpdateCreativeHintText();
 
             SettingsService.Set(KEY_UI_HIDDEN, visible ? "false" : "true");
@@ -1053,6 +1088,21 @@ namespace BetterFG.UI
             SideWheelManager.Instance?.SetVisible(visible);
 
             UpdateCameraFreeze();
+        }
+
+        // an injected MonoBehaviour still costs a native->managed Update() crossing every frame even
+        // when its body early-outs, and the hidden panel keeps a few hundred hover/tooltip/pulse
+        // watchers alive through every round. disabling the behaviour is what stops the call.
+        private void SetHoverTickersEnabled(bool on)
+        {
+            if (_canvas == null) return;
+            var root = _canvas.transform;
+            foreach (var c in root.GetComponentsInChildren<TooltipTrigger>(true)) c.enabled = on;
+            foreach (var c in root.GetComponentsInChildren<TabHoverTint>(true)) c.enabled = on;
+            foreach (var c in root.GetComponentsInChildren<LinkHover>(true)) c.enabled = on;
+            foreach (var c in root.GetComponentsInChildren<Components.MovePulseContinuous>(true)) c.enabled = on;
+            foreach (var c in root.GetComponentsInChildren<Components.AlphaPulseContinuousFade>(true)) c.enabled = on;
+            foreach (var c in root.GetComponentsInChildren<Components.MoveScrollUvRaw>(true)) c.enabled = on;
         }
 
         private void UpdateCameraFreeze()
@@ -1070,7 +1120,7 @@ namespace BetterFG.UI
         }
 
         // ── Tab slide anim ────────────────────────────────────────────────────
-        private void AnimateTab(BetterFGTab tab, bool toOpen)
+        private void AnimateTab(Tab tab, bool toOpen)
         {
             int idx = _tabs.IndexOf(tab);
             if (idx < 0) return;
@@ -1079,7 +1129,7 @@ namespace BetterFG.UI
             _anims[tab] = StartCoroutine(AnimCoroutine(rt, toOpen, tab).WrapToIl2Cpp());
         }
 
-        private IEnumerator AnimCoroutine(RectTransform rt, bool toOpen, BetterFGTab tab = null)
+        private IEnumerator AnimCoroutine(RectTransform rt, bool toOpen, Tab tab = null)
         {
             float startY = rt.anchoredPosition.y;
             float openY = _raisedY;

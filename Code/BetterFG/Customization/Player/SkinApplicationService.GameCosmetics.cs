@@ -12,7 +12,7 @@ using FG.Common;
 using FG.Common.CMS;
 using BetterFG.Customization.Menu;
 using BetterFG.Network;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using Il2CppInterop.Runtime;
 
 namespace BetterFG.Customization.Player
@@ -264,25 +264,31 @@ namespace BetterFG.Customization.Player
                         if (smr != null && smr.gameObject != null && !boundGos.Contains(smr.gameObject))
                             boundGos.Add(smr.gameObject);
 
-                        // copy-colour costumes use the Mediatonic/CH_Costume_ColorCopy shader which
-                        // only recolours once the SMR is registered as a top/bottom renderer AND
-                        // SetCostumeBaseCopyColor runs after that assignment. so: assign, then call.
-                        string n = smr.name != null ? smr.name.ToLowerInvariant() : "";
-                        bool isBottom = HasNameTag(n, "lw") || n.Contains("bottom") || n.Contains("lower") || n.Contains("leg") || n.Contains("feet") || n.Contains("foot");
+                        // _topRenderers/_bottomRenderers are the copy-colour registry, not a general
+                        // costume list — SetCostumeBaseCopyColor stomps EVERY renderer in them with the
+                        // base body's material. only genuine Mediatonic/CH_Costume_ColorCopy costumes
+                        // belong here; adding a normal costume's SMR overwrote its real texture with
+                        // the bean's bare Body_LOD material the moment anything called that method
+                        // (e.g. the player touching the native outfit picker).
+                        bool isColourCopy = smr.sharedMaterial != null && smr.sharedMaterial.shader != null
+                            && smr.sharedMaterial.shader.name == FallguyCustomisationHandler.ColourCopyShaderName;
 
-                        if (fgch._skinnedMeshes != null && !fgch._skinnedMeshes.Contains(smr))
-                            fgch._skinnedMeshes.Add(smr);
+                        if (isColourCopy)
+                        {
+                            string n = smr.name != null ? smr.name.ToLowerInvariant() : "";
+                            bool isBottom = HasNameTag(n, "lw") || n.Contains("bottom") || n.Contains("lower") || n.Contains("leg") || n.Contains("feet") || n.Contains("foot");
 
-                        if (isBottom)
-                        {
-                            if (!fgch._bottomRenderers.Contains(smr)) fgch._bottomRenderers.Add(smr);
+                            if (isBottom)
+                            {
+                                if (!fgch._bottomRenderers.Contains(smr)) fgch._bottomRenderers.Add(smr);
+                            }
+                            else
+                            {
+                                if (!fgch._topRenderers.Contains(smr)) fgch._topRenderers.Add(smr);
+                            }
+                            try { fgch.SetCostumeBaseCopyColor(); }
+                            catch (Exception ex) { Plugin.Log.LogWarning($"SetCostumeBaseCopyColor failed: {ex.Message}"); }
                         }
-                        else
-                        {
-                            if (!fgch._topRenderers.Contains(smr)) fgch._topRenderers.Add(smr);
-                        }
-                        try { fgch.SetCostumeBaseCopyColor(); }
-                        catch (Exception ex) { Plugin.Log.LogWarning($"SetCostumeBaseCopyColor failed: {ex.Message}"); }
                     }
                     catch (Exception ex) { Plugin.Log.LogWarning($"bind failed on {smr.name}: {ex.Message}"); }
                 }
@@ -648,6 +654,8 @@ namespace BetterFG.Customization.Player
                             if (go == null) continue;
                             var smr = go.GetComponent<SkinnedMeshRenderer>();
                             if (smr == null) continue;
+                            if (smr.sharedMaterial == null || smr.sharedMaterial.shader == null
+                                || smr.sharedMaterial.shader.name != FallguyCustomisationHandler.ColourCopyShaderName) continue;
                             string n = smr.name != null ? smr.name.ToLowerInvariant() : "";
                             bool isBottom = HasNameTag(n, "lw") || n.Contains("bottom") || n.Contains("lower") || n.Contains("leg") || n.Contains("feet") || n.Contains("foot");
                             var list = isBottom ? fgch._bottomRenderers : fgch._topRenderers;

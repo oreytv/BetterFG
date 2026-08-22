@@ -13,7 +13,7 @@ using TMPro;
 using BetterFG.Nametag;
 using FGClient;
 using BetterFG.Services;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 
 namespace BetterFG.Network
 {

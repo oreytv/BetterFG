@@ -88,6 +88,7 @@ namespace BetterFG.Services
         {
             try
             {
+                SettingsService.Flush();
                 string settings = SettingsService.SettingsFilePath;
                 if (!File.Exists(settings)) return;
                 var lines = new List<string>();

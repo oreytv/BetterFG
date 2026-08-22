@@ -9,7 +9,7 @@ using Mediatonic.Networking;
 namespace BetterFG.Patches
 {
     // patches the Hazel transport's send + receive entry points to tally bytes/sec for the
-    [Utilities.BfgPatchGate("tweak.show_server_info", true)]
+    [Utilities.BfgPatchGate("tweak.show_server_info", true, roundOnly: true)]
     [HarmonyPatch]
     internal static class NetByteCounterSendPatch
     {
@@ -28,7 +28,7 @@ namespace BetterFG.Patches
         }
     }
 
-    [Utilities.BfgPatchGate("tweak.show_server_info", true)]
+    [Utilities.BfgPatchGate("tweak.show_server_info", true, roundOnly: true)]
     [HarmonyPatch(typeof(HazelNetworkTransport), "OnDataReceived", new[] { typeof(DataReceivedEventArgs) })]
     internal static class NetByteCounterRecvPatch
     {

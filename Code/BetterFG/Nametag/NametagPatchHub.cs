@@ -85,52 +85,7 @@ namespace BetterFG.Nametag
             }
         }
 
-        [HarmonyPatch(typeof(PlayerInfoDisplayGameObject), nameof(PlayerInfoDisplayGameObject.SetText))]
-        internal static class patch_SetText
-        {
-            [HarmonyPrefix]
-            public static void Prefix(PlayerInfoDisplayGameObject __instance, ref string text)
-                => SanitiseNametag(__instance._text, ref text);
-        }
-
-        [HarmonyPatch(typeof(PlayerInfoDisplayCanvas), nameof(PlayerInfoDisplayCanvas.SetText))]
-        internal static class patch_SetText_Canvas
-        {
-            [HarmonyPrefix]
-            public static void Prefix(PlayerInfoDisplayCanvas __instance, ref string text)
-                => SanitiseNametag(__instance._text, ref text);
-        }
-
-        private static void SanitiseNametag(TMPro.TMP_Text tmp, ref string text)
-        {
-            if (!StripSizeTagsTweak.Active) return;
-            if (tmp != null) tmp.parseCtrlCharacters = false;
-            text = StripSizeTagsTweak.Strip(text);
-        }
-
-        [HarmonyPatch(typeof(PlayerInfoDisplayGameObject), "SetTextAlpha")]
-        internal static class patch_SetTextAlpha
-        {
-            [HarmonyPrefix]
-            public static bool Prefix(PlayerInfoDisplayGameObject __instance, float alpha)
-            {
-                if (__instance._prevTextAlpha == alpha) return true;
-                NametagIconApplicator.SetIconAlphaForDisplay(__instance, alpha);
-                return true;
-            }
-        }
-
-        [HarmonyPatch(typeof(PlayerInfoDisplayCanvas), "SetTextAlpha")]
-        internal static class patch_SetTextAlpha_Canvas
-        {
-            [HarmonyPrefix]
-            public static bool Prefix(PlayerInfoDisplayCanvas __instance, float alpha)
-            {
-                NametagIconApplicator.SetIconAlphaForDisplay(__instance, alpha);
-                return true;
-            }
-        }
-
+        [BetterFG.Utilities.BfgPatchGate("tweak.strip_size_tags", defaultOn: true)]
         [HarmonyPatch(typeof(PrivateLobbyPlayerListEntryViewModel), "PlayerName", MethodType.Setter)]
         internal static class patch_PlayerListEntryName
         {
@@ -141,6 +96,7 @@ namespace BetterFG.Nametag
             }
         }
 
+        [BetterFG.Utilities.BfgPatchGate("tweak.strip_size_tags", defaultOn: true)]
         [HarmonyPatch(typeof(PlayerNameManager), nameof(PlayerNameManager.GetNameToDisplayForPlayer))]
         internal static class patch_GetNameToDisplayForPlayer
         {
@@ -217,6 +173,7 @@ namespace BetterFG.Nametag
                 if (__instance == null) return;
 
                 CrownRankFovFix.Invalidate();
+                NametagIconApplicator.ForgetIconRows();
 
                 if (!_localTagAppliedThisRound && NametagFinder.FindLocalNameTagSprite() != null)
                 {
@@ -235,12 +192,21 @@ namespace BetterFG.Nametag
             }
         }
 
-        [BetterFG.Utilities.BfgPatchGate("crownrank.enabled")]
+        // ONE trampoline a frame for the whole nametag layer. PlayerInfoDisplay.UpdateInfo(bool, float)
+        // runs per visible tag per frame and fans out to SetText/SetTextAlpha/SetArrowAlpha/..., so a
+        // hook on any of those is a native->managed crossing times the player count times the frame
+        // rate — that was the tax, not the bodies. everything per-tag now rides this postfix, which
+        // fires once no matter how many people are in the show. deliberately ungated: a single
+        // per-frame trampoline is noise, and the body branches on what's actually switched on.
         [HarmonyPatch(typeof(PlayerInfoHUDBase), "LateUpdate")]
         internal static class patch_HudLateUpdate
         {
             [HarmonyPostfix]
-            public static void Postfix(PlayerInfoHUDBase __instance) => CrownRankFovFix.Apply(__instance);
+            public static void Postfix(PlayerInfoHUDBase __instance)
+            {
+                if (CrownRankService.Enabled) CrownRankFovFix.Apply(__instance);
+                NametagIconApplicator.TickIconAlpha(__instance);
+            }
         }
 
         private static readonly System.Text.RegularExpressions.Regex StripTags =
@@ -264,6 +230,7 @@ namespace BetterFG.Nametag
         // EndFamePass material bound to the ORIGINAL atlas. apply our font NOW, right after, so the font
         // re-derives that gold material onto our atlas. this is the exact moment the gold material lands,
         // so famepass nametags get the custom font on the FIRST round load, no waiting for a later patch.
+        [BetterFG.Utilities.BfgPatchGate(Customization.Menu.FontReplacementService.KEY_MASTER_ON)]
         [HarmonyPatch(typeof(PlayerInfoDisplayCanvas), nameof(PlayerInfoDisplayCanvas.SetNameVisualsDependingOnFame))]
         internal static class patch_SetNameVisualsFame
         {

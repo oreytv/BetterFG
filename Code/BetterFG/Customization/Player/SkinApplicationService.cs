@@ -12,7 +12,7 @@ using FG.Common;
 using FG.Common.CMS;
 using BetterFG.Customization.Menu;
 using BetterFG.Network;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using Il2CppInterop.Runtime;
 
 namespace BetterFG.Customization.Player

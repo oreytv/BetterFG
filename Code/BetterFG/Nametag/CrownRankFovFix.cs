@@ -33,7 +33,10 @@ namespace BetterFG.Nametag
             if (cam == null) cam = hud._levelCamera;
             if (cam == null || cam.orthographic) return;
 
-            if (_levelCam != cam)
+            // this runs off PlayerInfoHUDBase.LateUpdate, once a frame with a row loop that's as long as
+            // the player list, so every il2cpp round trip in here is paid ~60x a frame late in a show.
+            // m_CachedPtr comparisons instead of the == operator: op_Equality is a real il2cpp invoke.
+            if (_levelCam is null || _levelCam.m_CachedPtr != cam.m_CachedPtr)
             {
                 _levelCam = cam;
                 _uiCam = null;
@@ -64,18 +67,20 @@ namespace BetterFG.Nametag
             }
 
             var list = rows.entries;
+            var scale = new Vector3(k, k, 1f);
             for (int i = 0; i < list.Count; i++)
             {
                 var e = list[i];
-                if (e.container == null) { rows.count = -1; return; }
+                if (e.container.m_CachedPtr == IntPtr.Zero) { rows.count = -1; return; }
 
-                var scale = new Vector3(k, k, 1f);
                 if (e.lastScale != scale) { e.container.localScale = scale; e.lastScale = scale; }
 
                 if (identity)
                 {
+                    // hasChanged only goes true when something actually moved the container, so the
+                    // write is skipped outright instead of reading localPosition back to compare
                     if (!e.container.hasChanged) continue;
-                    if (e.container.localPosition != Vector3.zero) e.container.localPosition = Vector3.zero;
+                    e.container.localPosition = Vector3.zero;
                     e.container.hasChanged = false;
                     continue;
                 }

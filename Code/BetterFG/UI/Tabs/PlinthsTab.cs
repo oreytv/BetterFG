@@ -7,9 +7,9 @@ using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class PlinthsTab : BetterFGTab
+    public class PlinthsTab : UGCTab
     {
         public PlinthsTab(IntPtr ptr) : base(ptr) { }
 
@@ -30,14 +30,11 @@ namespace BetterFG.UI.Tab
         protected static readonly Color COVER_BG = new Color(0.04f, 0.04f, 0.04f, 1f);
         protected static readonly Color ITEM_BG = new Color(0f, 0f, 0f, 0f);
         protected static readonly Color ORANGE = new Color(1f, 0.55f, 0.1f, 1f);
-        protected static readonly Color LINK = new Color(1f, 0.72f, 0.35f, 0.85f);
 
-        static Texture2D _bgTex, _hoverTex;
-        GameObject _bgHoverGo;
-
-        Text _titleText, _switchLink;
         RectTransform _scrollRt;
         Text _statusLbl;
+
+        protected override string BgResource => "BetterFG.assets.ui.tab.plinths.png";
 
         protected RectTransform ContentRoot;
         protected RectTransform ListContent;
@@ -45,9 +42,6 @@ namespace BetterFG.UI.Tab
 
         protected static MenuCustomizationApplication PlinthApp => CustomizationServices.PlinthApp;
         protected static SkinCatalogService Catalog => CustomizationServices.CatalogService;
-
-        protected virtual string SwitchLabel => "";
-        protected virtual BetterFGTab MakeSwitchTarget() => null;
 
         void Awake()
         {
@@ -81,69 +75,6 @@ namespace BetterFG.UI.Tab
 
         protected virtual void OnCoverLoaded(string key, Texture2D tex) { }
         protected virtual void OnCatalogChanged() { }
-
-        static Texture2D LoadTex(string resource, ref Texture2D cache)
-        {
-            if (cache != null) return cache;
-            cache = EmbeddedResourceandUnity.LoadTexture(resource);
-            return cache;
-        }
-
-        protected override void BuildBackground(RectTransform root)
-        {
-            var bgTex = LoadTex("BetterFG.assets.ui.tab.plinths.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0f);
-            var raw = bgGo.AddComponent<RawImage>();
-            raw.texture = bgTex;
-            raw.raycastTarget = false;
-
-            var hoverTex = LoadTex("BetterFG.assets.ui.bg_hover.png", ref _hoverTex);
-            if (hoverTex == null) return;
-
-            var hoverGo = new GameObject("BG_Hover");
-            hoverGo.transform.SetParent(bgGo.transform, false);
-            var hoverRt = hoverGo.AddComponent<RectTransform>();
-            hoverRt.anchorMin = Vector2.zero;
-            hoverRt.anchorMax = Vector2.one;
-            hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-            hoverGo.AddComponent<RawImage>().texture = hoverTex;
-            hoverGo.SetActive(false);
-            _bgHoverGo = hoverGo;
-        }
-
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
-        }
-
-        protected override void BuildTitleExtras(Transform titleBar, Text title)
-        {
-            _titleText = title;
-            _switchLink = UGUIShip.CreateLinkText(titleBar, new Rect(0f, 0f, 90f, TITLE_H), SwitchLabel,
-                new Action(SwitchSource), LINK, FS_SM);
-            _switchLink.gameObject.SetActive(IsOpen);
-        }
-
-        void SwitchSource() => BetterFGUIMan.Instance?.SwitchSlotTab(this, MakeSwitchTarget());
-
-        public override void OnOpened() => _switchLink.gameObject.SetActive(true);
-        public override void OnClosed() => _switchLink.gameObject.SetActive(false);
-
-        void PositionSwitchLink()
-        {
-            var rt = _switchLink.rectTransform;
-            UGUIShip.SetPixelRect(rt, new Rect(_titleText.rectTransform.offsetMin.x + _titleText.preferredWidth + PAD * 1.5f,
-                0f, rt.sizeDelta.x, TITLE_H));
-        }
 
         protected override void BuildContent(RectTransform contentRoot)
         {

@@ -7,19 +7,16 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class RepoSelectorTab : BetterFGTab
+    public class RepoSelectorTab : Tab
     {
         public RepoSelectorTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Repositories";
         protected override float TitleYOffset => 20f;
 
-        public BetterFGTab Host;
-
-        public static bool ImportedSelected { get; private set; }
-        public static bool FeaturedSelected { get; private set; }
+        public UGCTab Host;
 
         static float PAD => UIScale.PAD;
         static float SH => UIScale.SH;
@@ -316,8 +313,9 @@ namespace BetterFG.UI.Tab
             var btn = CreateRepoRowButton(parent, "RepoRow_" + repo.repoName, capturedRepo.DisplayName, WHITE,
                 new Action(() =>
                 {
-                    ImportedSelected = false;
-                    FeaturedSelected = false;
+                    Host.ImportedSelected = false;
+                    Host.FeaturedSelected = false;
+                    Host.SelectedRepo = capturedRepo;
                     Registry.SetActive(capturedRepo);
                     CloseBackToHost(true);
                 }));
@@ -406,8 +404,8 @@ namespace BetterFG.UI.Tab
         {
             var btn = CreateRepoRowButton(parent, "RepoRow_Featured", "Featured Repositories", GOLD, new Action(() =>
             {
-                FeaturedSelected = true;
-                ImportedSelected = false;
+                Host.FeaturedSelected = true;
+                Host.ImportedSelected = false;
                 Registry?.FetchFeatured();
                 CloseBackToHost(true);
             }));
@@ -419,8 +417,8 @@ namespace BetterFG.UI.Tab
         {
             var btn = CreateRepoRowButton(parent, "RepoRow_Imported", "Imported Skins", ORANGE, new Action(() =>
             {
-                ImportedSelected = true;
-                FeaturedSelected = false;
+                Host.ImportedSelected = true;
+                Host.FeaturedSelected = false;
                 CloseBackToHost(true);
             }));
             BuildRepoButtonContents(btn, null, null, showControls: false,
@@ -475,13 +473,10 @@ namespace BetterFG.UI.Tab
             field.ActivateInputField();
         }
 
-        public static void ClearFeatured() => FeaturedSelected = false;
-
-        public static float BuildCurrentRepoRow(BetterFGTab host, RectTransform parent, float y, float w)
+        public static float BuildCurrentRepoRow(UGCTab host, RectTransform parent, float y, float w)
         {
-            var registry = Registry;
-            var activeRepo = registry?.Active;
-            bool tall = !ImportedSelected && !FeaturedSelected && activeRepo != null;
+            var activeRepo = host.SelectedRepo;
+            bool tall = !host.ImportedSelected && !host.FeaturedSelected && activeRepo != null;
             float rowH = RepoRowH;
 
             var existing = parent.Find("RepoActiveRow");
@@ -503,11 +498,11 @@ namespace BetterFG.UI.Tab
                 BetterFGUIMan.Instance?.PushSlotTab(host, tab);
             };
 
-            string label = FeaturedSelected ? "Featured Repositories (selected)"
-                : ImportedSelected ? "Imported Skins (selected)"
+            string label = host.FeaturedSelected ? "Featured Repositories (selected)"
+                : host.ImportedSelected ? "Imported Skins (selected)"
                 : activeRepo != null ? activeRepo.DisplayName + " (selected)" : "No repository";
-            Color labelColor = FeaturedSelected ? GOLD
-                : ImportedSelected ? ORANGE
+            Color labelColor = host.FeaturedSelected ? GOLD
+                : host.ImportedSelected ? ORANGE
                 : activeRepo != null ? YELLOW : HINT;
 
             var nameBtn = UGUIShip.CreateButton(rowGo.transform, label, BTN_DARK, labelColor, FS_SM, open);

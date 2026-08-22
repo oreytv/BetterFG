@@ -533,6 +533,7 @@ namespace BetterFG.Customization.Menu
         {
             _active.Clear();
             _masterOn = SettingsService.Get(KEY_MASTER_ON, "false") == "true";
+            Utilities.PatchGate.SetActive(KEY_MASTER_ON, _masterOn);
 
             if (_masterOn)
             {
@@ -758,6 +759,7 @@ namespace BetterFG.Customization.Menu
         {
             _masterOn = on;
             SettingsService.Set(KEY_MASTER_ON, on ? "true" : "false");
+            Utilities.PatchGate.SetActive(KEY_MASTER_ON, on);
         }
 
         // build a one-off preview asset for the edit form (not registered as an active override).
@@ -767,6 +769,7 @@ namespace BetterFG.Customization.Menu
     // newly spawned / re-enabled TMP text spawns with its original font, so reassert our override
     // whenever a TMP turns on. this is the fix for HUD/instantiated text resetting. OnEnable is
     // declared on the concrete types, not the abstract TMP_Text base, so patch both.
+    [BetterFG.Utilities.BfgPatchGate(FontReplacementService.KEY_MASTER_ON)]
     [HarmonyLib.HarmonyPatch]
     internal static class TMPTextOnEnableFontPatch
     {

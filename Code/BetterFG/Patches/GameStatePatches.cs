@@ -13,7 +13,7 @@ using FallGuysLib.Camera;
 using HarmonyLib;
 using UnityEngine;
 using PlayerUtils = FallGuysLib.Players.PlayerUtils;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using BetterFG.Network;
 using BetterFG.Customization.Social;
 using BetterFG.Customization.Menu;
@@ -54,12 +54,14 @@ namespace BetterFG.Patches.GameStates
 
             MenuCustomizationApplication.Instance?.CacheBgImageBase();
 
+            BetterFG.Utilities.PatchGate.SetRoundActive(false);
             BetterFG.Tweaks.BfgTweak.RaiseMainMenuEntered();
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.SetInRound(false);
             BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
             BetterFG.Features.Replay.ReplayViewer.OnMainMenuEntered();
             BetterFG.Patches.SeasonProgressHoverPatch.SetMenuActive(true);
 
-            BetterFG.UI.Tab.NametagTab.CacheNameAssets();
+            BetterFG.UI.Tabs.NametagTab.CacheNameAssets();
             BetterFG.UI.BetterFGUIMan.ResolveAsapFont();
 
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
@@ -68,7 +70,7 @@ namespace BetterFG.Patches.GameStates
             MenuCustomizationApplication.Instance.StartCoroutine(HealFontAfterMenuEntered().WrapToIl2Cpp());
 
             FeatureStars.CreateInMenu();
-            FeatureQualificationTime.CreateInMenu();
+            MenuCustomizationApplication.Instance.StartCoroutine(CreateQualTabAfterForegroundApplied().WrapToIl2Cpp());
             BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh(true);
 
             if (__instance._menuFallGuy != null)
@@ -180,6 +182,12 @@ namespace BetterFG.Patches.GameStates
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
         }
 
+        private static IEnumerator CreateQualTabAfterForegroundApplied()
+        {
+            yield return new WaitForSeconds(0.05f);
+            FeatureQualificationTime.CreateInMenu();
+        }
+
         private static IEnumerator HealFontAfterMenuEntered()
         {
             yield return new WaitForSeconds(0.3f);
@@ -213,7 +221,7 @@ namespace BetterFG.Patches.GameStates
         private static IEnumerator ApplyScalingNextFrame()
         {
             yield return null;
-            UITab.ApplyCanvasScalingFromSettings();
+            UIScalingTab.ApplyCanvasScalingFromSettings();
         }
     }
 
@@ -251,6 +259,71 @@ namespace BetterFG.Patches.GameStates
                 BetterFG.Customization.Profiles.LobbyProfileService.ClearLobby();
 #endif
             BetterFG.Services.DiscordPresenceService.Push();
+        }
+    }
+
+    // this is the 3D-space nametag floating over a bean in the main menu (PlayerInfo = local,
+    // PartyPlayerInfo = remote) — a totally different widget from NameTagViewModel/PlayerInfoDisplay,
+    // so NametagPatchHub never touches it. traced live: SetUsernameText fires exactly once per member
+    // (join, or the initial local spawn), immediately followed by SetNameMaterial in the same call
+    // burst, which resets the font material our colour tag relies on — so reapplying synchronously
+    // got stomped. UpdateForMember re-fires every few seconds after that (icon/status/material poll)
+    // but never touches the text again, so a same-burst stomp meant the tag stuck wrong forever.
+    // wait a frame so we land after that whole burst.
+    [HarmonyPatch(typeof(PartyNameTag), nameof(PartyNameTag.SetUsernameText))]
+    public class PartyNameTagSetUsernameText
+    {
+        [HarmonyPostfix]
+        public static void Postfix(PartyNameTag __instance)
+        {
+            if (__instance == null) return;
+            MenuCustomizationApplication.Instance?.StartCoroutine(ReapplyNextFrame(__instance).WrapToIl2Cpp());
+        }
+
+        private static System.Collections.IEnumerator ReapplyNextFrame(PartyNameTag tag)
+        {
+            yield return null;
+            if (tag == null) yield break;
+
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(tag.transform, null, anyImage: true);
+
+            var tmp = tag._usernameText;
+            if (tmp == null) yield break;
+
+            string current = tmp.text;
+            string localName = LocalPlayerInfo.FGlocalplayerusername;
+            bool isLocal = !string.IsNullOrEmpty(localName)
+                && FallGuysLib.Players.PlayerUtils.CleanPlayerName(current) == localName;
+            if (!isLocal) yield break;
+
+            bool useDisplay = SettingsService.Get("nametag.enabled", "false") == "true"
+                              || !string.IsNullOrEmpty(LocalPlayerInfo.CustomName);
+            string name = useDisplay ? LocalPlayerInfo.DisplayName : localName;
+            NametagIconApplicator.ApplyToNameplate(tmp, name, NametagIconApplicator.NameplateType.Party);
+        }
+    }
+
+    // lobby party-slot preview beans (Prefab_UI_Lobby._partyCharacters, one UILobbyCharacter per
+    // slot) get pushed into the eye feature while still disabled — their skinned mesh isn't settled
+    // yet, so the eye carve/attach silently fails and the tracked entry is left dead. UpdateMember is
+    // the game's own per-member refresh, so re-push each slot's bean here now that it's actually live;
+    // Apply() already no-ops on a duplicate reference.
+    [HarmonyPatch(typeof(Prefab_UI_Lobby), nameof(Prefab_UI_Lobby.UpdateMember))]
+    internal static class PrefabUILobbyUpdateMember
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Prefab_UI_Lobby __instance)
+        {
+            var characters = __instance?._partyCharacters;
+            if (characters == null) return;
+
+            for (int i = 0; i < characters.Count; i++)
+            {
+                var character = characters[i];
+                var bean = character?._fallGuyGO;
+                if (bean == null || !bean.activeInHierarchy) continue;
+                BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(bean, isLocalPlayer: false);
+            }
         }
     }
 
@@ -786,19 +859,29 @@ namespace BetterFG.Patches.GameStates
 
             BetterFG.Tweaks.CreativeIntroCameraTweak.OnPlayerSpawned(playerId);
 
-            if (pNetObject != null)
-                BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(pNetObject.gameObject);
-
-            if (!isLocalPlayer || pNetObject == null) return;
-            var bean = pNetObject.gameObject;
+            var bean = pNetObject != null ? pNetObject.gameObject : null;
             if (bean == null) return;
-            Plugin.Log.LogInfo($"RoundBeanSpawn: local bean: {bean.name}");
-            BeanMonitorService.LocalPlayerBean = bean;
-            BeanMonitorService.PushBean(bean);
 
+            if (isLocalPlayer)
+            {
+                Plugin.Log.LogInfo($"RoundBeanSpawn: local bean: {bean.name}");
+                BeanMonitorService.LocalPlayerBean = bean;
+            }
+            BeanMonitorService.PushBean(bean, isLocalPlayer);
         }
     }
 
+
+    [HarmonyPatch(typeof(FallguyCustomisationHandler), nameof(FallguyCustomisationHandler.UpdateFaceplateColours))]
+    internal static class FaceplateColoursChangedHub
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FallguyCustomisationHandler __instance, FaceplateOption faceplateOption)
+        {
+            if (__instance == null) return;
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.OnFaceplateChanged(__instance.gameObject, faceplateOption);
+        }
+    }
 
     [HarmonyPatch(typeof(CellBehaviour), nameof(CellBehaviour.AddFallGuy))]
     internal static class QualifyScreenOnBeanSpawn
@@ -806,9 +889,9 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix(CellBehaviour __instance, Transform t)
         {
-            if (!__instance._localPlayer || t == null) return;
-            BeanMonitorService.LocalPlayerBean = t.gameObject;
-            BeanMonitorService.PushBean(t.gameObject);
+            if (t == null) return;
+            if (__instance._localPlayer) BeanMonitorService.LocalPlayerBean = t.gameObject;
+            BeanMonitorService.PushBean(t.gameObject, __instance._localPlayer);
         }
     }
 
@@ -1241,9 +1324,12 @@ namespace BetterFG.Patches.GameStates
         {
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnCleanupLoadingScreens();
             BetterFG.Features.Replay.FeatureReplay.OnCleanupLoadingScreens();
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.SetInRound(true);
             BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh(false, 0.5f);
             BetterFG.Tweaks.CreativeIntroCameraTweak.OnCleanupLoadingScreens();
+            BetterFG.Tweaks.PlayerNameWarningTweak.OnCleanupLoadingScreens();
             BetterFG.Nametag.CrownRankFovFix.Forget();
+            BetterFG.Nametag.NametagIconApplicator.ForgetIconRows();
 
             BetterFGUnityRounds.RestoreMusic();
 
@@ -1304,6 +1390,7 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix()
         {
+            BetterFG.Utilities.PatchGate.SetRoundActive(true);
             BetterFGUnityRounds.StartCustomMusicIfAny();
             BetterFG.Patches.SeasonProgressHoverPatch.SetMenuActive(false);
 
@@ -1402,17 +1489,11 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         static void SetViewImplementation(SwitchableView __instance)
         {
-            if (BetterFG.Features.QualificationTime.PBPopup.IsOpen)
-            {
-                var modalMessage = GameObject.Find("UICanvas_Client_V2(Clone)/ModalMessage");
-                if (modalMessage != null)
-                {
-                    var t = modalMessage.transform;
-                    for (int i = t.childCount - 1; i >= 0; i--)
-                        UnityEngine.Object.Destroy(t.GetChild(i).gameObject);
-                }
-                BetterFG.Features.QualificationTime.PBPopup.IsOpen = false;
-            }
+            // a switch to any view OTHER than our Customiser backdrop means the user navigated away
+            // from the PB tab — drop the overlay.
+            if (BetterFG.Features.QualificationTime.PBTabView.IsOpen && __instance != null
+                && __instance.CurrentViewIndex != BetterFG.Features.QualificationTime.PBTabView.BackdropIndex)
+                BetterFG.Features.QualificationTime.PBTabView.Hide();
 
             if (BetterFG.Features.UnityRound.Editor.UnityRoundLoader.InLevelEditor) return;
 
@@ -1486,6 +1567,25 @@ namespace BetterFG.Patches.GameStates
             if (scope != null)
                 app.ReapplyForegroundFromSettings(scope, "Prime_UI_SymphonyShowSelector_Prefab_Canvas(Clone)");
         }
+    }
+
+    // the top bar's Rewired nav switches views positionally. our PB clone sits at the end of
+    // _menuTabs, so navigating to it lands on view 6 (Settings). catch that here and show the PB tab
+    // over the (now hidden) Settings screen instead. covers both the immediate and the animated path.
+    [HarmonyPatch(typeof(SwitchableViewRewiredNavigation), nameof(SwitchableViewRewiredNavigation.SetView))]
+    internal static class Patch_RewiredNav_SetView
+    {
+        [HarmonyPostfix]
+        static void Postfix(SwitchableViewRewiredNavigation __instance, int viewIndex)
+            => BetterFG.Features.QualificationTime.PBTabView.OnNavIndex(__instance.SwitchableView, viewIndex);
+    }
+
+    [HarmonyPatch(typeof(SwitchableViewRewiredNavigation), nameof(SwitchableViewRewiredNavigation.ChangeTab))]
+    internal static class Patch_RewiredNav_ChangeTab
+    {
+        [HarmonyPostfix]
+        static void Postfix(SwitchableViewRewiredNavigation __instance, int nextViewIndex)
+            => BetterFG.Features.QualificationTime.PBTabView.OnNavIndex(__instance.SwitchableView, nextViewIndex);
     }
 
     [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.SwitchToSpectatorMode))]

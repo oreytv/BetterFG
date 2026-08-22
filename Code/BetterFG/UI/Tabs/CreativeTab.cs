@@ -6,12 +6,12 @@ using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     // Creative-only tab. Subtabs: Load (pick a round info.json + load/unload), Custom Textures
     // (override obstacle textures), Args (player speed/gravity etc - not done yet). When you're not
     // in the level editor the whole body is just a "you're not in Creative" message, no subtabs.
-    public class CreativeTab : BetterFGTab
+    public class CreativeTab : Tab
     {
         public CreativeTab(IntPtr ptr) : base(ptr) { }
 

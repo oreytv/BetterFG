@@ -37,6 +37,17 @@ namespace BetterFG.Tweaks
         public float Width;            // 0 = default (62)
     }
 
+    // inline slider for a bounded float, shown as its own sub-row in the expanded panel.
+    public struct TweakSlider
+    {
+        public string Label;
+        public float Min;
+        public float Max;
+        public float Step;
+        public Func<float> Get;
+        public Action<float> Set;
+    }
+
     // one setting shown in a tweak's expanded panel (below the row, when the tweak is enabled).
     // label on the left, a button on the right that cycles through Options; Selected is the current
     // index, OnPick commits the new index. use for anything more than a plain on/off toggle.
@@ -69,9 +80,13 @@ namespace BetterFG.Tweaks
         // EnableTweak invoke, so a tweak toggled on mid-session reacts to the next round/state change
         private static readonly List<BfgTweak> _live = new List<BfgTweak>();
 
+        // every tweak is a component on one shared host object, so a switched-off tweak still paid a
+        // native->managed Update crossing every frame just to hit its own `if (!IsEnabled) return`.
+        // the component itself now follows the toggle, the same way PatchGate moves the patches.
         void Start()
         {
             IsEnabled = SettingsService.Get(SettingKey, DefaultEnabled ? "true" : "false") == "true";
+            enabled = IsEnabled;
             if (IsEnabled)
             {
                 if (!_live.Contains(this)) _live.Add(this);
@@ -81,21 +96,23 @@ namespace BetterFG.Tweaks
 
         void OnDestroy() => _live.Remove(this);
 
-        public void SetEnabled(bool enabled)
+        public void SetEnabled(bool on)
         {
-            if (IsEnabled == enabled) return;
-            IsEnabled = enabled;
-            SettingsService.Set(SettingKey, enabled ? "true" : "false");
-            Utilities.PatchGate.SetActive(SettingKey, enabled);
-            if (enabled)
+            if (IsEnabled == on) return;
+            IsEnabled = on;
+            SettingsService.Set(SettingKey, on ? "true" : "false");
+            Utilities.PatchGate.SetActive(SettingKey, on);
+            if (on)
             {
                 if (!_live.Contains(this)) _live.Add(this);
+                enabled = true;
                 EnableTweak();
             }
             else
             {
                 _live.Remove(this);
                 DisableTweak();
+                enabled = false;
             }
         }
 
@@ -143,5 +160,8 @@ namespace BetterFG.Tweaks
         // tweaks with settings beyond a plain toggle return them here. shown in an expanded panel
         // under the row while the tweak is enabled; hidden when it's off.
         public virtual List<TweakSetting> GetSettings() => null;
+
+        // tweaks can return inline sliders that show up as their own sub-row in the expanded panel
+        public virtual List<TweakSlider> GetSliders() => null;
     }
 }

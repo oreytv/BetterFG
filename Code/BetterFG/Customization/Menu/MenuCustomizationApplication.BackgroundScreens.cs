@@ -46,29 +46,125 @@ namespace BetterFG.Customization.Menu
         private bool _originalPatternCaptured;
         private Texture2D _appliedPatternTex; // the custom tex we last set, so we can destroy it on swap/remove
 
-        // menu background image (sibling quad, unlit texture)
-        private GameObject _menuBgImageGo;
-        private Material _menuBgImageMat;
-        private Texture2D _menuBgImageTex;
-        public const string KEY_BG_IMG_ENABLED = "menu.bg.img.enabled";
-        public const string KEY_BG_IMG_PATH = "menu.bg.img.path";
-        public const string KEY_BG_IMG_POS_X = "menu.bg.img.pos.x";
-        public const string KEY_BG_IMG_POS_Y = "menu.bg.img.pos.y";
-        public const string KEY_BG_IMG_POS_Z = "menu.bg.img.pos.z";
-        public const string KEY_BG_IMG_SCALE = "menu.bg.img.scale";
-        public const string KEY_BG_IMG_SCALE_X = "menu.bg.img.scale.x";
-        public const string KEY_BG_IMG_SCALE_Y = "menu.bg.img.scale.y";
+        // menu background images — a library of saved images. every enabled entry gets its own quad
+        // and renders simultaneously (not exclusive), keyed by entry name.
+        private class BgImageRuntime
+        {
+            public GameObject go;
+            public Material mat;
+            public Texture2D tex;
+        }
+        private readonly Dictionary<string, BgImageRuntime> _bgImageRuntimes = new Dictionary<string, BgImageRuntime>();
 
         // bg image slider ranges + defaults — single source of truth (UI reads these too)
         public const float BG_IMG_POS_MIN = -10f;
         public const float BG_IMG_POS_MAX = 10f;
         public const float BG_IMG_POS_DEFAULT = 0f;
+        public const float BG_IMG_ROT_DEFAULT = 0f;
         public const float BG_IMG_SCALE_MIN = 0f;
         public const float BG_IMG_SCALE_MAX = 15f;
         public const float BG_IMG_SCALE_DEFAULT = 5f;
         public const float BG_IMG_SCALE_AXIS_MIN = 0.1f;
         public const float BG_IMG_SCALE_AXIS_MAX = 3f;
         public const float BG_IMG_SCALE_AXIS_DEFAULT = 1f;
+
+        public class BgImageEntry
+        {
+            public string entryName = "";
+            public string path = "";
+            public bool enabled = true;
+            public float posX, posY, posZ;
+            public float rotX, rotY, rotZ;
+            public float scale = BG_IMG_SCALE_DEFAULT;
+            public float scaleX = BG_IMG_SCALE_AXIS_DEFAULT;
+            public float scaleY = BG_IMG_SCALE_AXIS_DEFAULT;
+        }
+
+        private const string KEY_BG_IMG_ENTRY_COUNT = "menu.bg.img.entryCount";
+        private static string BgImgEK(int i, string f) => $"menu.bg.img.entry.{i}.{f}";
+
+        public static List<BgImageEntry> LoadBgImageEntries()
+        {
+            var entries = new List<BgImageEntry>();
+            int count = int.TryParse(SettingsService.Get(KEY_BG_IMG_ENTRY_COUNT, "0"), out int c) ? c : 0;
+            for (int i = 0; i < count; i++)
+            {
+                entries.Add(new BgImageEntry
+                {
+                    entryName = SettingsService.Get(BgImgEK(i, "name"), "background " + i),
+                    path = SettingsService.Get(BgImgEK(i, "path"), ""),
+                    enabled = SettingsService.Get(BgImgEK(i, "enabled"), "1") == "1",
+                    posX = ParseF(BgImgEK(i, "posX"), BG_IMG_POS_DEFAULT),
+                    posY = ParseF(BgImgEK(i, "posY"), BG_IMG_POS_DEFAULT),
+                    posZ = ParseF(BgImgEK(i, "posZ"), BG_IMG_POS_DEFAULT),
+                    rotX = ParseF(BgImgEK(i, "rotX"), BG_IMG_ROT_DEFAULT),
+                    rotY = ParseF(BgImgEK(i, "rotY"), BG_IMG_ROT_DEFAULT),
+                    rotZ = ParseF(BgImgEK(i, "rotZ"), BG_IMG_ROT_DEFAULT),
+                    scale = ParseF(BgImgEK(i, "scale"), BG_IMG_SCALE_DEFAULT),
+                    scaleX = ParseF(BgImgEK(i, "scaleX"), BG_IMG_SCALE_AXIS_DEFAULT),
+                    scaleY = ParseF(BgImgEK(i, "scaleY"), BG_IMG_SCALE_AXIS_DEFAULT),
+                });
+            }
+            return entries;
+        }
+
+        public static void SaveBgImageEntries(List<BgImageEntry> entries)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            SettingsService.Set(KEY_BG_IMG_ENTRY_COUNT, entries.Count.ToString());
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var e = entries[i];
+                SettingsService.Set(BgImgEK(i, "name"), e.entryName);
+                SettingsService.Set(BgImgEK(i, "path"), e.path);
+                SettingsService.Set(BgImgEK(i, "enabled"), e.enabled ? "1" : "0");
+                SettingsService.Set(BgImgEK(i, "posX"), e.posX.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "posY"), e.posY.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "posZ"), e.posZ.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "rotX"), e.rotX.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "rotY"), e.rotY.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "rotZ"), e.rotZ.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "scale"), e.scale.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "scaleX"), e.scaleX.ToString(ci));
+                SettingsService.Set(BgImgEK(i, "scaleY"), e.scaleY.ToString(ci));
+            }
+        }
+
+        // one-time carry-over from the old single flat-key background image into entry 0 — otherwise
+        // everyone who already had a menu background image loses it silently on update.
+        private static void MigrateOldBgImageEntry()
+        {
+            if (SettingsService.Get("menu.bg.img.migrated", "false") == "true") return;
+            SettingsService.Set("menu.bg.img.migrated", "true");
+
+            string oldPath = SettingsService.Get("menu.bg.img.path", "");
+            if (string.IsNullOrEmpty(oldPath)) return;
+            if (int.TryParse(SettingsService.Get(KEY_BG_IMG_ENTRY_COUNT, "0"), out int c) && c > 0) return;
+
+            var entry = new BgImageEntry
+            {
+                entryName = "background",
+                path = oldPath,
+                enabled = SettingsService.Get("menu.bg.img.enabled", "false") == "true",
+                posX = ParseF("menu.bg.img.pos.x", BG_IMG_POS_DEFAULT),
+                posY = ParseF("menu.bg.img.pos.y", BG_IMG_POS_DEFAULT),
+                posZ = ParseF("menu.bg.img.pos.z", BG_IMG_POS_DEFAULT),
+                scale = ParseF("menu.bg.img.scale", BG_IMG_SCALE_DEFAULT),
+                scaleX = ParseF("menu.bg.img.scale.x", BG_IMG_SCALE_AXIS_DEFAULT),
+                scaleY = ParseF("menu.bg.img.scale.y", BG_IMG_SCALE_AXIS_DEFAULT),
+            };
+            SaveBgImageEntries(new List<BgImageEntry> { entry });
+        }
+
+        // flips one entry's enabled flag and re-applies immediately so the menu picks it up live.
+        public void SetBgImageEnabled(int index, bool enabled)
+        {
+            var entries = LoadBgImageEntries();
+            if (index < 0 || index >= entries.Count) return;
+            entries[index].enabled = enabled;
+            SaveBgImageEntries(entries);
+            ApplyImageBgFromSettings();
+        }
 
         // gradient settings keys — these are the FallForce screen's keys (menu + title share them).
         // the Screen tab edits the same screen.fallforce.* keys via ScreenBackgroundService.
@@ -140,12 +236,11 @@ namespace BetterFG.Customization.Menu
 
             // restore everything every menu enter (not just first time)
             ApplyGradientFromSettings();
-            BetterFG.UI.Tab.UITab.ApplyCanvasScalingFromSettings();
+            BetterFG.UI.Tabs.UIScalingTab.ApplyCanvasScalingFromSettings();
 
             bool bgEnabled = SettingsService.Get(KEY_BG_ENABLED, "false") == "true";
             if (_menuBgGo != null) _menuBgGo.SetActive(bgEnabled);
 
-            EnsureImageBg();
             ApplyImageBgFromSettings();
 
             // sun GO is fresh each menu enter — recapture its original rotation before applying.
@@ -212,52 +307,59 @@ namespace BetterFG.Customization.Menu
             _bgImgBaseCached = true;
         }
 
-        private void EnsureImageBg()
+        // Sprites/Default is picked first on purpose: it alpha-blends (real PNG transparency, unlike
+        // an opaque Unlit shader) and culls neither face (visible regardless of the entry's rotation).
+        private BgImageRuntime EnsureImageBgRuntime(string key)
         {
             // ?. against a destroyed Unity object returns true for == null, so this also recreates after scene unload
-            if (_menuBgImageGo != null) return;
+            if (_bgImageRuntimes.TryGetValue(key, out var existing) && existing.go != null) return existing;
 
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = "BetterFG_MenuBgImage";
+            quad.name = "BetterFG_MenuBgImage_" + key;
             var col = quad.GetComponent<Collider>();
             if (col != null) Destroy(col);
 
             // unparented + scene-bound: gets cleaned up when the menu scene unloads,
             // so it never leaks into rounds.
             quad.transform.position = _bgImgBasePos;
-            quad.transform.rotation = Quaternion.Euler(0, 0, 0);
+            quad.transform.rotation = Quaternion.identity;
             quad.transform.localScale = Vector3.one;
             quad.layer = LayerMask.NameToLayer("PlayerUI");
 
+            var rt = new BgImageRuntime { go = quad };
+
             Shader shader = null;
-            foreach (var name in new[] { "Unlit/Texture", "Unlit/Transparent", "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default" })
+            foreach (var name in new[] { "Sprites/Default", "Universal Render Pipeline/Unlit", "Unlit/Transparent", "Unlit/Texture", "UI/Default" })
             {
                 shader = Shader.Find(name);
                 if (shader != null) break;
             }
-            if (shader == null) return;
+            if (shader != null)
+            {
+                var mat = new Material(shader);
+                mat.color = Color.white;
+                var rend = quad.GetComponent<Renderer>();
+                rend.material = mat;
+                // re-read the renderer's actual instance — assigning .material may instantiate a copy
+                rt.mat = rend.material;
+                rt.mat.renderQueue = 3000; // transparent queue
+            }
 
-            var mat = new Material(shader);
-            mat.color = Color.white;
-            var rend = quad.GetComponent<Renderer>();
-            rend.material = mat;
-            // re-read the renderer's actual instance — assigning .material may instantiate a copy
-            _menuBgImageMat = rend.material;
-            _menuBgImageMat.renderQueue = 2990; // just behind plinth, in front of gradient backdrop
+            _bgImageRuntimes[key] = rt;
+            return rt;
+        }
 
-            _menuBgImageGo = quad;
+        private void DestroyBgImageRuntime(string key)
+        {
+            if (!_bgImageRuntimes.TryGetValue(key, out var rt)) return;
+            if (rt.tex != null) Destroy(rt.tex);
+            if (rt.go != null) Destroy(rt.go);
+            _bgImageRuntimes.Remove(key);
         }
 
         // image bg is hidden whenever the customiser prefab canvas or store screen is active
         private const string CUSTOMISER_CANVAS_PATH = "UICanvas_Client_V2(Clone)/Default/MainMenuBuilder(Clone)/MainScreensParent/Menu_Screen_Customiser/Prime_UI_Customizer_Prefab_Canvas(Clone)";
         private const string STORE_SCREEN_PATH = "UICanvas_Client_V2(Clone)/Default/MainMenuBuilder(Clone)/MainScreensParent/Menu_Screen_Store";
-
-        public void SetImageBgEnabled(bool enabled)
-        {
-            SettingsService.Set(KEY_BG_IMG_ENABLED, enabled ? "true" : "false");
-            EnsureImageBg();
-            RefreshImageBgVisibility();
-        }
 
         // true when the customiser prefab canvas is active in the hierarchy
         private static bool IsCustomiserOpen()
@@ -272,26 +374,33 @@ namespace BetterFG.Customization.Menu
             return go != null && go.activeInHierarchy;
         }
 
+        private static void RefreshRuntimeVisibility(BgImageRuntime rt)
+        {
+            if (rt.go == null) return;
+            // the PB tab deactivates the customiser canvas, so IsCustomiserOpen reads false there —
+            // hide the custom menu image explicitly while our tab owns the screen.
+            bool pbOpen = BetterFG.Features.QualificationTime.PBTabView.IsOpen;
+            rt.go.SetActive(!pbOpen && !IsCustomiserOpen() && !IsStoreOpen());
+        }
+
         public void RefreshImageBgVisibility()
         {
-            if (_menuBgImageGo == null) return;
-            bool enabled = SettingsService.Get(KEY_BG_IMG_ENABLED, "false") == "true";
-            _menuBgImageGo.SetActive(enabled && !IsCustomiserOpen() && !IsStoreOpen());
+            foreach (var rt in _bgImageRuntimes.Values) RefreshRuntimeVisibility(rt);
         }
 
         public void HideImageBg()
         {
-            if (_menuBgImageGo != null) _menuBgImageGo.SetActive(false);
+            foreach (var rt in _bgImageRuntimes.Values)
+                if (rt.go != null) rt.go.SetActive(false);
         }
 
-        public void ApplyImageBgTexture(string path)
+        private static void ApplyTextureToRuntime(BgImageRuntime rt, string path)
         {
-            EnsureImageBg();
-            if (_menuBgImageMat == null) return;
+            if (rt.mat == null) return;
 
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
             {
-                _menuBgImageMat.mainTexture = null;
+                rt.mat.mainTexture = null;
                 return;
             }
 
@@ -302,43 +411,67 @@ namespace BetterFG.Customization.Menu
                 if (!tex.LoadImage(bytes)) { Plugin.Log.LogWarning($"not a decodable image: {System.IO.Path.GetFileName(path)}"); return; }
                 tex.wrapMode = TextureWrapMode.Clamp;
                 tex.Apply();
-                if (_menuBgImageTex != null) Destroy(_menuBgImageTex);
-                _menuBgImageTex = tex;
+                if (rt.tex != null) Destroy(rt.tex);
+                rt.tex = tex;
 
                 foreach (var prop in new[] { "_MainTex", "_BaseMap", "_BaseColorMap", "_UnlitColorMap", "_Texture", "_Tex" })
-                    if (_menuBgImageMat.HasProperty(prop))
-                        _menuBgImageMat.SetTexture(prop, tex);
-                _menuBgImageMat.mainTexture = tex;
+                    if (rt.mat.HasProperty(prop))
+                        rt.mat.SetTexture(prop, tex);
+                rt.mat.mainTexture = tex;
             }
             catch (Exception ex) { Plugin.Log.LogError($"menu bg image '{System.IO.Path.GetFileName(path)}' failed to load: {ex.Message}"); }
         }
 
-        public void ApplyImageBgTransform(float posX, float posY, float posZ, float scaleUniform, float scaleX, float scaleY)
+        private void ApplyTransformToRuntime(BgImageRuntime rt, BgImageEntry e)
         {
-            EnsureImageBg();
-            if (_menuBgImageGo == null) return;
-
-            _menuBgImageGo.transform.position =
-                _bgImgBasePos + new Vector3(posX, posY, posZ);
-            _menuBgImageGo.transform.localScale =
-                new Vector3(scaleUniform * scaleX, scaleUniform * scaleY, 1f);
+            if (rt.go == null) return;
+            rt.go.transform.position = _bgImgBasePos + new Vector3(e.posX, e.posY, e.posZ);
+            rt.go.transform.rotation = Quaternion.Euler(e.rotX, e.rotY, e.rotZ);
+            rt.go.transform.localScale = new Vector3(e.scale * e.scaleX, e.scale * e.scaleY, 1f);
         }
 
+        // rebuilds the full set of visible quads from settings — one per enabled entry, keyed by name.
+        // entries that are disabled or gone get their quad torn down.
         public void ApplyImageBgFromSettings()
         {
-            EnsureImageBg();
-            if (_menuBgImageGo == null) return;
+            var entries = LoadBgImageEntries();
+            var keep = new HashSet<string>();
 
-            ApplyImageBgTexture(SettingsService.Get(KEY_BG_IMG_PATH, ""));
-            ApplyImageBgTransform(
-                ParseF(KEY_BG_IMG_POS_X, BG_IMG_POS_DEFAULT),
-                ParseF(KEY_BG_IMG_POS_Y, BG_IMG_POS_DEFAULT),
-                ParseF(KEY_BG_IMG_POS_Z, BG_IMG_POS_DEFAULT),
-                ParseF(KEY_BG_IMG_SCALE, BG_IMG_SCALE_DEFAULT),
-                ParseF(KEY_BG_IMG_SCALE_X, BG_IMG_SCALE_AXIS_DEFAULT),
-                ParseF(KEY_BG_IMG_SCALE_Y, BG_IMG_SCALE_AXIS_DEFAULT));
+            foreach (var e in entries)
+            {
+                if (!e.enabled) continue;
+                keep.Add(e.entryName);
+                var rt = EnsureImageBgRuntime(e.entryName);
+                ApplyTextureToRuntime(rt, e.path);
+                ApplyTransformToRuntime(rt, e);
+                RefreshRuntimeVisibility(rt);
+            }
 
-            RefreshImageBgVisibility();
+            var stale = new List<string>();
+            foreach (var kv in _bgImageRuntimes)
+                if (!keep.Contains(kv.Key)) stale.Add(kv.Key);
+            foreach (var name in stale) DestroyBgImageRuntime(name);
+        }
+
+        // live scrub preview for the background image wizard. keyed by the entry's OWN name when
+        // editing so the scrub updates that entry's real, already-visible quad in place instead of
+        // spawning a second one alongside it; the wizard passes a scratch key instead when adding a
+        // new entry, since no real quad exists under any name yet. ApplyImageBgFromSettings's
+        // stale-runtime sweep (called whenever the wizard leaves, see MakeListTarget) tears the scratch
+        // key down on its own — and for an edit, reapplies the on-disk (possibly still-old, if the user
+        // backed out without saving) transform over whatever was scrubbed.
+        public void PreviewBgImage(string key, string path, float posX, float posY, float posZ,
+            float rotX, float rotY, float rotZ, float scale, float scaleX, float scaleY)
+        {
+            var rt = EnsureImageBgRuntime(key);
+            ApplyTextureToRuntime(rt, path);
+            ApplyTransformToRuntime(rt, new BgImageEntry
+            {
+                posX = posX, posY = posY, posZ = posZ,
+                rotX = rotX, rotY = rotY, rotZ = rotZ,
+                scale = scale, scaleX = scaleX, scaleY = scaleY
+            });
+            if (rt.go != null) rt.go.SetActive(true);
         }
 
         public void SetMenuBgEnabled(bool enabled)
@@ -354,6 +487,30 @@ namespace BetterFG.Customization.Menu
             GameObject.Find(FGUI_ORIGINAL_CIRCLES_PATH).transform.localPosition = FG_UI_ORIGINAL_CIRCLES_PREFERREDLOCALPOS;
         }
 
+        // the "Mask" container that holds the live Backdrop + Circles images — same node
+        // ScreenBackgroundService.ApplyToContainer targets. only present while the main menu/title
+        // screen is up; the Background tab clones it as a live preview source.
+        public static GameObject FindBackgroundContainer() => GameObject.Find(FGUI_CUSTOM_BACKDROP_PARENT_PATH);
+
+        // cache the REAL original pattern texture exactly once per session. only safe to read off the
+        // live material when we haven't applied a custom one yet — once we have, GetTexture("_Pattern")
+        // would just return our own custom tex back to us.
+        private void CaptureOriginalPattern(UnityEngine.UI.Image img)
+        {
+            if (_originalPatternCaptured || _appliedPatternTex != null || img == null || img.material == null) return;
+            _originalPatternTex = img.material.GetTexture("_Pattern");
+            _originalPatternCaptured = true;
+        }
+
+        // the real, uncorrupted default circles pattern — for the Background tab's preview clone,
+        // which can't just read the live Circles material directly (if a custom pattern is already
+        // active this session, that live read would return OUR OWN texture, not the game's default).
+        public Texture EnsureOriginalCirclesPatternCaptured()
+        {
+            CaptureOriginalPattern(GameObject.Find(FGUI_ORIGINAL_CIRCLES_PATH)?.GetComponent<UnityEngine.UI.Image>());
+            return _originalPatternTex;
+        }
+
         // applies the saved circles pattern texture onto the Circles image material. safe to call
         // repeatedly — the Circles GO is fresh each menu enter so we re-resolve it every time, and
         // we cache the untouched original on first apply so RestorePattern can put it back.
@@ -365,13 +522,7 @@ namespace BetterFG.Customization.Menu
             var img = circlesGo.GetComponent<UnityEngine.UI.Image>();
             if (img == null || img.material == null) return;
 
-            // cache the REAL original exactly once per session. only safe to read here when we haven't
-            // applied a custom yet — once we have, GetTexture("_Pattern") returns our own custom tex.
-            if (!_originalPatternCaptured && _appliedPatternTex == null)
-            {
-                _originalPatternTex = img.material.GetTexture("_Pattern");
-                _originalPatternCaptured = true;
-            }
+            CaptureOriginalPattern(img);
 
             string path = SettingsService.Get(KEY_PATTERN_PATH, "");
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
@@ -600,15 +751,53 @@ namespace BetterFG.Customization.Menu
             return go != null ? go.transform : null;
         }
 
-        public void ApplyCreativeBg(Transform canvas)
+        // GameObject.Find only ever returns active objects, so it comes up empty while the level
+        // editor view isn't the one showing. the CameraRig itself is always up, so walk the rest of
+        // the (possibly inactive) path off it — same trick ShowSelectorBg uses. preview-only: the real
+        // apply path doesn't need this because the editor canvas' own OnEnable applier repaints it.
+        public static Transform FindCreativePreviewSource()
+        {
+            var rig = GameObject.Find("CameraRig");
+            return rig == null ? null : rig.transform.Find("VirtualCameras/MainMenu_LevelEditor/Generic_UI_CreativeBackground_Prefab_Canvas");
+        }
+
+        // every named colour-slot graphic on a creative background canvas — shared by the real apply
+        // path and the Background tab's preview clone, which paints the same slots with its own
+        // (unsaved) colours instead of the settings-backed CreativeSlotColor.
+        public static void ForEachCreativeSlotGraphic(Transform canvas, Action<UnityEngine.UI.Graphic, CreativeSlot> visit)
         {
             if (canvas == null) return;
-            RecolorCreative(canvas.Find("Backdrop"), CreativeSlot.Backdrop);
-            RecolorCreativeChildren(canvas.Find("Glows"), CreativeSlot.Glows);
-            RecolorCreative(canvas.Find("Grid"), CreativeSlot.Drawings);
-            RecolorCreativeChildren(canvas.Find("Drawings"), CreativeSlot.Drawings);
-            RecolorCreative(canvas.Find("Vignette"), CreativeSlot.Vignette);
+            void One(Transform t, CreativeSlot slot)
+            {
+                var g = t != null ? t.GetComponent<UnityEngine.UI.Graphic>() : null;
+                if (g != null) visit(g, slot);
+            }
+            void Many(Transform parent, CreativeSlot slot)
+            {
+                if (parent == null) return;
+                for (int i = 0; i < parent.childCount; i++) One(parent.GetChild(i), slot);
+            }
+            One(canvas.Find("Backdrop"), CreativeSlot.Backdrop);
+            Many(canvas.Find("Glows"), CreativeSlot.Glows);
+            One(canvas.Find("Grid"), CreativeSlot.Drawings);
+            Many(canvas.Find("Drawings"), CreativeSlot.Drawings);
+            One(canvas.Find("Vignette"), CreativeSlot.Vignette);
         }
+
+        // the real original colour for a live creative graphic — reads the captured cache if this
+        // graphic has already been recoloured this session (so the preview clone doesn't inherit our
+        // own custom colour as if it were the default), falls back to its current colour otherwise.
+        public Color TrueCreativeColor(UnityEngine.UI.Graphic g) =>
+            g != null && _creativeOriginals.TryGetValue(g.GetInstanceID(), out var c) ? c : (g != null ? g.color : Color.white);
+
+        public void ApplyCreativeBg(Transform canvas) =>
+            ForEachCreativeSlotGraphic(canvas, (g, slot) =>
+            {
+                int id = g.GetInstanceID();
+                if (!_creativeOriginals.ContainsKey(id)) _creativeOriginals[id] = g.color;
+                var c = CreativeSlotColor(slot);
+                g.color = new Color(c.r, c.g, c.b, g.color.a);
+            });
 
         public void RevertCreativeBg(Transform canvas)
         {
@@ -633,20 +822,5 @@ namespace BetterFG.Customization.Menu
             RefreshCreativeCanvas(CreativeEditorCanvas());
         }
 
-        private void RecolorCreativeChildren(Transform parent, CreativeSlot slot)
-        {
-            if (parent == null) return;
-            for (int i = 0; i < parent.childCount; i++) RecolorCreative(parent.GetChild(i), slot);
-        }
-
-        private void RecolorCreative(Transform t, CreativeSlot slot)
-        {
-            var g = t != null ? t.GetComponent<UnityEngine.UI.Graphic>() : null;
-            if (g == null) return;
-            int id = g.GetInstanceID();
-            if (!_creativeOriginals.ContainsKey(id)) _creativeOriginals[id] = g.color;
-            var c = CreativeSlotColor(slot);
-            g.color = new Color(c.r, c.g, c.b, g.color.a);
-        }
     }
 }

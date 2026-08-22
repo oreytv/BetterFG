@@ -2,10 +2,13 @@
 using System.Collections.Generic;
 using BetterFG.Features.CreativeGroups;
 using BetterFG.Features.CreativeIncrements;
+using BetterFG.Features.Replay;
+using BetterFG.Services;
 using FallGuysLib.UI;
 using FG.Common.CMS;
 using FGClient.UI;
 using LevelEditor;
+using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 using Groups = BetterFG.Features.CreativeGroups.CreativeGroups;
@@ -49,6 +52,8 @@ namespace BetterFG.UI.Windows.Creative
         private static readonly Color BTN_APPLY = new Color(0.25f, 0.5f, 0.25f, 1f);
         private static readonly Color BTN_UNDO = new Color(0.45f, 0.35f, 0.2f, 1f);
         private static readonly Color BTN_ARROW = new Color(0.28f, 0.28f, 0.34f, 1f);
+        private static Sprite _openFolderIcon;
+        private static Sprite OpenFolderIcon => _openFolderIcon ??= EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.button.openfolder.png");
         private static readonly Color HINT_COL = new Color(1f, 1f, 1f, 0.55f);
         private static readonly Color OK_COL = new Color(0.55f, 0.85f, 0.55f, 1f);
         private static readonly Color STEP_COL = new Color(0.55f, 0.75f, 1f, 0.9f);
@@ -104,7 +109,6 @@ namespace BetterFG.UI.Windows.Creative
         private int _groupPick;
         private InputField _groupNameField;
 
-        private int _savedPage;
         private string _savedName = "";
 
         private Text _countLabel;
@@ -713,32 +717,39 @@ namespace BetterFG.UI.Windows.Creative
 
         // ── saved groups subtab ──────────────────────────────────────────────
 
+        private const float SAVED_GRID_GAP = 6f;
+        private const float SAVED_CAPTION_H = 22f;
+        private static readonly Color SAVED_CELL_BG = new Color(0f, 0f, 0f, 0.35f);
+
         private void BuildSaved(RectTransform root, float w, ref float y)
         {
-            int sel = BatchRecolour.SelectionCount();
-            MakeLabel(root, new Rect(PAD, y, w, 14f),
-                sel > 0 ? $"save the {sel} selected object(s) as" : "nothing selected to save right now",
-                FS_SM, sel > 0 ? STEP_COL : HINT_COL);
-            y += 17f;
-
-            float saveW = 66f;
-            var nameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w - saveW - 6f, 24f),
-                "name this group", null, WHITE, FS_BODY);
-            UGUIShip.SetInputText(nameField, _savedName);
-
-            var saveBtn = UGUIShip.CreateButton(root, new Rect(PAD + w - saveW, y, saveW, 24f),
-                SavedGroups.Exists(_savedName) ? "REPLACE" : "SAVE", BTN_APPLY, WHITE, FS_SM,
-                new Action(() => DoSaveGroup(nameField.text)));
-            var saveLabel = saveBtn.GetComponentInChildren<Text>();
-            nameField.onValueChanged.AddListener(new Action<string>(v =>
+            if (!Solo)
             {
-                _savedName = v;
-                saveLabel.text = SavedGroups.Exists(v) ? "REPLACE" : "SAVE";
-            }));
-            y += 30f;
+                int sel = BatchRecolour.SelectionCount();
+                MakeLabel(root, new Rect(PAD, y, w, 14f),
+                    sel > 0 ? $"save the {sel} selected object(s) as" : "nothing selected to save right now",
+                    FS_SM, sel > 0 ? STEP_COL : HINT_COL);
+                y += 17f;
 
-            MakeSeparator(root, new Rect(PAD, y, w, 1f));
-            y += 6f;
+                float saveW = 66f;
+                var nameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w - saveW - 6f, 24f),
+                    "name this group", null, WHITE, FS_BODY);
+                UGUIShip.SetInputText(nameField, _savedName);
+
+                var saveBtn = UGUIShip.CreateButton(root, new Rect(PAD + w - saveW, y, saveW, 24f),
+                    SavedGroups.Exists(_savedName) ? "REPLACE" : "SAVE", BTN_APPLY, WHITE, FS_SM,
+                    new Action(() => DoSaveGroup(nameField.text)));
+                var saveLabel = saveBtn.GetComponentInChildren<Text>();
+                nameField.onValueChanged.AddListener(new Action<string>(v =>
+                {
+                    _savedName = v;
+                    saveLabel.text = SavedGroups.Exists(v) ? "REPLACE" : "SAVE";
+                }));
+                y += 30f;
+
+                MakeSeparator(root, new Rect(PAD, y, w, 1f));
+                y += 6f;
+            }
 
             var all = SavedGroups.All();
             if (all.Count == 0)
@@ -750,41 +761,87 @@ namespace BetterFG.UI.Windows.Creative
                 return;
             }
 
-            int rows = Solo ? 4 : 3;
-            int pages = (all.Count + rows - 1) / rows;
-            _savedPage = Mathf.Clamp(_savedPage, 0, pages - 1);
+            float gridH = WindowHeight - TITLE_H - 24f - y;
+            var (_, content) = UGUIShip.CreateScrollView(root, new Rect(PAD, y, w, gridH));
 
-            for (int i = 0; i < rows; i++)
+            float cellW = (w - UGUIShip.SCROLLBAR_INSET * 2f - SAVED_GRID_GAP) / 2f;
+            var grid = content.gameObject.AddComponent<GridLayoutGroup>();
+            grid.spacing = new Vector2(SAVED_GRID_GAP, SAVED_GRID_GAP);
+            grid.cellSize = new Vector2(cellW, cellW + SAVED_CAPTION_H);
+            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            grid.constraintCount = 2;
+            content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            foreach (var g in all) BuildSavedCell(content, g, cellW);
+
+            y += gridH;
+        }
+
+        private void BuildSavedCell(RectTransform parent, SavedGroups.Saved g, float cellW)
+        {
+            var cellGo = new GameObject("SavedGroup");
+            cellGo.transform.SetParent(parent, false);
+            cellGo.AddComponent<RectTransform>();
+            var cellImg = cellGo.AddComponent<Image>();
+            cellImg.color = SAVED_CELL_BG;
+
+            var btn = cellGo.AddComponent<Button>();
+            btn.targetGraphic = cellImg;
+            var nav = btn.navigation;
+            nav.mode = Navigation.Mode.None;
+            btn.navigation = nav;
+            btn.onClick.AddListener(new Action(() =>
             {
-                int idx = _savedPage * rows + i;
-                if (idx >= all.Count) break;
-                var g = all[idx];
+                AudioService.PlayButtonClick();
+                DoPlaceGroup(g);
+            }));
+            UGUIShip.ForwardScrollToParent(cellGo);
 
-                var thumbGo = new GameObject("Thumb");
-                thumbGo.transform.SetParent(root, false);
-                UGUIShip.SetPixelRect(thumbGo.AddComponent<RectTransform>(), new Rect(PAD, y, 60f, 40f));
-                var thumb = thumbGo.AddComponent<RawImage>();
-                var tex = SavedGroups.PreviewOf(g);
-                if (tex != null) thumb.texture = tex;
-                else thumb.color = new Color(1f, 1f, 1f, 0.06f);
+            var maskGo = new GameObject("Shot");
+            maskGo.transform.SetParent(cellGo.transform, false);
+            var mRt = maskGo.AddComponent<RectTransform>();
+            mRt.anchorMin = new Vector2(0f, 1f);
+            mRt.anchorMax = new Vector2(1f, 1f);
+            mRt.pivot = new Vector2(0.5f, 1f);
+            mRt.offsetMin = new Vector2(0f, -cellW);
+            mRt.offsetMax = Vector2.zero;
+            maskGo.AddComponent<RectMask2D>();
 
-                MakeLabel(root, new Rect(PAD + 66f, y, w - 66f - 70f, 40f), g.Name, FS_SM, WHITE);
-                UGUIShip.CreateButton(root, new Rect(PAD + w - 68f, y + 9f, 42f, 22f), "PLACE",
-                    BTN_APPLY, WHITE, FS_SM, new Action(() => DoPlaceGroup(g)));
-                UGUIShip.CreateButton(root, new Rect(PAD + w - 22f, y + 9f, 22f, 22f), "✕",
-                    new Color(0.5f, 0.22f, 0.22f, 1f), WHITE, FS_SM, new Action(() => DoDeleteGroup(g)));
-                y += 44f;
-            }
+            var imgGo = new GameObject("Img");
+            imgGo.transform.SetParent(maskGo.transform, false);
+            var iRt = imgGo.AddComponent<RectTransform>();
+            iRt.anchorMin = Vector2.zero;
+            iRt.anchorMax = Vector2.one;
+            iRt.offsetMin = iRt.offsetMax = Vector2.zero;
+            var raw = imgGo.AddComponent<RawImage>();
+            raw.raycastTarget = false;
+            var tex = SavedGroups.PreviewOf(g);
+            if (tex != null) raw.texture = tex;
+            else raw.color = new Color(1f, 1f, 1f, 0.06f);
 
-            if (pages <= 1) return;
-            float arrow = 22f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, arrow, 20f), "‹", BTN_ARROW, WHITE, FS_BODY,
-                new Action(() => { _savedPage = (_savedPage - 1 + pages) % pages; RebuildContent(); }));
-            MakeLabel(root, new Rect(PAD + arrow, y, w - arrow * 2f, 20f),
-                $"{_savedPage + 1} / {pages}", FS_SM, HINT_COL, TextAnchor.MiddleCenter);
-            UGUIShip.CreateButton(root, new Rect(PAD + w - arrow, y, arrow, 20f), "›", BTN_ARROW, WHITE, FS_BODY,
-                new Action(() => { _savedPage = (_savedPage + 1) % pages; RebuildContent(); }));
-            y += 24f;
+            var nameLbl = MakeLabel(cellGo.transform, new Rect(0f, 0f, cellW - 58f, SAVED_CAPTION_H - 4f),
+                g.Name, FS_SM - 1, WHITE, TextAnchor.MiddleLeft);
+            nameLbl.horizontalOverflow = HorizontalWrapMode.Overflow;
+            nameLbl.verticalOverflow = VerticalWrapMode.Truncate;
+            var nameRt = nameLbl.rectTransform;
+            nameRt.anchorMin = nameRt.anchorMax = nameRt.pivot = new Vector2(0f, 0f);
+            nameRt.anchoredPosition = new Vector2(4f, 5f);
+
+            var (openBtn, _) = UGUIShip.CreateSpriteButton(cellGo.transform, new Rect(0f, 0f, 18f, 18f),
+                OpenFolderIcon, null, new Action(() => ReplayExport.Reveal(g.Json)));
+            var openRt = openBtn.GetComponent<RectTransform>();
+            openRt.anchorMin = openRt.anchorMax = openRt.pivot = new Vector2(1f, 0f);
+            openRt.anchoredPosition = new Vector2(-22f, 0f);
+
+            var delBtn = UGUIShip.CreateButton(cellGo.transform, new Rect(0f, 0f, 18f, 18f),
+                "✕", new Color(0.5f, 0.22f, 0.22f, 1f), WHITE, FS_SM, new Action(() => DoDeleteGroup(g)));
+            var delRt = delBtn.GetComponent<RectTransform>();
+            delRt.anchorMin = delRt.anchorMax = delRt.pivot = new Vector2(1f, 0f);
+            delRt.anchoredPosition = new Vector2(-2f, 0f);
+
+            var shine = UGUIShip.BuildShine(cellGo);
+            if (shine != null) UGUIShip.WireShineHover(cellGo, shine);
+            UGUIShip.WireButtonAudio(cellGo);
         }
 
         private void DoSaveGroup(string name)

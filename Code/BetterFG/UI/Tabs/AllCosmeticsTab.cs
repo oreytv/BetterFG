@@ -10,9 +10,9 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class AllCosmeticsTab : BetterFGTab
+    public class AllCosmeticsTab : Tab
     {
         public AllCosmeticsTab(IntPtr ptr) : base(ptr) { }
 

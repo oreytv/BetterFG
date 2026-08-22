@@ -7,7 +7,7 @@ using BetterFG.Nametag;
 using BetterFG.Network;
 using BetterFG.Services;
 using BetterFG.UI;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using BetterFG.Utilities;
 using Cinemachine;
 using FallGuysLib.Camera;

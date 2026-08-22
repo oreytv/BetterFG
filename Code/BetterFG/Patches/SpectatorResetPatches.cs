@@ -1,4 +1,4 @@
-using FG.Common;
+﻿using FG.Common;
 using HarmonyLib;
 
 namespace BetterFG.Patches
@@ -10,6 +10,7 @@ namespace BetterFG.Patches
         public static void Postfix(AbstractSpectatorCameraController __instance)
         {
             BetterFG.Nametag.CrownRankFovFix.Forget();
+            BetterFG.Nametag.NametagIconApplicator.ForgetIconRows();
 
             var vfx = __instance._cameraDirector != null ? __instance._cameraDirector._screenVFXController : null;
             if (vfx == null) return;

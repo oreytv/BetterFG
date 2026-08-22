@@ -45,6 +45,8 @@ namespace BetterFG.Tweaks
         private string _typed;
         private string _restore;
 
+        public override void DisableTweak() => Cancel();
+
         void Update()
         {
             if (_node == null)
@@ -55,7 +57,6 @@ namespace BetterFG.Tweaks
 
             // the node can go away under us (menu rebuild, object swap, menu closed) while we hold it
             if (!LevelEditorParameterMenuViewModel.IsParametersScreenOpen()) { Cancel(); return; }
-            if (!IsEnabled && !_naming) { Cancel(); return; }
 
             if (Input.GetKeyDown(KeyCode.Escape)) { Cancel(); return; }
             if (Input.GetMouseButtonDown(0)) { Commit(); return; }

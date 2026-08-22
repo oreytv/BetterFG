@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
-using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     public class PlinthsUgcTab : PlinthsTab
     {
@@ -14,7 +13,7 @@ namespace BetterFG.UI.Tab
         public override string TabTitle => "Plinths - UGC";
 
         protected override string SwitchLabel => "In-game →";
-        protected override BetterFGTab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<PlinthsInGameTab>();
+        protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<PlinthsInGameTab>();
 
         readonly Dictionary<string, Image> _coverImgs = new Dictionary<string, Image>();
 
@@ -37,17 +36,11 @@ namespace BetterFG.UI.Tab
 
             var plinths = new List<SkinInfo>();
             foreach (var skin in catalog.AvailableSkins)
-                if (SkinTypeParser.FromString(skin.type) == SkinType.Plinth) plinths.Add(skin);
+                if (SkinTypeParser.FromString(skin.type) == SkinType.Plinth && skin.sourceRepo == SelectedRaw) plinths.Add(skin);
 
             if (plinths.Count == 0)
             {
-                var reg = RepoRegistry.Instance;
-                bool fetching = catalog.IsFetching;
-                if (!fetching && reg?.Active != null && !catalog.IsFetchedRepo(reg.Active.githubUrl))
-                {
-                    catalog.FetchSkins(reg.Active);
-                    fetching = true;
-                }
+                bool fetching = FetchSelectedRepo();
 
                 var hintGo = new GameObject("Empty");
                 hintGo.transform.SetParent(ListContent, false);

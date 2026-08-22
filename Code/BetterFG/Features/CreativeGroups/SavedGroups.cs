@@ -66,13 +66,33 @@ namespace BetterFG.Features.CreativeGroups
         {
             if (g.PreviewTried) return g.Preview;
             g.PreviewTried = true;
-            if (!File.Exists(g.Image)) return null;
 
-            var tex = new Texture2D(2, 2, TextureFormat.RGB24, false);
-            tex.LoadImage(File.ReadAllBytes(g.Image));
-            tex.wrapMode = TextureWrapMode.Clamp;
-            g.Preview = tex;
-            return tex;
+            byte[] bytes = null;
+            try
+            {
+                string b64 = BetterFG.Utilities.JsonUtil.GetValue(File.ReadAllText(g.Json), "Image");
+                if (!string.IsNullOrEmpty(b64)) bytes = Convert.FromBase64String(b64);
+                // pre-embed saves left the cover art as a sidecar png next to the json
+                else if (File.Exists(g.Image)) bytes = File.ReadAllBytes(g.Image);
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning($"preview for {g.Name} couldn't be read: {ex.Message}"); }
+            if (bytes == null) return null;
+
+            try
+            {
+                var tex = new Texture2D(2, 2, TextureFormat.RGB24, false);
+                if (tex.LoadImage(bytes))
+                {
+                    tex.wrapMode = TextureWrapMode.Clamp;
+                    tex.hideFlags = HideFlags.HideAndDontSave;
+                    g.Preview = tex;
+                    return tex;
+                }
+                UnityEngine.Object.Destroy(tex);
+                Plugin.Log.LogWarning($"preview for {g.Name} didn't decode, leaving it to retry next time");
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning($"preview for {g.Name} threw: {ex.Message}"); }
+            return null;
         }
 
         public static int Save(string name, out string status)
@@ -125,14 +145,17 @@ namespace BetterFG.Features.CreativeGroups
             string clean = Sanitise(name);
             string dir = Dir;
             Directory.CreateDirectory(dir);
-            string json = Path.Combine(dir, clean + ".json");
-            bool replacing = File.Exists(json);
-            File.WriteAllText(json, UGCJsonSerializer.SerializeObject(level, true));
+            string jsonPath = Path.Combine(dir, clean + ".json");
+            bool replacing = File.Exists(jsonPath);
 
+            string levelText = UGCJsonSerializer.SerializeObject(level, true);
             var png = Snapshot(objs);
-            string image = Path.Combine(dir, clean + ".png");
-            if (png != null) File.WriteAllBytes(image, png);
-            else if (File.Exists(image)) File.Delete(image);
+            string imageField = png != null ? $"\"{Convert.ToBase64String(png)}\"" : "null";
+            File.WriteAllText(jsonPath, $"{{\"Level\":{levelText},\"Image\":{imageField}}}");
+
+            // pre-embed saves left a sidecar png next to the json — clean it up now that it's redundant
+            string legacyImage = Path.Combine(dir, clean + ".png");
+            if (File.Exists(legacyImage)) File.Delete(legacyImage);
 
             _scanned = false;
             status = $"{(replacing ? "replaced" : "saved")} {clean}, {schemas.Count} object(s)";
@@ -158,7 +181,9 @@ namespace BetterFG.Features.CreativeGroups
             var mgr = LevelEditorManager.Instance;
             if (mgr == null) { status = "not in the editor"; return 0; }
 
-            var level = UGCJsonSerializer.DeserializeLevelData(File.ReadAllText(g.Json));
+            string raw = File.ReadAllText(g.Json);
+            string levelText = BetterFG.Utilities.JsonUtil.GetObject(raw, "Level") ?? raw;
+            var level = UGCJsonSerializer.DeserializeLevelData(levelText);
             var schemas = level != null ? level.OtherObjects : null;
             if (schemas == null || schemas.Length == 0)
             {
@@ -189,6 +214,23 @@ namespace BetterFG.Features.CreativeGroups
 
                 var lepo = go.GetComponent<LevelEditorPlaceableObject>();
                 if (lepo == null) { noLepo++; continue; }
+
+                var drawable = lepo.DrawableData;
+                var shaderScale = schemas[i].ShaderScale;
+                if (drawable != null && shaderScale != null && shaderScale.Length >= 3)
+                    drawable.SetShaderScale(new Vector3(shaderScale[0], shaderScale[1], shaderScale[2]));
+
+                try { lepo.OnDeselectInGameEditor(true); }
+                catch (Exception ex) { Plugin.Log.LogWarning($"post-load finalise on {lepo.name} threw: {ex.Message}"); }
+
+                var bodies = lepo.GetComponentsInChildren<Rigidbody>(true);
+                for (int b = 0; b < bodies.Length; b++)
+                {
+                    var body = bodies[b];
+                    if (body == null) continue;
+                    body.position = body.transform.position;
+                    body.rotation = body.transform.rotation;
+                }
 
                 if (!LevelIO.IsObjectRegistered(lepo))
                 {
@@ -319,54 +361,45 @@ namespace BetterFG.Features.CreativeGroups
             return clean.Length == 0 ? "Group" : clean;
         }
 
+        // shoots the REAL renderers in place (layer-swapped onto ShotLayer, every other light in the
+        // scene switched off for the frame) instead of cloning mesh+sharedMaterials onto a stage double.
+        // the clone approach silently dropped anything driven off the live renderer state instead of the
+        // mesh/material asset — painter floor scale (a shader property, not a transform scale) and block
+        // colour (a per-instance MaterialPropertyBlock via LevelEditorColourChangerListener) both live
+        // there, so cloned previews rendered them at their defaults. rendering the originals picks up
+        // whatever the object is actually doing, present parameter or a future one alike.
         private static byte[] Snapshot(List<LevelEditorPlaceableObject> objs)
         {
             Bounds bounds = default;
             bool any = false;
+            var rends = new List<Renderer>();
             foreach (var o in objs)
             {
-                var rends = o.GetComponentsInChildren<Renderer>(false);
-                for (int i = 0; rends != null && i < rends.Length; i++)
+                var list = o.GetComponentsInChildren<Renderer>(false);
+                for (int i = 0; list != null && i < list.Length; i++)
                 {
-                    var r = rends[i];
+                    var r = list[i];
                     if (r == null || !r.enabled) continue;
+                    rends.Add(r);
                     if (!any) { bounds = r.bounds; any = true; }
                     else bounds.Encapsulate(r.bounds);
                 }
             }
             if (!any) return null;
 
-            var stage = new GameObject("BettrFG_GroupShot");
-            stage.transform.position = new Vector3(0f, 9000f, 0f);
-
-            int meshes = 0;
-            foreach (var o in objs)
+            var otherLights = UnityEngine.Object.FindObjectsOfType<Light>();
+            var wasLightOn = new bool[otherLights.Length];
+            for (int i = 0; i < otherLights.Length; i++)
             {
-                var rends = o.GetComponentsInChildren<MeshRenderer>(false);
-                for (int i = 0; rends != null && i < rends.Length; i++)
-                {
-                    var r = rends[i];
-                    if (r == null || !r.enabled) continue;
-                    var mf = r.GetComponent<MeshFilter>();
-                    if (mf == null || mf.sharedMesh == null) continue;
-
-                    var go = new GameObject("m");
-                    go.layer = ShotLayer;
-                    go.transform.SetParent(stage.transform, false);
-                    var src = r.transform;
-                    go.transform.SetPositionAndRotation(stage.transform.position + (src.position - bounds.center), src.rotation);
-                    go.transform.localScale = src.lossyScale;
-                    go.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
-                    go.AddComponent<MeshRenderer>().sharedMaterials = r.sharedMaterials;
-                    meshes++;
-                }
+                wasLightOn[i] = otherLights[i].enabled;
+                otherLights[i].enabled = false;
             }
 
-            if (meshes == 0)
+            var savedLayer = new int[rends.Count];
+            for (int i = 0; i < rends.Count; i++)
             {
-                UnityEngine.Object.Destroy(stage);
-                Plugin.Log.LogWarning("group preview found renderer bounds but no mesh to copy, skipping the shot");
-                return null;
+                savedLayer[i] = rends[i].gameObject.layer;
+                rends[i].gameObject.layer = ShotLayer;
             }
 
             float radius = Mathf.Max(bounds.extents.magnitude, 0.5f);
@@ -388,8 +421,8 @@ namespace BetterFG.Features.CreativeGroups
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = radius * 12f + 200f;
             var back = new Vector3(-0.62f, 0.55f, -0.92f).normalized;
-            camGo.transform.position = stage.transform.position + back * (radius * 5f);
-            camGo.transform.LookAt(stage.transform.position);
+            camGo.transform.position = bounds.center + back * (radius * 5f);
+            camGo.transform.LookAt(bounds.center);
 
             var rt = new RenderTexture(ShotSize, ShotSize, 24, RenderTextureFormat.ARGB32);
             cam.targetTexture = rt;
@@ -410,9 +443,13 @@ namespace BetterFG.Features.CreativeGroups
             UnityEngine.Object.Destroy(tex);
             UnityEngine.Object.Destroy(camGo);
             UnityEngine.Object.Destroy(lightGo);
-            UnityEngine.Object.Destroy(stage);
 
-            Plugin.Log.LogInfo($"group preview: {meshes} mesh(es), {radius:0.#} unit radius, {ShotSize}x{ShotSize}");
+            for (int i = 0; i < rends.Count; i++)
+                if (rends[i] != null) rends[i].gameObject.layer = savedLayer[i];
+            for (int i = 0; i < otherLights.Length; i++)
+                if (otherLights[i] != null) otherLights[i].enabled = wasLightOn[i];
+
+            Plugin.Log.LogInfo($"group preview: {rends.Count} renderer(s), {radius:0.#} unit radius, {ShotSize}x{ShotSize}");
             return png;
         }
     }

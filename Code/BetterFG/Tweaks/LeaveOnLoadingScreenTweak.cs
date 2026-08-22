@@ -1,6 +1,7 @@
 ﻿using System;
 using BetterFG.Core;
 using BetterFG.Utilities;
+using FallGuysLib.Round;
 using FallGuysLib.UI;
 using FG.Common;
 using FG.Common.CMS;
@@ -33,9 +34,52 @@ namespace BetterFG.Tweaks
         private const string MessageKey = "bfg_leaveloading_msg";
         private const string LeaveLabelKey = "bfg_leaveloading_label";
 
+        // the four states this tweak lives in are entered a handful of times a match, and the state
+        // machine already announces every one of them — so the frame loop no longer asks the game
+        // what state it is in, it just reads the answer the last transition left behind.
+        private static bool _stateLeavable;
+
+        public override void EnableTweak()
+        {
+            RoundEvents.OnPlayingStarted -= HandlePlayingStarted;
+            RoundEvents.OnPlayingStarted += HandlePlayingStarted;
+            OnStateChanged(GlobalGameStateClient.Instance?._gameStateMachine?.CurrentState);
+        }
+
+        public override void DisableTweak()
+        {
+            RoundEvents.OnPlayingStarted -= HandlePlayingStarted;
+            OnExternalLeaveTriggerEnd();
+            DestroyPrompt();
+        }
+
+        public override void OnRoundStart() => _awaitingPlayingStart = true;
+
+        public override void OnMainMenuEntered() => OnExternalLeaveTriggerEnd();
+
+        private static void HandlePlayingStarted()
+        {
+            if (_awaitingPlayingStart) Plugin.Log.LogInfo("round's actually live now, shutting the leave window");
+            _awaitingPlayingStart = false;
+        }
+
+        public override void OnStateChanged(GameStateMachine.IGameState newState)
+        {
+            _castedState = IntPtr.Zero;
+            _stateLeavable = newState != null
+                && (newState.TryCast<StateConnectToGame>() != null
+                    || newState.TryCast<StateConnectionAuthentication>() != null
+                    || newState.TryCast<StateGameLoading>() != null
+                    || newState.TryCast<StatePrivateLobbyMinimal>() != null);
+        }
+
         void Update()
         {
-            if (!IsEnabled) return;
+            if (!_stateLeavable && !ExternalWindowOpen)
+            {
+                if (_prompt != null) { _popupOpen = false; DestroyPrompt(); }
+                return;
+            }
 
             // popup can die without its callback firing (loading screen ends, another popup
             // replaces it, etc), leaving _popupOpen stuck true forever. clear it whenever we're
@@ -156,6 +200,14 @@ namespace BetterFG.Tweaks
             }
             OnExternalLeaveTriggerEnd();
             DestroyPrompt();
+            LeaveMatch();
+        }
+
+        // bails out of the current match/loading screen the same way the back-button confirm does.
+        // other tweaks (e.g. PlayerNameWarningTweak) that need to boot the player out reuse this
+        // instead of re-deriving the ReloadGame call.
+        public static void LeaveMatch()
+        {
             // every load screen spawns a SNAP_Mute_Ambience instance that's supposed to stop on
             // load complete. bailing mid-load orphans it — BUS_AMBIENCES stays at f=0 forever and
             // we never hear ambience until restart. kill all instances of that snapshot before
@@ -172,18 +224,18 @@ namespace BetterFG.Tweaks
         // window lasts up to 8s but ends early when the round-reveal carousel fades in — that's
         // the visual signal the next round is about to start and the bail moment is gone.
         private static float _externalWindowUntil;
+        private static bool _awaitingPlayingStart;
+        private static bool ExternalWindowOpen => _awaitingPlayingStart || Time.realtimeSinceStartup < _externalWindowUntil;
         public static void OnExternalLeaveTrigger() => _externalWindowUntil = Time.realtimeSinceStartup + 8f;
-        public static void OnExternalLeaveTriggerEnd() => _externalWindowUntil = 0f;
+        public static void OnExternalLeaveTriggerEnd() { _externalWindowUntil = 0f; _awaitingPlayingStart = false; }
 
-        // four TryCasts a frame, every frame, for a state that changes a handful of times a match. the
-        // state object's pointer is a plain field read, so memoise the verdict against it and only pay
-        // the casts when the machine actually moves.
+        // OnStateChanged fires before the tweak is added to the live list on a mid-session toggle, so
+        // the first Update after enabling still has to resolve the state once for itself.
         private static IntPtr _castedState;
-        private static bool _castedOk;
 
         private static bool IsInLeavableLoadingState()
         {
-            if (Time.realtimeSinceStartup < _externalWindowUntil) return true;
+            if (ExternalWindowOpen) return true;
 
             var state = GlobalGameStateClient.Instance?._gameStateMachine?.CurrentState;
             if (state == null) return false;
@@ -192,12 +244,12 @@ namespace BetterFG.Tweaks
             if (ptr != _castedState)
             {
                 _castedState = ptr;
-                _castedOk = state.TryCast<StateConnectToGame>() != null
+                _stateLeavable = state.TryCast<StateConnectToGame>() != null
                     || state.TryCast<StateConnectionAuthentication>() != null
                     || state.TryCast<StateGameLoading>() != null
                     || state.TryCast<StatePrivateLobbyMinimal>() != null;
             }
-            if (!_castedOk) return false;
+            if (!_stateLeavable) return false;
 
             // also require the actual LoadingScreen container to have any active child — otherwise
             // we'd offer "Leave" during connect/auth states where no loading UI is on screen.

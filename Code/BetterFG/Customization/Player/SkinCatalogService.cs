@@ -31,7 +31,6 @@ namespace BetterFG.Customization.Player
         public bool IsFetching => isFetching;
         public int CatalogTotal => _catalogTotal;     // how many entries the catalog(s) say exist
         public int FetchedCount => availableSkins.Count; // how many we've actually pulled info.json for
-        public bool IsFetchedRepo(string githubUrl) => _fetchedRepoUrls.Contains(githubUrl);
         public int GetCatalogTotalForRepo(string repoRaw) => string.IsNullOrEmpty(repoRaw) ? 0 : _catalogTotalByRepo.TryGetValue(repoRaw, out int v) ? v : 0;
         public int GetFetchedCountForRepo(string repoRaw)
         {

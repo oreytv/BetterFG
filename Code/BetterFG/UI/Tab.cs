@@ -8,7 +8,7 @@ namespace BetterFG.UI
 {
     // shared config for the tab-title hover background ("BG_Hover"). by default it only shows on
     // hover; with AlwaysShow on it stays visible at IdleAlpha when not hovered and full alpha when
-    // hovered, and Tint recolors it in both states. each BetterFGTab drives its OWN image and
+    // hovered, and Tint recolors it in both states. each Tab drives its OWN image and
     // registers itself here so option changes broadcast to every live tab. we key on the tab (a
     // managed MonoBehaviour) not the RawImage, because using IL2Cpp Unity objects as dictionary
     // keys is unreliable across the wrapper boundary.
@@ -20,7 +20,7 @@ namespace BetterFG.UI
         public const string KEY_TINT_G = "ui.tabhover.tintG";
         public const string KEY_TINT_B = "ui.tabhover.tintB";
 
-        private static readonly List<BetterFGTab> _tabs = new List<BetterFGTab>();
+        private static readonly List<Tab> _tabs = new List<Tab>();
         // every button-shine overlay image, so a tint change recolors them live. keeps each image's
         // own alpha (0.4 idle / 1.0 hover) — we only override RGB.
         private static readonly List<Image> _shines = new List<Image>();
@@ -60,7 +60,7 @@ namespace BetterFG.UI
             SettingsService.Set(KEY_TINT_B, Tint.b.ToString(CI));
         }
 
-        public static void Register(BetterFGTab tab)
+        public static void Register(Tab tab)
         {
             if (tab == null || _tabs.Contains(tab)) return;
             _tabs.Add(tab);
@@ -88,9 +88,9 @@ namespace BetterFG.UI
         }
     }
 
-    public class BetterFGTab : MonoBehaviour
+    public class Tab : MonoBehaviour
     {
-        public BetterFGTab(IntPtr ptr) : base(ptr) { }
+        public Tab(IntPtr ptr) : base(ptr) { }
 
         // the tab-title hover overlay, found under BG after BuildBackground runs
         private RawImage _hoverImg;
@@ -258,7 +258,6 @@ namespace BetterFG.UI
         // called by the UI manager when this tab is opened/closed
         public virtual void OnOpened() { }
         public virtual void OnClosed() { }
-        public virtual void OnRepoChanged() { }
         internal void NotifyTitleHover(bool hovering)
         {
             _hovered = hovering;

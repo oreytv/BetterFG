@@ -270,7 +270,7 @@ namespace BetterFG.UI
             return _radialGradCornerSprite;
         }
 
-        private static GameObject BuildShine(GameObject parent)
+        internal static GameObject BuildShine(GameObject parent)
         {
             var shineSprite = GetButtonShineSprite();
             if (shineSprite == null) return null;
@@ -293,7 +293,7 @@ namespace BetterFG.UI
             return shineGo;
         }
 
-        private static void WireShineHover(GameObject btn, GameObject shine)
+        internal static void WireShineHover(GameObject btn, GameObject shine)
         {
             var trigger = btn.GetComponent<EventTrigger>() ?? btn.AddComponent<EventTrigger>();
             var shineImg = shine.GetComponent<Image>();
@@ -572,6 +572,8 @@ namespace BetterFG.UI
             exit.callback.AddListener(new Action<BaseEventData>(_ => onHoverExit?.Invoke()));
             trigger.triggers.Add(exit);
 
+            ForwardScrollToParent(go);
+
             return btn;
         }
 
@@ -728,6 +730,7 @@ namespace BetterFG.UI
 
             AddButtonClick(btn, onClick);
             WireButtonAudio(go); // hover sound, no shine
+            ForwardScrollToParent(go);
 
             return (btn, img);
         }
@@ -840,6 +843,8 @@ namespace BetterFG.UI
             var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
             exit.callback.AddListener(new Action<BaseEventData>(_ => onHoverExit?.Invoke(idx)));
             trigger.triggers.Add(exit);
+
+            ForwardScrollToParent(go);
 
             return btn;
         }

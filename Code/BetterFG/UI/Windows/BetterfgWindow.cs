@@ -37,6 +37,9 @@ namespace BetterFG.UI.Windows
         // Subclasses override to set BG transform before BuildBackground runs
         protected virtual Vector3 InitialBgPosition => new Vector3(192.2909f, 28.3637f, 0f);
         protected virtual Vector3 InitialBgScale => new Vector3(1.2931f, 4.5265f, 1f);
+        // hover overlay is a child of BG so it inherits BgPosition/BgScale already; this is only for
+        // windows whose hover art needs a further nudge to line up with its own bg image.
+        protected virtual Vector3 BgHoverLocalPosition => Vector3.zero;
 
         public Vector3 BgPosition = new Vector3(192.2909f, 28.3637f, 0f);
         public Vector3 BgScale = new Vector3(1.2931f, 4.5265f, 1f);
@@ -63,7 +66,7 @@ namespace BetterFG.UI.Windows
         private Canvas _canvas;
 
         // Set by whoever spawns the window so we can hide when the tab closes
-        public BetterFG.UI.BetterFGTab OwnerTab { get; set; }
+        public BetterFG.UI.Tab OwnerTab { get; set; }
 
         // ── API ───────────────────────────────────────────────────────────────
 
@@ -321,7 +324,7 @@ namespace BetterFG.UI.Windows
                     hoverRt.anchorMin = Vector2.zero;
                     hoverRt.anchorMax = Vector2.one;
                     hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-                    hoverRt.localPosition = Vector3.zero;
+                    hoverRt.localPosition = BgHoverLocalPosition;
                     hoverRt.localScale = Vector3.one;
                     _hoverImage = hoverGo.AddComponent<RawImage>();
                     _hoverImage.texture = hoverTex;

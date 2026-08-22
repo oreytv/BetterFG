@@ -9,12 +9,12 @@ using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     // brand new, self contained PB tab. doesn't touch the old popup at all. search bar up top, a
     // tight scrolling list of every recorded pb under it. each row has a thumbnail, name, time, a
     // favorite star and a delete button. tiny vertical spacing so you can see a bunch at once.
-    public class PersonalBestTab : BetterFGTab
+    public class PersonalBestTab : Tab
     {
         public PersonalBestTab(IntPtr ptr) : base(ptr) { }
 

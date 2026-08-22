@@ -13,7 +13,7 @@ using UnityEngine.UI;
 using FGClient;
 using PlayerUtils = FallGuysLib.Players.PlayerUtils;
 using PartyMenu;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using TMPro;
 using Rect = UnityEngine.Rect;
 
@@ -95,21 +95,103 @@ namespace BetterFG.Nametag
 
         private static readonly HashSet<IntPtr> _iconPtrs = new HashSet<IntPtr>();
 
-        public static void ClearIconRegistry() { _icon3d.Clear(); _iconUI.Clear(); _iconPtrs.Clear(); }
+        // bumped whenever an icon is registered or dropped, so the per-HUD row cache below knows to
+        // rebuild instead of holding a reference to a dead icon
+        private static int _iconVersion;
 
-        public static void SetIconAlphaForDisplay(PlayerInfoDisplayGameObject display, float alpha)
+        private static void SyncIconGate() => _iconVersion++;
+
+        public static void ClearIconRegistry() { _icon3d.Clear(); _iconUI.Clear(); _iconPtrs.Clear(); SyncIconGate(); }
+
+        // ── per-frame icon alpha ──────────────────────────────────────────────
+        //
+        // the game fades each nametag by distance every frame and used to tell us through a prefix on
+        // PlayerInfoDisplay.SetTextAlpha — one native->managed crossing per visible tag per frame, on
+        // both display types. this reads the alpha the game just wrote instead, off the single
+        // PlayerInfoHUDBase.LateUpdate postfix, and only for the handful of tags that actually carry an
+        // icon (usually just yours). rows are resolved once and held until the tag count or the icon
+        // registry changes, so a steady frame is one colour read per iconned tag and nothing else.
+        private class IconRow
         {
-            if (display == null) return;
-            var txt = display._text;
-            if (txt == null) return;
-            SetIconAlphaForText(txt, alpha);
+            public TMP_Text text;
+            public SpriteRenderer sr;
+            public UnityEngine.UI.Image img;
+            public float last = -1f;
         }
 
-        public static void SetIconAlphaForDisplay(PlayerInfoDisplayCanvas display, float alpha)
+        private class IconRows
         {
-            if (display == null) return;
+            public int count = -1;
+            public int version = -1;
+            public readonly List<IconRow> rows = new List<IconRow>();
+        }
+
+        private static readonly Dictionary<IntPtr, IconRows> _iconRowsByHud = new Dictionary<IntPtr, IconRows>();
+
+        public static void ForgetIconRows() => _iconRowsByHud.Clear();
+
+        public static void TickIconAlpha(PlayerInfoHUDBase hud)
+        {
+            if (_iconPtrs.Count == 0) return;
+
+            var spawned = hud._spawnedInfoObjects;
+            if (spawned == null) return;
+            int count = spawned.Count;
+
+            IntPtr hudId = hud.Pointer;
+            if (!_iconRowsByHud.TryGetValue(hudId, out var cache))
+            {
+                cache = new IconRows();
+                _iconRowsByHud[hudId] = cache;
+            }
+
+            if (cache.count != count || cache.version != _iconVersion)
+            {
+                cache.count = count;
+                cache.version = _iconVersion;
+                cache.rows.Clear();
+                for (int i = 0; i < count; i++)
+                {
+                    var display = spawned[i].playerInfo;
+                    if (display == null) continue;
+                    var tmp = TryGetNameText(display);
+                    if (tmp is null || tmp.m_CachedPtr == IntPtr.Zero) continue;
+                    // the sink-side SetText prefixes used to do this; the names themselves are already
+                    // stripped at PlayerNameManager.GetNameToDisplayForPlayer
+                    if (BetterFG.Tweaks.StripSizeTagsTweak.Active) tmp.parseCtrlCharacters = false;
+                    if (!_iconPtrs.Contains(tmp.m_CachedPtr)) continue;
+
+                    int id = tmp.GetInstanceID();
+                    var row = new IconRow { text = tmp };
+                    _icon3d.TryGetValue(id, out row.sr);
+                    _iconUI.TryGetValue(id, out row.img);
+                    if (row.sr == null && row.img == null) continue;
+                    cache.rows.Add(row);
+                }
+            }
+
+            var list = cache.rows;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var row = list[i];
+                if (row.text.m_CachedPtr == IntPtr.Zero) { cache.count = -1; return; }
+
+                float alpha = row.text.color.a;
+                if (alpha == row.last) continue;
+                row.last = alpha;
+
+                if (row.sr != null) { var c = row.sr.color; c.a = alpha; row.sr.color = c; }
+                if (row.img != null) { var c = row.img.color; c.a = alpha; row.img.color = c; }
+            }
+        }
+
+        // replay drives its own nametags off a track list, not the live HUD, so it still pushes alpha
+        // in directly rather than going through TickIconAlpha's row cache
+        public static void SetIconAlphaForDisplay(PlayerInfoDisplayGameObject display, float alpha)
+        {
+            if (display is null || display.m_CachedPtr == IntPtr.Zero) return;
             var txt = display._text;
-            if (txt == null) return;
+            if (txt is null || txt.m_CachedPtr == IntPtr.Zero) return;
             SetIconAlphaForText(txt, alpha);
         }
 
@@ -1027,6 +1109,7 @@ namespace BetterFG.Nametag
             sr.color = new Color(1f, 1f, 1f, tmp3d.color.a);
             _icon3d[tmp3d.GetInstanceID()] = sr;
             _iconPtrs.Add(tmp3d.m_CachedPtr);
+            SyncIconGate();
 
             MaybeAttachGifAnimator(iconGo, sr, null, info.iconMode, info.iconPath);
 
@@ -1099,6 +1182,7 @@ namespace BetterFG.Nametag
                 _icon3d.Remove(tmp3d.GetInstanceID());
                 _iconUI.Remove(tmp3d.GetInstanceID());
                 _iconPtrs.Remove(tmp3d.m_CachedPtr);
+                SyncIconGate();
 
                 // don't stomp gold famepass names — a profile-less remote who finished the pass has
                 // the "asap-bold sdf_EndFamePass" material on their TMP (possibly an "(Instance)" of it).
@@ -1582,6 +1666,7 @@ namespace BetterFG.Nametag
                 layoutImg.color = new Color(1f, 1f, 1f, tmp.color.a);
                 _iconUI[tmp.GetInstanceID()] = layoutImg;
             _iconPtrs.Add(tmp.m_CachedPtr);
+            SyncIconGate();
                 MaybeAttachGifAnimator(iconGo, null, layoutImg, iconMode, iconPath);
                 // canvas tags hide a no-rank crown by disabling its Container while the badge root stays an
                 // active layout child, so the rebuild would still reserve its width. mirror the hide into
@@ -1610,6 +1695,7 @@ namespace BetterFG.Nametag
             img.color = new Color(1f, 1f, 1f, tmp.color.a);
             _iconUI[tmp.GetInstanceID()] = img;
             _iconPtrs.Add(tmp.m_CachedPtr);
+            SyncIconGate();
             MaybeAttachGifAnimator(iconGo, null, img, iconMode, iconPath);
 
             var host = BeanMonitorService.Instance;
@@ -1733,7 +1819,7 @@ namespace BetterFG.Nametag
             sr.sortingOrder = 1;
             // inherit the name's current alpha so a faded nametag's icon comes up faded too, not fully opaque
             sr.color = new Color(1f, 1f, 1f, tmp != null ? tmp.color.a : 1f);
-            if (tmp != null) { _icon3d[tmp.GetInstanceID()] = sr; _iconPtrs.Add(tmp.m_CachedPtr); }
+            if (tmp != null) { _icon3d[tmp.GetInstanceID()] = sr; _iconPtrs.Add(tmp.m_CachedPtr); SyncIconGate(); }
 
             MaybeAttachGifAnimator(iconGo, sr, null);
 

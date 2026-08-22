@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -8,6 +8,7 @@ using BetterFG.Utilities;
 using FG.Common;
 using FGClient;
 using Il2CppInterop.Runtime;
+using Levels.Invisibeans;
 using UnityEngine;
 
 namespace BetterFG.Features.CustomizeFallGuys
@@ -46,7 +47,7 @@ namespace BetterFG.Features.CustomizeFallGuys
                     optionIds = new List<string> { "none", "crownjam" },
                     optionLabels = new List<string> { "None", "Crown Jam" },
                     defaultId = "none",
-                    hint = "Draws a custom eye pass over the bean. Its tint follows that bean's own primary colour.",
+                    hint = "Draws a custom eye pass over the bean. Its tint follows that bean's faceplate eye colour.",
                 },
             },
             onChoiceChanged: OnChoiceChanged);
@@ -55,6 +56,17 @@ namespace BetterFG.Features.CustomizeFallGuys
         const int MaxBakeFrames = 512;
 
         const float LookOffset = 0.03f;
+        const float EyeDrawDistanceSqr = 30f * 30f;
+        static bool _inRound;
+
+        public static void SetInRound(bool on)
+        {
+            if (_inRound == on) return;
+            _inRound = on;
+            // leaving a round with beans culled would strand them hidden
+            if (!on)
+                for (int i = 0; i < _count; i++) _eyes[i].hiddenSet = false;
+        }
 
         internal static bool On;
 
@@ -98,17 +110,23 @@ namespace BetterFG.Features.CustomizeFallGuys
             public float lookHold;
             public float squintPhase;
             public GameObject eyeGo;
-            public Vector3 lastScaleL;
-            public Vector3 lastScaleR;
+            public SkinnedMeshRenderer eyeRenderer;
+            public bool hiddenSet;
+            public bool hiddenValue;
+            public bool rangeSet;
+            public bool outOfRange;
+            public InvisibilityVisualsController invis;
+            public GameObject root;
+            // each bean's own rig can be a different scale (PlayerScaleService, differently-built
+            // clones, etc), so the rest pose has to be captured per-bean, not shared off whichever
+            // bean happened to get tracked first.
+            public Vector3 restPosL, restPosR, restScaleL, restScaleR;
+            public Quaternion restRotL, restRotR;
         }
 
         static Eyes[] _eyes = new Eyes[64];
         static int _count;
         static readonly List<GameObject> _pending = new List<GameObject>();
-
-        static bool _restCaptured;
-        static Vector3 _restPosL, _restPosR, _restScaleL, _restScaleR;
-        static Quaternion _restRotL, _restRotR;
 
         static int _bakedFrames;
         static float _playbackRate;
@@ -125,10 +143,21 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         public static Texture PreviewTexture => EyePreview.Ensure();
 
+        internal static bool PreviewWanted
+        {
+            get
+            {
+                if (!feature.enabled || _previewPanel == null) return false;
+                var ui = BetterFG.UI.BetterFGUIMan.Instance;
+                return ui != null && ui.IsVisible;
+            }
+        }
+
         public static void SetPreviewPanel(GameObject panel)
         {
             _previewPanel = panel;
             Refresh();
+            FallGuyEyeDriver.EnsurePreviewLoop();
         }
 
         public static void Refresh(bool rebuild = false, float delay = 0f)
@@ -172,12 +201,24 @@ namespace BetterFG.Features.CustomizeFallGuys
             }
         }
 
-        public static void Apply(GameObject bean)
+        public static void Apply(GameObject bean, bool isLocalPlayer = true)
         {
             if (bean == null || !_work) return;
+            if (_localOnly && !isLocalPlayer) return;
             for (int i = 0; i < _pending.Count; i++)
                 if (_pending[i] == bean) return;
             _pending.Add(bean);
+        }
+
+        public static void OnFaceplateChanged(GameObject bean, FaceplateOption option)
+        {
+            if (!_work || _eyeMat == "none" || bean == null || option == null) return;
+            for (int i = 0; i < _count; i++)
+            {
+                if (_eyes[i].root != bean) continue;
+                EyeGeometry.SetTint(_eyes[i].eyeRenderer, option.eyesColour);
+                return;
+            }
         }
 
         static IEnumerator RefreshLater(bool rebuild, float delay)
@@ -192,15 +233,18 @@ namespace BetterFG.Features.CustomizeFallGuys
             {
                 var l = _eyes[i].l;
                 var r = _eyes[i].r;
-                if (_restCaptured && l.m_CachedPtr != IntPtr.Zero && r.m_CachedPtr != IntPtr.Zero)
+                if (l.m_CachedPtr != IntPtr.Zero && r.m_CachedPtr != IntPtr.Zero)
                 {
-                    l.SetLocalPositionAndRotation(_restPosL, _restRotL);
-                    l.localScale = _restScaleL;
-                    r.SetLocalPositionAndRotation(_restPosR, _restRotR);
-                    r.localScale = _restScaleR;
+                    l.SetLocalPositionAndRotation(_eyes[i].restPosL, _eyes[i].restRotL);
+                    l.localScale = _eyes[i].restScaleL;
+                    r.SetLocalPositionAndRotation(_eyes[i].restPosR, _eyes[i].restRotR);
+                    r.localScale = _eyes[i].restScaleR;
                 }
                 EyeGeometry.Detach(_eyes[i].eyeGo);
                 _eyes[i].eyeGo = null;
+                _eyes[i].eyeRenderer = null;
+                _eyes[i].invis = null;
+                _eyes[i].root = null;
                 _eyes[i].l = null;
                 _eyes[i].r = null;
             }
@@ -228,14 +272,14 @@ namespace BetterFG.Features.CustomizeFallGuys
                 {
                     var npdc = kv.Value;
                     if (npdc == null || npdc.fgcc == null || npdc.fgcc.gameObject != bean) continue;
-                    var opt = cpm.GetPlayerCustomisationSelection(kv.Key)?.ColourOption;
-                    if (opt != null) tint = opt.primaryColour;
+                    var opt = cpm.GetPlayerCustomisationSelection(kv.Key)?.FaceplateOption;
+                    if (opt != null) tint = opt.eyesColour;
                     return EyeGeometry.Attach(bean, shared, tint);
                 }
             }
 
-            var menuOpt = UnityEngine.Object.FindObjectOfType<MainMenuManager>()?._playerProfile?.CustomisationSelections?.ColourOption;
-            if (menuOpt != null) tint = menuOpt.primaryColour;
+            var menuOpt = UnityEngine.Object.FindObjectOfType<MainMenuManager>()?._playerProfile?.CustomisationSelections?.FaceplateOption;
+            if (menuOpt != null) tint = menuOpt.eyesColour;
             return EyeGeometry.Attach(bean, shared, tint);
         }
 
@@ -252,18 +296,16 @@ namespace BetterFG.Features.CustomizeFallGuys
                 if (_eyes[i].l.m_CachedPtr != eyeL.m_CachedPtr) continue;
                 if (_eyeMat == "none" || _eyes[i].eyeGo != null) return;
                 _eyes[i].eyeGo = AttachEyes(root);
+                _eyes[i].eyeRenderer = _eyes[i].eyeGo != null ? _eyes[i].eyeGo.GetComponent<SkinnedMeshRenderer>() : null;
                 return;
             }
 
-            if (!_restCaptured)
-            {
-                eyeL.GetLocalPositionAndRotation(out _restPosL, out _restRotL);
-                eyeR.GetLocalPositionAndRotation(out _restPosR, out _restRotR);
-                _restScaleL = eyeL.localScale;
-                _restScaleR = eyeR.localScale;
-                _restCaptured = true;
-                Plugin.Log.LogInfo($"eye rest pose off the rig: L {_restPosL} / R {_restPosR}, everything gets composed from those");
-            }
+            Vector3 restPosL, restPosR, restScaleL, restScaleR;
+            Quaternion restRotL, restRotR;
+            eyeL.GetLocalPositionAndRotation(out restPosL, out restRotL);
+            eyeR.GetLocalPositionAndRotation(out restPosR, out restRotR);
+            restScaleL = eyeL.localScale;
+            restScaleR = eyeR.localScale;
 
             if (_bakedFrames == 0 && AssetManager.Instance != null
                 && AssetManager.Instance.animClips.TryGetValue("bettrfg_anim_eyes", out var clip) && clip != null)
@@ -275,8 +317,13 @@ namespace BetterFG.Features.CustomizeFallGuys
 
             if (_count == _eyes.Length) Array.Resize(ref _eyes, _count * 2);
             _eyes[_count].eyeGo = AttachEyes(root);
+            _eyes[_count].eyeRenderer = _eyes[_count].eyeGo != null ? _eyes[_count].eyeGo.GetComponent<SkinnedMeshRenderer>() : null;
+            _eyes[_count].invis = root.GetComponentInChildren<InvisibilityVisualsController>();
+            _eyes[_count].root = root;
             _eyes[_count].l = eyeL;
             _eyes[_count].r = eyeR;
+            _eyes[_count].restPosL = restPosL; _eyes[_count].restRotL = restRotL; _eyes[_count].restScaleL = restScaleL;
+            _eyes[_count].restPosR = restPosR; _eyes[_count].restRotR = restRotR; _eyes[_count].restScaleR = restScaleR;
             _eyes[_count].blinkSpeed = UnityEngine.Random.Range(0.8f, 1.25f) * _playbackRate;
             _eyes[_count].blinkCursor = UnityEngine.Random.Range(0f, Mathf.Max(1, _bakedFrames));
             _eyes[_count].lookFrom = 0f;
@@ -285,8 +332,6 @@ namespace BetterFG.Features.CustomizeFallGuys
             _eyes[_count].lookRate = 6f;
             _eyes[_count].lookHold = UnityEngine.Random.Range(0.2f, 2f);
             _eyes[_count].squintPhase = UnityEngine.Random.Range(0f, 6.28f);
-            _eyes[_count].lastScaleL = _restScaleL;
-            _eyes[_count].lastScaleR = _restScaleR;
             _count++;
         }
 
@@ -320,7 +365,7 @@ namespace BetterFG.Features.CustomizeFallGuys
             Plugin.Log.LogInfo($"blink clip baked once, {frames} frames off {len:0.00}s, no more per-bean SampleAnimation");
         }
 
-        public static void Tick()
+        public static void Tick(float dt)
         {
             if (_pending.Count > 0)
             {
@@ -334,7 +379,7 @@ namespace BetterFG.Features.CustomizeFallGuys
                 }
             }
 
-            ApplyEyes();
+            ApplyEyes(dt);
         }
 
         public static void TickPreview()
@@ -347,15 +392,28 @@ namespace BetterFG.Features.CustomizeFallGuys
             EyePreview.Render();
         }
 
-        static void ApplyEyes()
+        static void ApplyEyes(float dt)
         {
             if (_count == 0 || !_work) return;
 
             bool blink = _blink && _bakedFrames > 0;
-            float dt = Time.deltaTime;
+            float now = Time.time;
+
+            // eyes are a couple of centimetres across. past ~30m they're subpixel, but the renderer was
+            // still costing a draw call and a skinning pass for every bean on the course — and in a
+            // 30-player round most of them are miles away. one camera fetch a tick, one distance test
+            // per bean, and everything out of range stops rendering entirely.
+            //
+            // ROUND ONLY. in the menu/lobby Camera.main isn't the camera framing the plinth bean, so the
+            // distance came out huge and the eyes vanished — the menu has at most a couple of beans and
+            // nothing to save anyway.
+            var cam = _inRound ? Camera.main : null;
+            bool haveCam = cam != null;
+            Vector3 camPos = haveCam ? cam.transform.position : Vector3.zero;
             bool hasRot = !Mathf.Approximately(_rot, 0f);
             var rotL = hasRot ? Quaternion.Euler(0f, 0f, _rot) : Quaternion.identity;
             var rotR = hasRot ? Quaternion.Euler(0f, 0f, -_rot) : Quaternion.identity;
+            int frameStagger = Time.frameCount;
 
             for (int i = 0; i < _count; i++)
             {
@@ -374,8 +432,41 @@ namespace BetterFG.Features.CustomizeFallGuys
                     continue;
                 }
 
-                Vector3 pl = _restPosL, pr = _restPosR, sl = _restScaleL, sr = _restScaleR;
-                Quaternion ql = _restRotL, qr = _restRotR;
+                var eyeRenderer = _eyes[i].eyeRenderer;
+                bool hasRenderer = eyeRenderer is not null && eyeRenderer.m_CachedPtr != IntPtr.Zero;
+                if (hasRenderer)
+                {
+                    var invis = _eyes[i].invis;
+                    bool hidden = invis is not null && invis.m_CachedPtr != IntPtr.Zero
+                        && invis._ready && invis._visibilityRatio < 0.5f;
+
+                    // the range test only has to keep up with a bean walking towards the camera, so it
+                    // runs on one bean in eight per frame (staggered, so the work is spread evenly) and
+                    // reuses the last answer in between. get_position boxes its return through il2cpp;
+                    // the paired getter writes straight into our locals.
+                    if (!hidden && haveCam)
+                    {
+                        if (((i + frameStagger) & 7) == 0 || !_eyes[i].rangeSet)
+                        {
+                            l.GetPositionAndRotation(out var eyePos, out _);
+                            float dx = eyePos.x - camPos.x, dy = eyePos.y - camPos.y, dz = eyePos.z - camPos.z;
+                            _eyes[i].outOfRange = dx * dx + dy * dy + dz * dz > EyeDrawDistanceSqr;
+                            _eyes[i].rangeSet = true;
+                        }
+                        hidden = _eyes[i].outOfRange;
+                    }
+                    // re-writing .enabled every frame was a renderer setter per bean for a value that
+                    // only moves when a powerup does
+                    if (!_eyes[i].hiddenSet || _eyes[i].hiddenValue != hidden)
+                    {
+                        _eyes[i].hiddenSet = true;
+                        _eyes[i].hiddenValue = hidden;
+                        eyeRenderer.enabled = !hidden;
+                    }
+                }
+
+                Vector3 pl = _eyes[i].restPosL, pr = _eyes[i].restPosR, sl = _eyes[i].restScaleL, sr = _eyes[i].restScaleR;
+                Quaternion ql = _eyes[i].restRotL, qr = _eyes[i].restRotR;
 
                 if (blink)
                 {
@@ -389,8 +480,14 @@ namespace BetterFG.Features.CustomizeFallGuys
 
                 float glance = _look ? StepLook(ref _eyes[i], dt) * LookOffset : 0f;
                 float squint = _squint
-                    ? 1f - 0.2f * (0.55f + 0.45f * Mathf.Sin(Time.time * 0.7f + _eyes[i].squintPhase))
+                    ? 1f - 0.2f * (0.55f + 0.45f * Mathf.Sin(now * 0.7f + _eyes[i].squintPhase))
                     : 1f;
+
+                // blink/look/squint state above is plain managed maths and keeps running, so a bean
+                // that comes back into view is already where it should be. the four writes below are
+                // the expensive part — every one boxes a struct through il2cpp — and nobody can see
+                // the eyes of a bean that isn't on screen.
+                if (hasRenderer && !eyeRenderer.isVisible) continue;
 
                 pl.x += glance - _dist;
                 pr.x += glance + _dist;
@@ -403,14 +500,8 @@ namespace BetterFG.Features.CustomizeFallGuys
                 l.SetLocalPositionAndRotation(pl, hasRot ? ql * rotL : ql);
                 r.SetLocalPositionAndRotation(pr, hasRot ? qr * rotR : qr);
 
-                float ease = 1f - Mathf.Exp(-dt * 25f);
-                var targetL = new Vector3(sl.x * _scale, yl, sl.z * _scale);
-                var scaleL = Vector3.Lerp(_eyes[i].lastScaleL, targetL, ease);
-                if (scaleL != _eyes[i].lastScaleL) { l.localScale = scaleL; _eyes[i].lastScaleL = scaleL; }
-
-                var targetR = new Vector3(sr.x * _scale, yr, sr.z * _scale);
-                var scaleR = Vector3.Lerp(_eyes[i].lastScaleR, targetR, ease);
-                if (scaleR != _eyes[i].lastScaleR) { r.localScale = scaleR; _eyes[i].lastScaleR = scaleR; }
+                l.localScale = new Vector3(sl.x * _scale, yl, sl.z * _scale);
+                r.localScale = new Vector3(sr.x * _scale, yr, sr.z * _scale);
             }
         }
 
@@ -442,26 +533,40 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         public static FallGuyEyeDriver Instance { get; private set; }
 
-        void Awake()
+        void Awake() => Instance = this;
+
+        static bool _previewLoopRunning;
+
+        // was started once in Awake and span forever on WaitForEndOfFrame, whether or not the feature
+        // was on and whether or not the panel existed — a per-frame il2cpp coroutine resume for the
+        // entire session, menus included, with TickPreview early-outing every time. now it only lives
+        // while the BettrFG panel is actually open in front of the preview.
+        public static void EnsurePreviewLoop()
         {
-            Instance = this;
-            StartCoroutine(PreviewLoop().WrapToIl2Cpp());
+            if (_previewLoopRunning || Instance == null) return;
+            if (!FeatureCustomizeFallGuys.PreviewWanted) return;
+            _previewLoopRunning = true;
+            Instance.StartCoroutine(PreviewLoop().WrapToIl2Cpp());
         }
 
+        // runs EVERY frame, deliberately. ticking the eye pass at 30Hz to save the transform writes made
+        // the eyes visibly jitter against a body rendering at 165+ — the blink source frames are baked at
+        // 30fps but the look/squint drifts and the interpolation between them are not. tried 2026-08-21.
         void LateUpdate()
         {
             if (!FeatureCustomizeFallGuys.On) return;
-            FeatureCustomizeFallGuys.Tick();
+            FeatureCustomizeFallGuys.Tick(Time.deltaTime);
         }
 
         static IEnumerator PreviewLoop()
         {
             var endOfFrame = new WaitForEndOfFrame();
-            while (true)
+            while (FeatureCustomizeFallGuys.PreviewWanted)
             {
                 yield return endOfFrame;
                 FeatureCustomizeFallGuys.TickPreview();
             }
+            _previewLoopRunning = false;
         }
     }
 }

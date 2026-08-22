@@ -100,12 +100,30 @@ namespace BetterFG.Customization.Menu
             _pendingFgAnyImage.Clear();
         }
 
+        public void SeedForegroundCloneOriginals(GameObject source, GameObject clone)
+        {
+            if (source == null || clone == null) return;
+            var srcImages = source.GetComponentsInChildren<UnityEngine.UI.Image>(true);
+            var cloneImages = clone.GetComponentsInChildren<UnityEngine.UI.Image>(true);
+            int n = Mathf.Min(srcImages.Length, cloneImages.Length);
+            for (int i = 0; i < n; i++)
+            {
+                var src = srcImages[i];
+                var dst = cloneImages[i];
+                if (src == null || dst == null) continue;
+                if (!_fgOriginals.TryGetValue(src.GetInstanceID(), out var orig)) continue;
+                int id = dst.GetInstanceID();
+                _fgOriginals[id] = orig;
+                _fgTouchedImages[id] = dst;
+            }
+        }
+
         public void ReapplyForegroundFromSettings(Transform scopeRoot = null, string excludeSubtreeName = null, bool anyImage = false, bool refreshOriginals = false)
         {
             bool fullCanvas = scopeRoot == null;
 
             var pal = FgPalette.FromSettings();
-            if (pal.AnyOn)
+            if (pal.AnyOn || fullCanvas)
                 ApplyForeground(pal, scopeRoot, excludeSubtreeName, anyImage, refreshOriginals);
 
             if (fullCanvas)

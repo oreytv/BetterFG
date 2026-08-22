@@ -23,6 +23,7 @@ namespace BetterFG.Services
 
         // periodic backup gating — only writes a new backup if Set was called since the last one.
         private static bool _dirtySinceBackup;
+        private static bool _pendingWrite;
         private static float _lastBackupTime;
         public const string KEY_BACKUP_ENABLED = "backup.enabled";
         public const string KEY_BACKUP_INTERVAL_MIN = "backup.intervalMin";
@@ -64,13 +65,24 @@ namespace BetterFG.Services
             EnsureLoaded();
             _data[key] = value ?? "";
             _dirtySinceBackup = true;
-            Save();
+            _pendingWrite = true;
         }
 
         public static void Remove(string key)
         {
             EnsureLoaded();
-            if (_data.Remove(key)) Save();
+            if (_data.Remove(key)) _pendingWrite = true;
+        }
+
+        // Set used to rewrite the whole file on every call, so anything that saved a LIST paid one
+        // full write per element — typing a single character into a name-warning rule rewrote ~500
+        // lines thirteen times over, on the main thread, which is exactly as slow as it sounds.
+        // writes are coalesced now and flushed from the UI housekeeping tick.
+        public static void Flush()
+        {
+            if (!_pendingWrite) return;
+            _pendingWrite = false;
+            Save();
         }
 
         // for presets: grab every key under these prefixes (snapshot), or wipe those keys and write
@@ -95,6 +107,7 @@ namespace BetterFG.Services
             foreach (var key in toRemove) _data.Remove(key);
             if (values != null)
                 foreach (var kv in values) _data[kv.Key] = kv.Value ?? "";
+            _pendingWrite = false;
             Save();
         }
 
@@ -227,6 +240,7 @@ namespace BetterFG.Services
         {
             try
             {
+                Flush();
                 if (!File.Exists(FilePath)) return;
                 if (!Directory.Exists(BackupDir)) Directory.CreateDirectory(BackupDir);
 

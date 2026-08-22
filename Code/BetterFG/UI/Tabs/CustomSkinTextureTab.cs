@@ -7,9 +7,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class CustomSkinTextureTab : BetterFGTab
+    public class CustomSkinTextureTab : Tab
     {
         public CustomSkinTextureTab(IntPtr ptr) : base(ptr) { }
 

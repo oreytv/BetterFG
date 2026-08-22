@@ -11,7 +11,7 @@ using BetterFG.Customization.Social;
 using BetterFG.UI;
 using BetterFG.UI.Components;
 using BetterFG.UI.SideWheel;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using BetterFG.UI.Windows;
 using BetterFG.Customization.Menu;
 using BetterFG.Features.UnityRound;
@@ -53,6 +53,8 @@ namespace BetterFG
 
             RegisterIl2CppTypes();
 
+            HarmonyInstance = new Harmony(MyPluginInfo.PLUGIN_GUID);
+
             // Gateway/auth has been causing crashes in some environments. Disable creating
             // the `BetterFG_Gateway` here and initialize the mod directly so core features
             // and UI are available even without remote auth.
@@ -63,7 +65,6 @@ namespace BetterFG
             var wheel = SideWheelManager.Create();
             SidewheelRegistry.RegisterAll(wheel);
 
-            HarmonyInstance = new Harmony(MyPluginInfo.PLUGIN_GUID);
             ApplyAllPatches();
 
             // FallGuysLib owns the shared game-state patch and re-raises it; we subscribe instead of
@@ -114,6 +115,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<BeanVisualRig>();
             ClassInjector.RegisterTypeInIl2Cpp<CostumePollerComponent>();
             ClassInjector.RegisterTypeInIl2Cpp<BoneSyncComponent>();
+            ClassInjector.RegisterTypeInIl2Cpp<InvisibilitySyncComponent>();
             ClassInjector.RegisterTypeInIl2Cpp<MenuCustomizationApplication>();
             ClassInjector.RegisterTypeInIl2Cpp<RepoRegistry>();
             ClassInjector.RegisterTypeInIl2Cpp<AssetManager>();
@@ -141,15 +143,24 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<AutoFetchTrigger>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Patches.ShowSelectorBgApplier>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Patches.CreativeEditorBgApplier>();
-            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.QualificationTime.PBPopupDestroyWatcher>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Nametag.GifAnimator>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.Replay.ReplayViewer>();
 
             // tabs
+            ClassInjector.RegisterTypeInIl2Cpp<TexturedTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<SwitchTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UISubTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UGCTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomizationTab>();
             ClassInjector.RegisterTypeInIl2Cpp<MenuTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<MenuBackgroundImageWizardTab>();
             ClassInjector.RegisterTypeInIl2Cpp<NametagTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UITab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UIForegroundDetailTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UIFontTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UIFontWizardTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UIBackgroundTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UIScalingTab>();
             ClassInjector.RegisterTypeInIl2Cpp<EmoticonsPhrasesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<FeaturesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomSkinTextureTab>();
@@ -177,6 +188,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<PlayerScaleWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<ItemConfigWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<LobbyAutokickConfigWindow>();
+            ClassInjector.RegisterTypeInIl2Cpp<PlayerNameWarningConfigWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<UnityRoundLoaderWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<ObstacleTextureWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.BatchEditWindow>();
@@ -199,12 +211,14 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<ChangeSplashScreenTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<HideCreatorCodeTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<LobbyAutokickTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<PlayerNameWarningTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<LobbyAudioPromptTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<SpectatorMusicTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<MuteSocialSoundsTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<DisablePlayerEmoticonsTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<DisablePlayerPhrasesTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<BringBackFallGuyNoisesTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<DisableRtcVoiceChatTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<StripSizeTagsTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<FallFeedQualTimeTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<MaxFallFeedTweak>();

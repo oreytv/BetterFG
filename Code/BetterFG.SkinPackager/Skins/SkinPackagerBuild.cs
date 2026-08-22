@@ -66,7 +66,7 @@ namespace BetterFG.Editor
                 return;
             }
 
-            GUI.enabled = _sourceObject != null && !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrEmpty(dest);
+            GUI.enabled = (_sourceObject != null || _keepBundle) && !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrEmpty(dest);
             GUI.backgroundColor = new Color(0.35f, 0.62f, 0.38f);
             if (GUILayout.Button("Build and Pack", _bigButton, GUILayout.Height(34f))) TryBuildAndPack();
             GUI.backgroundColor = Color.white;
@@ -132,6 +132,14 @@ namespace BetterFG.Editor
 
                     WriteInfoJson();
                     WriteCover();
+
+                    if (!string.IsNullOrEmpty(_loadedDir) && !string.Equals(_loadedDir, dest, StringComparison.OrdinalIgnoreCase) && Directory.Exists(_loadedDir))
+                    {
+                        Directory.Delete(_loadedDir, true);
+                        Debug.Log($"repacked under a new name, removed the old skin folder {_loadedDir}");
+                    }
+                    _loadedDir = dest;
+
                     RunCatalogBat();
                     WriteNewCatalog(_repoRoot);
 
@@ -172,7 +180,7 @@ namespace BetterFG.Editor
 
                 var builds = new[]
                 {
-                    new AssetBundleBuild { assetBundleName = BundleName, assetNames = new[] { prefabPath } }
+                    new AssetBundleBuild { assetBundleName = BundleName, assetNames = new[] { prefabPath }, addressableNames = new[] { BundleName } }
                 };
 
                 var manifest = BuildPipeline.BuildAssetBundles(bundleTempDir, builds, BuildAssetBundleOptions.ChunkBasedCompression, BuildTarget.StandaloneWindows64);
@@ -189,6 +197,13 @@ namespace BetterFG.Editor
 
                 WriteInfoJson();
                 WriteCover();
+
+                if (!string.IsNullOrEmpty(_loadedDir) && !string.Equals(_loadedDir, dest, StringComparison.OrdinalIgnoreCase) && Directory.Exists(_loadedDir))
+                {
+                    Directory.Delete(_loadedDir, true);
+                    Debug.Log($"rebuilt under a new name, removed the old skin folder {_loadedDir}");
+                }
+                _loadedDir = dest;
 
                 EditorUtility.DisplayProgressBar("Packing skin", "regenerating the catalog", 0.92f);
                 RunCatalogBat();

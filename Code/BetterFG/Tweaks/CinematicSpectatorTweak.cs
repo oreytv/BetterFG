@@ -88,11 +88,14 @@ namespace BetterFG.Tweaks
             Instance.Shutdown();
         }
 
+        // SwitchToSpectatorMode is the moment the manager goes live, so take it here instead of
+        // re-asking GlobalGameStateClient on a timer for the rest of the round.
         public override void OnSpectatorMode()
         {
             _sessionOver = false;
             _cgm = null;
             ClearCaches();
+            GlobalGameStateClient.Instance?.GameStateView?.GetLiveClientGameManager(out _cgm);
         }
 
         public override void OnRoundStart()
@@ -107,23 +110,14 @@ namespace BetterFG.Tweaks
             if (newState == null || newState.TryCast<StateGameInProgress>() == null) Shutdown();
         }
 
-        // Shutdown clears _cgm, so the old "bail then Shutdown" shape re-resolved the game manager off
-        // GlobalGameStateClient on every single frame of normal play and tore down a prompt that was
-        // already gone. only run the teardown on the edge, and only look the manager up while we're live.
+        // the manager is taken once from SwitchToSpectatorMode, so a null one here means we simply
+        // aren't spectating and the frame costs a field read. teardown only runs on the edge.
         bool _torndown = true;
-        float _nextCgmProbe;
 
         void Update()
         {
-            if (!IsEnabled || _sessionOver) { ShutdownOnce(); return; }
-
-            if (_cgm == null)
-            {
-                if (Time.unscaledTime < _nextCgmProbe) { ShutdownOnce(); return; }
-                _nextCgmProbe = Time.unscaledTime + 0.25f;
-                GlobalGameStateClient.Instance?.GameStateView?.GetLiveClientGameManager(out _cgm);
-            }
-            if (_cgm == null || !_cgm.IsSpectatorMode) { ShutdownOnce(); return; }
+            if (_sessionOver || _cgm == null) { ShutdownOnce(); return; }
+            if (!_cgm.IsSpectatorMode) { ShutdownOnce(); return; }
             if (FeatureQualificationTime.QualPopupOpen) { ShutdownOnce(); return; }
 
             _torndown = false;

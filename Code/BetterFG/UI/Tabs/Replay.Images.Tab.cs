@@ -9,7 +9,7 @@ using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     // the pictures taken out of the replay viewer. reached only from the Replays tab's link, so it
     // never sits in the slot dropdown.
@@ -20,7 +20,7 @@ namespace BetterFG.UI.Tab
         public override string TabTitle => "Replays - Images";
 
         protected override string SwitchLabel => "Replays →";
-        protected override BetterFGTab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<ReplaysTab>();
+        protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<ReplaysTab>();
 
         const int PAGE_SIZE = 12;
         const int COLUMNS = 2;

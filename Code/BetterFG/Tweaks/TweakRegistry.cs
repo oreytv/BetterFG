@@ -73,6 +73,7 @@ namespace BetterFG.Tweaks
             Add<DisablePlayerEmoticonsTweak>(TweakCategory.Audio);
             Add<DisablePlayerPhrasesTweak>(TweakCategory.Audio);
             Add<BringBackFallGuyNoisesTweak>(TweakCategory.Audio);
+            Add<DisableRtcVoiceChatTweak>(TweakCategory.Audio);
 
             // ── Lighting ──
             Add<ShadowDistanceTweak>(TweakCategory.Lighting);
@@ -81,6 +82,7 @@ namespace BetterFG.Tweaks
 
             // ── Utility ──
             Add<LobbyAutokickTweak>(TweakCategory.Utility);
+            Add<PlayerNameWarningTweak>(TweakCategory.Utility);
             Add<LobbyAudioPromptTweak>(TweakCategory.Utility);
             Add<MatchmakingQueueCountTweak>(TweakCategory.Utility);
             Add<CustomCursorTweak>(TweakCategory.Utility);

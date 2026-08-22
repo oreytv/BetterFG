@@ -78,6 +78,14 @@ namespace BetterFG.Services
         // sets this on stick/button activity and clears it after a short idle.
         public static void SetControllerLock(bool locked) => _controllerLock = locked;
 
+        // while ControllerManager moves the OS cursor with the stick, Rewired sees that synthetic
+        // mouse motion and flips "last active controller" to Mouse every frame, fighting the stick —
+        // which makes the game's nav-prompt glyphs strobe between pad and kbm. turning Rewired's Mouse
+        // controller off keeps it from counting as active; our clicks/hover/scroll ride Unity's own
+        // Input, not Rewired's Mouse, so nothing we do breaks.
+        private static bool _rewiredMouseSuppressed;
+        public static void SetRewiredMouseSuppressed(bool on) => _rewiredMouseSuppressed = on;
+
         // the game's own boot/menu loading veil doesn't stop clicks from reaching whatever's
         // already loaded underneath it, so a click during that window can land on a real menu
         // button (shop, etc). GameStatePatches pings this every LoadingScreenViewModel tick
@@ -111,7 +119,9 @@ namespace BetterFG.Services
         // movement/jump/etc also don't all go through mapped Actions — some read the Keyboard/Mouse
         // Controller directly (GetKey/GetButton), which ControllerMap.enabled=false never touches.
         // Controller itself has an enabled flag that kills raw polling too, so hit that as well.
+        // kb tracked here; mouse gets its own flag since the cursor-suppress path drives it alone.
         private static bool _devicesDisabledByUs;
+        private static bool _mouseDisabledByUs;
 
         public static void Tick()
         {
@@ -147,7 +157,8 @@ namespace BetterFG.Services
             bool locked = _realFieldLock || _fakeFieldLock || _editorUiLock || _controllerLock
                           || _paramTypeLock || _loadingScreenLock || outOfForeground;
             if (!locked && !blockBackground && !_selfWasLocked
-                && !_devicesDisabledByUs && _disabledInputModules.Count == 0)
+                && !_devicesDisabledByUs && !_mouseDisabledByUs && !_rewiredMouseSuppressed
+                && _disabledInputModules.Count == 0)
                 return;
 
             if (blockBackground)
@@ -171,17 +182,28 @@ namespace BetterFG.Services
             {
                 var kb = ReInput.controllers.Keyboard;
                 var mouse = ReInput.controllers.Mouse;
+                // keyboard: off only during a background block
                 if (blockBackground)
                 {
                     if (kb != null) kb.enabled = false;
-                    if (mouse != null) mouse.enabled = false;
                     _devicesDisabledByUs = true;
                 }
                 else if (_devicesDisabledByUs)
                 {
                     if (kb != null) kb.enabled = true;
-                    if (mouse != null) mouse.enabled = true;
                     _devicesDisabledByUs = false;
+                }
+                // mouse: off during a background block OR while we're suppressing it for cursor-drive
+                bool mouseOff = blockBackground || _rewiredMouseSuppressed;
+                if (mouseOff)
+                {
+                    if (mouse != null) mouse.enabled = false;
+                    _mouseDisabledByUs = true;
+                }
+                else if (_mouseDisabledByUs)
+                {
+                    if (mouse != null) mouse.enabled = true;
+                    _mouseDisabledByUs = false;
                 }
             }
 

@@ -408,7 +408,7 @@ namespace BetterFG.Patches
                 "Default/MainMenuBuilder(Clone)/MainScreensParent/Menu_Screen_Main/Prime_UI_SymphonyShowSelector_Prefab_Canvas(Clone)");
         }
 
-        static Transform FindLiveMask()
+        public static Transform FindLiveMask()
         {
             var canvas = FindSelectorCanvas();
             return canvas == null ? null : FindMask(canvas);
@@ -427,6 +427,7 @@ namespace BetterFG.Patches
         static void Paint(Transform mask)
         {
             if (mask == null) return;
+            ScreenBackgroundService.CacheScreenDefault(ScreenBackgroundService.Screen.ShowSelector, mask);
             if (ScreenBackgroundService.Enabled(ScreenBackgroundService.Screen.ShowSelector))
                 ScreenBackgroundService.ApplyToContainer(ScreenBackgroundService.Screen.ShowSelector, mask);
             else

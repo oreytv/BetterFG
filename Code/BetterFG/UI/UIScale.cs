@@ -2,7 +2,7 @@
 {
     /// <summary>
     /// Change S to scale the entire UI. 1.0 = original, 1.3 = 30% larger, etc.
-    /// Everything in BetterFGTab, BetterFGTabManager, and CustomizationTab derives from this.
+    /// Everything in Tab, TabManager, and CustomizationTab derives from this.
     /// </summary>
     public static class UIScale
     {

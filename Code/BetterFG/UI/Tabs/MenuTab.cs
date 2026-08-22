@@ -1,13 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using LayoutElement = UnityEngine.UI.LayoutElement;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class MenuTab : BetterFGTab
+    public class MenuTab : Tab
     {
         public MenuTab(IntPtr ptr) : base(ptr) { }
 
@@ -22,12 +24,18 @@ namespace BetterFG.UI.Tab
         private static int FS_SM => UIScale.FS_SM;
 
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
+        private static readonly Color DIM = new Color(1f, 1f, 1f, 0.4f);
         private static readonly Color WHITE = Color.white;
         private static readonly Color BTN_APPLY = new Color(0.45f, 0.35f, 0.25f, 1f);
         private static readonly Color BTN_REMOVE = new Color(0.55f, 0.15f, 0.15f, 1f);
         private static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        private static readonly Color BTN_ADD = new Color(0.3f, 0.3f, 0.15f, 1f);
         private static readonly Color SEL_COLOR = new Color(0.25f, 0.5f, 0.25f, 1f);
         private static readonly Color BTN_ON = new Color(0.25f, 0.5f, 0.25f, 1f);
+        private static readonly Color ROW_ALT = new Color(1f, 1f, 1f, 0.03f);
+        private static readonly Color ROW_CLEAR = new Color(0f, 0f, 0f, 0f);
+        private static readonly Color ROW_HOVER = new Color(1f, 1f, 1f, 0.13f);
+        private static readonly Color ROW_PRESS = new Color(1f, 1f, 1f, 0.2f);
 
         private static float subTabH => BTN_H * 0.9f;
 
@@ -49,16 +57,19 @@ namespace BetterFG.UI.Tab
         private float _botR = 1f, _botG = 1f, _botB = 1f;
         private float _bias, _smooth = 1f;
 
-        // ── State: background image ───────────────────────────────────────────
-        private bool _bgImgOn;
-        private float _bgImgPosX, _bgImgPosY, _bgImgPosZ;
-        private float _bgImgScale = MenuCustomizationApplication.BG_IMG_SCALE_DEFAULT,
-                      _bgImgScaleX = MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT,
-                      _bgImgScaleY = MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT;
-        private string _bgImgPath = "";
-        private Button _bgImgToggleBtn;
-        private RawImage _bgImgPreview;
-        private Text _bgImgLabel;
+        // ── State: background carousel (Images / Ambient / Sun) ──────────────
+        private enum BgCarouselPage { Images, Ambient, Sun }
+        private BgCarouselPage _bgPage = BgCarouselPage.Images;
+        private Text _bgCarouselLabel;
+        private RectTransform _bgCarouselBody;
+        private float _bgBodyW, _bgBodyH;
+
+        // ── State: background images list ─────────────────────────────────────
+        private List<MenuCustomizationApplication.BgImageEntry> _bgEntries = new List<MenuCustomizationApplication.BgImageEntry>();
+        private RectTransform _bgImagesContent;
+        private static readonly Dictionary<string, Texture2D> _bgThumbCache =
+            new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
+        private static float BG_ROW_H => 30f * UIScale.S;
 
         // ── State: ambient light + sun ────────────────────────────────────────
         private bool _ambientOn;
@@ -245,135 +256,228 @@ namespace BetterFG.UI.Tab
         }
 
         // ── Background panel ──────────────────────────────────────────────────
+        // notice + a carousel ( ‹ Background Images / Ambient Light / Main Sun Rotation › ), same
+        // ‹ Style › cycle shape as BatchEditWindow's subtab header. each page rebuilds the body below.
 
         private void BuildBgPanel(RectTransform parent, float x, float y, float w, float h)
         {
-            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y, TabWidth, h));
-
             float cy = PAD;
 
             float noticeH = BTN_H * 1.4f;
             float beanW = noticeH * 0.6f;
             var beanTex = BetterFG.Utilities.EmbeddedResourceandUnity.LoadTexture("BetterFG.assets.ui.bean.bean_victorious.png");
-            if (beanTex != null) UGUIShip.CreateImage(content, new Rect(x, cy, beanW, noticeH), beanTex, "NoticeBean");
-            UGUIShip.CreateLinkText(content, new Rect(x + beanW + PAD, cy, w - beanW - PAD, noticeH),
+            if (beanTex != null) UGUIShip.CreateImage(parent, new Rect(x, cy, beanW, noticeH), beanTex, "NoticeBean");
+            UGUIShip.CreateLinkText(parent, new Rect(x + beanW + PAD, cy, w - beanW - PAD, noticeH),
                 "Background gradient and pattern moved to the UI tab, under Background. Take me there",
                 new Action(() => BetterFGUIMan.Instance?.OpenUIScreen()), fontSize: FS_SM);
             cy += noticeH + PAD;
 
-            // ── Background image ──────────────────────────────────────────────
-
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "BACKGROUND IMAGE", FS_SM, HINT);
-            cy += LH + SH;
-
-            // preview on the right, controls on the left
-            float imgPreviewW = w * 0.28f;
-            float imgCtrlW = w - imgPreviewW - PAD * 2f;
-            float imgPreviewStartY = cy;
-
-            var imgPreviewGo = new GameObject("BgImgPreview");
-            imgPreviewGo.transform.SetParent(content, false);
-            UGUIShip.SetPixelRect(imgPreviewGo.AddComponent<RectTransform>(),
-                new Rect(x + imgCtrlW + PAD * 2f, cy, imgPreviewW, imgPreviewW));
-            imgPreviewGo.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.3f);
-
-            var imgPreviewTexGo = new GameObject("BgImgPreviewTex");
-            imgPreviewTexGo.transform.SetParent(imgPreviewGo.transform, false);
-            var imgPreviewTexRt = imgPreviewTexGo.AddComponent<RectTransform>();
-            imgPreviewTexRt.anchorMin = Vector2.zero;
-            imgPreviewTexRt.anchorMax = Vector2.one;
-            imgPreviewTexRt.offsetMin = imgPreviewTexRt.offsetMax = Vector2.zero;
-            _bgImgPreview = imgPreviewTexGo.AddComponent<RawImage>();
-            _bgImgPreview.raycastTarget = false;
-            RefreshBgImgPreview();
-
-            // toggle
-            _bgImgToggleBtn = UGUIShip.CreateButton(content, new Rect(x, cy, imgCtrlW, BTN_H),
-                _bgImgOn ? "Image: ON" : "Image: OFF",
-                _bgImgOn ? BTN_ON : BTN_DARK, WHITE, FS_SM,
-                new Action(() =>
-                {
-                    _bgImgOn = !_bgImgOn;
-                    SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_ENABLED, _bgImgOn ? "true" : "false");
-                    MenuCustomizationApplication.Instance?.SetImageBgEnabled(_bgImgOn);
-                    var lbl = _bgImgToggleBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _bgImgOn ? "Image: ON" : "Image: OFF";
-                    var img = _bgImgToggleBtn?.GetComponent<Image>();
-                    if (img != null) img.color = _bgImgOn ? BTN_ON : BTN_DARK;
-                }));
+            // ── carousel header: ‹  Background Images  › ──
+            float arrow = subTabH;
+            UGUIShip.CreateButton(parent, new Rect(x, cy, arrow, BTN_H),
+                "<", BTN_DARK, WHITE, FS_SM, new Action(() => CycleBgPage(-1)));
+            _bgCarouselLabel = UGUIShip.CreateLabel(parent, new Rect(x + arrow, cy, w - arrow * 2f, BTN_H),
+                BgPageTitle(_bgPage), FS_SM, WHITE, TextAnchor.MiddleCenter);
+            UGUIShip.CreateButton(parent, new Rect(x + w - arrow, cy, arrow, BTN_H),
+                ">", BTN_DARK, WHITE, FS_SM, new Action(() => CycleBgPage(1)));
             cy += BTN_H + SH;
 
-            // browse + reset
-            float imgBrowseW = BTN_H * 2.5f;
-            float imgResetW = BTN_H * 2f;
-            float imgLblW = imgCtrlW - imgBrowseW - imgResetW - PAD * 2f;
-            _bgImgLabel = UGUIShip.CreateLabel(content, new Rect(x, cy, imgLblW, BTN_H),
-                string.IsNullOrEmpty(_bgImgPath) ? "none" : System.IO.Path.GetFileName(_bgImgPath),
-                FS_SM, HINT, TextAnchor.MiddleLeft);
-
-            UGUIShip.CreateButton(content, new Rect(x + imgLblW + PAD, cy, imgBrowseW, BTN_H),
-                "Browse", BTN_DARK, WHITE, FS_SM,
-                new Action(() => WinDialogs.PickPng("Select background image", path =>
-                {
-                    if (string.IsNullOrEmpty(path)) return;
-                    _bgImgPath = path;
-                    SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_PATH, path);
-                    MenuCustomizationApplication.Instance?.ApplyImageBgTexture(path);
-                    if (_bgImgLabel != null) _bgImgLabel.text = System.IO.Path.GetFileName(path);
-                    RefreshBgImgPreview();
-                })));
-
-            UGUIShip.CreateButton(content, new Rect(x + imgLblW + PAD + imgBrowseW + PAD, cy, imgResetW, BTN_H),
-                "Reset", BTN_REMOVE, WHITE, FS_SM,
-                new Action(() =>
-                {
-                    _bgImgPath = "";
-                    SettingsService.Remove(MenuCustomizationApplication.KEY_BG_IMG_PATH);
-                    MenuCustomizationApplication.Instance?.ApplyImageBgTexture("");
-                    if (_bgImgLabel != null) _bgImgLabel.text = "none";
-                    RefreshBgImgPreview();
-                }));
-            cy += BTN_H + PAD;
-
-            // position
-            UGUIShip.CreateLabel(content, new Rect(x, cy, imgCtrlW, LH), "POSITION", FS_SM, HINT);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, imgCtrlW, "X", _bgImgPosX,
-                MenuCustomizationApplication.BG_IMG_POS_MIN, MenuCustomizationApplication.BG_IMG_POS_MAX,
-                v => { _bgImgPosX = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, imgCtrlW, "Y", _bgImgPosY,
-                MenuCustomizationApplication.BG_IMG_POS_MIN, MenuCustomizationApplication.BG_IMG_POS_MAX,
-                v => { _bgImgPosY = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, imgCtrlW, "Z", _bgImgPosZ,
-                MenuCustomizationApplication.BG_IMG_POS_MIN, MenuCustomizationApplication.BG_IMG_POS_MAX,
-                v => { _bgImgPosZ = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
-            cy += LH + PAD;
-
-            // scale
-            UGUIShip.CreateLabel(content, new Rect(x, cy, imgCtrlW, LH), "SCALE", FS_SM, HINT);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, imgCtrlW, "Uniform", _bgImgScale,
-                MenuCustomizationApplication.BG_IMG_SCALE_MIN, MenuCustomizationApplication.BG_IMG_SCALE_MAX,
-                v => { _bgImgScale = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_SCALE_DEFAULT);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, imgCtrlW, "X", _bgImgScaleX,
-                MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MIN, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MAX,
-                v => { _bgImgScaleX = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, imgCtrlW, "Y", _bgImgScaleY,
-                MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MIN, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_MAX,
-                v => { _bgImgScaleY = v; ApplyBgImgTransform(); }, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT);
-            cy += LH + PAD;
-
-            UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
+            UGUIShip.CreatePanel(parent, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
 
-            // ── Ambient light ─────────────────────────────────────────────────
+            _bgBodyW = w;
+            _bgBodyH = h - cy;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "AMBIENT LIGHT", FS_SM, HINT);
-            cy += LH + SH;
+            var bodyGo = new GameObject("BgCarouselBody");
+            bodyGo.transform.SetParent(parent, false);
+            _bgCarouselBody = bodyGo.AddComponent<RectTransform>();
+            UGUIShip.SetPixelRect(_bgCarouselBody, new Rect(0f, cy, TabWidth, _bgBodyH));
+
+            RebuildBgCarouselBody();
+        }
+
+        private void CycleBgPage(int d)
+        {
+            _bgPage = (BgCarouselPage)(((int)_bgPage + d + 3) % 3);
+            if (_bgCarouselLabel != null) _bgCarouselLabel.text = BgPageTitle(_bgPage);
+            RebuildBgCarouselBody();
+        }
+
+        private static string BgPageTitle(BgCarouselPage p) => p switch
+        {
+            BgCarouselPage.Images => "Background Images",
+            BgCarouselPage.Ambient => "Ambient Light",
+            BgCarouselPage.Sun => "Main Sun Rotation",
+            _ => "?"
+        };
+
+        private void RebuildBgCarouselBody()
+        {
+            if (_bgCarouselBody == null) return;
+            for (int i = _bgCarouselBody.childCount - 1; i >= 0; i--)
+                GameObject.Destroy(_bgCarouselBody.GetChild(i).gameObject);
+
+            switch (_bgPage)
+            {
+                case BgCarouselPage.Images: BuildBgImagesPage(_bgCarouselBody, _bgBodyW, _bgBodyH); break;
+                case BgCarouselPage.Ambient: BuildAmbientPage(_bgCarouselBody, _bgBodyW, _bgBodyH); break;
+                case BgCarouselPage.Sun: BuildSunPage(_bgCarouselBody, _bgBodyW, _bgBodyH); break;
+            }
+        }
+
+        // ── Background images page ──────────────────────────────────────────────
+        // 1:1 with CustomSkinTextureTab's list: square thumbnail + name on the left, edit/on-off/remove
+        // on the right, "+ Add" row at the bottom opening the wizard. only one entry can be active at a
+        // time (single background quad) — toggling one on turns the previously active one off.
+
+        private void BuildBgImagesPage(RectTransform parent, float w, float h)
+        {
+            _bgEntries = MenuCustomizationApplication.LoadBgImageEntries();
+
+            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, 0f, TabWidth, h));
+            _bgImagesContent = content;
+            var vlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(2, 2, 2, 2);
+            vlg.spacing = 2f;
+            vlg.childControlHeight = false;
+            vlg.childForceExpandHeight = false;
+            vlg.childControlWidth = true;
+            vlg.childForceExpandWidth = true;
+            content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            RefreshBgImagesList();
+        }
+
+        private void RefreshBgImagesList()
+        {
+            if (_bgImagesContent == null) return;
+            for (int i = _bgImagesContent.childCount - 1; i >= 0; i--)
+                GameObject.Destroy(_bgImagesContent.GetChild(i).gameObject);
+
+            float rowW = TabWidth - PAD * 2f - 8f;
+
+            for (int i = 0; i < _bgEntries.Count; i++)
+            {
+                int idx = i;
+                var entry = _bgEntries[i];
+                bool active = entry.enabled;
+
+                var rowGo = new GameObject("BgRow_" + i);
+                rowGo.transform.SetParent(_bgImagesContent, false);
+                rowGo.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, BG_ROW_H);
+                var le = rowGo.AddComponent<LayoutElement>();
+                le.preferredHeight = BG_ROW_H;
+                le.flexibleWidth = 1f;
+                rowGo.AddComponent<Image>().color = WHITE;
+
+                var rowBtn = rowGo.AddComponent<Button>();
+                var nav = rowBtn.navigation;
+                nav.mode = Navigation.Mode.None;
+                rowBtn.navigation = nav;
+
+                var cols = rowBtn.colors;
+                cols.normalColor = i % 2 == 0 ? ROW_ALT : ROW_CLEAR;
+                cols.highlightedColor = ROW_HOVER;
+                cols.pressedColor = ROW_PRESS;
+                cols.selectedColor = cols.normalColor;
+                cols.fadeDuration = 0f;
+                rowBtn.colors = cols;
+
+                // square preview, cut to the row height
+                float thumbSz = BG_ROW_H - 4f;
+                var thumbGo = new GameObject("Thumb");
+                thumbGo.transform.SetParent(rowBtn.transform, false);
+                var thumbRt = thumbGo.AddComponent<RectTransform>();
+                UGUIShip.SetPixelRect(thumbRt, new Rect(3f, 2f, thumbSz, thumbSz));
+                var raw = thumbGo.AddComponent<RawImage>();
+                raw.raycastTarget = false;
+                var thumb = BgThumb(entry.path);
+                if (thumb != null) raw.texture = thumb;
+                else raw.color = new Color(0f, 0f, 0f, 0.4f);
+
+                float editW = 30f * UIScale.S, toggleW = 30f * UIScale.S, removeW = 22f * UIScale.S;
+                float nameX = thumbSz + 6f;
+                float nameW = rowW - editW - toggleW - removeW - nameX - 10f;
+
+                var nameLbl = UGUIShip.CreateLabel(rowBtn.transform,
+                    new Rect(nameX, 0f, nameW, BG_ROW_H), entry.entryName,
+                    FS_SM, active ? WHITE : DIM, TextAnchor.MiddleLeft);
+
+                BgRowBtn(rowBtn.transform, -(removeW + toggleW + editW + 4f), editW,
+                    "edit", BTN_DARK, () => OpenBgWizard(idx));
+
+                BgRowBtn(rowBtn.transform, -(removeW + toggleW + 2f), toggleW,
+                    active ? "on" : "off", active ? BTN_ON : BTN_DARK, () => ToggleBgEntry(idx));
+
+                BgRowBtn(rowBtn.transform, -2f, removeW, "x", BTN_REMOVE, () => RemoveBgEntry(idx));
+            }
+
+            var addBtn = UGUIShip.CreateButton(_bgImagesContent, new Rect(0f, 0f, TabWidth - PAD * 2f - 8f, BG_ROW_H),
+                "+ Add Background Image", BTN_ADD, WHITE, FS, new Action(() => OpenBgWizard(-1)));
+            var addLe = addBtn.gameObject.AddComponent<LayoutElement>();
+            addLe.preferredHeight = BG_ROW_H;
+            addLe.flexibleWidth = 1f;
+        }
+
+        private Button BgRowBtn(Transform parent, float anchoredX, float bw, string label, Color bg, Action onClick)
+        {
+            float bh = Mathf.Min(BG_ROW_H - 6f, 24f * UIScale.S);
+            var btn = UGUIShip.CreateButton(parent, new Rect(0f, 0f, bw, bh), label, bg, WHITE, FS_SM - 1, onClick);
+            var rt = btn.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(1f, 0.5f);
+            rt.anchorMax = new Vector2(1f, 0.5f);
+            rt.pivot = new Vector2(1f, 0.5f);
+            rt.anchoredPosition = new Vector2(anchoredX, 0f);
+            rt.sizeDelta = new Vector2(bw, bh);
+            return btn;
+        }
+
+        private static Texture2D BgThumb(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+            if (_bgThumbCache.TryGetValue(path, out var cached) && cached != null) return cached;
+            try
+            {
+                var bytes = System.IO.File.ReadAllBytes(path);
+                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                tex.LoadImage(bytes);
+                tex.wrapMode = TextureWrapMode.Clamp;
+                _bgThumbCache[path] = tex;
+                return tex;
+            }
+            catch (Exception ex) { Plugin.Log.LogError("MenuTab: bg thumb failed: " + ex.Message); return null; }
+        }
+
+        private void OpenBgWizard(int editIdx)
+        {
+            var wizard = BetterFGTabRegistry.NewTab<MenuBackgroundImageWizardTab>();
+            wizard.EditIndex = editIdx;
+            BetterFGUIMan.Instance?.SwitchSlotTab(this, wizard);
+        }
+
+        private void ToggleBgEntry(int idx)
+        {
+            MenuCustomizationApplication.Instance?.SetBgImageEnabled(idx, !_bgEntries[idx].enabled);
+            _bgEntries[idx].enabled = !_bgEntries[idx].enabled;
+            RefreshBgImagesList();
+        }
+
+        private void RemoveBgEntry(int idx)
+        {
+            bool wasEnabled = _bgEntries[idx].enabled;
+            _bgEntries.RemoveAt(idx);
+            MenuCustomizationApplication.SaveBgImageEntries(_bgEntries);
+            if (wasEnabled) MenuCustomizationApplication.Instance?.ApplyImageBgFromSettings();
+            RefreshBgImagesList();
+        }
+
+        // ── Ambient light page ────────────────────────────────────────────────
+
+        private void BuildAmbientPage(RectTransform parent, float w, float h)
+        {
+            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, 0f, TabWidth, h));
+            float x = PAD;
+            float cy = PAD;
 
             float ambSwatchW = BTN_H;
             float ambSliderW = w - ambSwatchW - PAD;
@@ -403,13 +507,16 @@ namespace BetterFG.UI.Tab
                 v => _ambientR = v, v => _ambientG = v, v => _ambientB = v, () => ApplyAmbient(), out _, out _, out _,
                 new Color(0.5f, 0.5f, 0.5f));
 
-            UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
-            cy += 1f + PAD;
+            content.sizeDelta = new Vector2(0f, cy + PAD);
+        }
 
-            // ── Main sun rotation ─────────────────────────────────────────────
+        // ── Main sun rotation page ────────────────────────────────────────────
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "MAIN SUN ROTATION", FS_SM, HINT);
-            cy += LH + SH;
+        private void BuildSunPage(RectTransform parent, float w, float h)
+        {
+            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, 0f, TabWidth, h));
+            float x = PAD;
+            float cy = PAD;
 
             _sunToggleBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
                 _sunOn ? "Sun override: ON" : "Sun override: OFF",
@@ -455,38 +562,6 @@ namespace BetterFG.UI.Tab
             SettingsService.Set(MenuCustomizationApplication.KEY_SUN_ROT_Y, _sunRotY.ToString(ci));
             SettingsService.Set(MenuCustomizationApplication.KEY_SUN_ROT_Z, _sunRotZ.ToString(ci));
             if (_sunOn) MenuCustomizationApplication.Instance?.ApplySunRotation(_sunRotX, _sunRotY, _sunRotZ);
-        }
-
-        private void ApplyBgImgTransform()
-        {
-            SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_POS_X, _bgImgPosX.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_POS_Y, _bgImgPosY.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_POS_Z, _bgImgPosZ.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_SCALE, _bgImgScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_SCALE_X, _bgImgScaleX.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            SettingsService.Set(MenuCustomizationApplication.KEY_BG_IMG_SCALE_Y, _bgImgScaleY.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            MenuCustomizationApplication.Instance?.ApplyImageBgTransform(_bgImgPosX, _bgImgPosY, _bgImgPosZ, _bgImgScale, _bgImgScaleX, _bgImgScaleY);
-        }
-
-        private void RefreshBgImgPreview()
-        {
-            if (_bgImgPreview == null) return;
-            if (string.IsNullOrEmpty(_bgImgPath) || !System.IO.File.Exists(_bgImgPath))
-            {
-                _bgImgPreview.texture = null;
-                _bgImgPreview.color = new Color(1f, 1f, 1f, 0f);
-                return;
-            }
-            try
-            {
-                var bytes = System.IO.File.ReadAllBytes(_bgImgPath);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                tex.LoadImage(bytes);
-                tex.wrapMode = TextureWrapMode.Clamp;
-                _bgImgPreview.texture = tex;
-                _bgImgPreview.color = Color.white;
-            }
-            catch (Exception ex) { Plugin.Log.LogError("MenuTab: bg img preview failed: " + ex.Message); }
         }
 
         // ── Camera panel ──────────────────────────────────────────────────────
@@ -738,15 +813,6 @@ namespace BetterFG.UI.Tab
             _botR = P(KEY_BOT_R, 1f); _botG = P(KEY_BOT_G, 1f); _botB = P(KEY_BOT_B, 1f);
             _bias = P(KEY_BIAS, 0f);
             _smooth = P(KEY_SMOOTH, 1f);
-
-            _bgImgOn = SettingsService.Get(MenuCustomizationApplication.KEY_BG_IMG_ENABLED, "false") == "true";
-            _bgImgPath = SettingsService.Get(MenuCustomizationApplication.KEY_BG_IMG_PATH, "");
-            _bgImgPosX = P(MenuCustomizationApplication.KEY_BG_IMG_POS_X, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
-            _bgImgPosY = P(MenuCustomizationApplication.KEY_BG_IMG_POS_Y, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
-            _bgImgPosZ = P(MenuCustomizationApplication.KEY_BG_IMG_POS_Z, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
-            _bgImgScale = P(MenuCustomizationApplication.KEY_BG_IMG_SCALE, MenuCustomizationApplication.BG_IMG_SCALE_DEFAULT);
-            _bgImgScaleX = P(MenuCustomizationApplication.KEY_BG_IMG_SCALE_X, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT);
-            _bgImgScaleY = P(MenuCustomizationApplication.KEY_BG_IMG_SCALE_Y, MenuCustomizationApplication.BG_IMG_SCALE_AXIS_DEFAULT);
 
             _ambientOn = SettingsService.Get(MenuCustomizationApplication.KEY_AMBIENT_ON, "false") == "true";
             _ambientR = P(MenuCustomizationApplication.KEY_AMBIENT_R, 0.5f);

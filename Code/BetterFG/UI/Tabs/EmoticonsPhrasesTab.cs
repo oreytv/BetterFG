@@ -15,9 +15,9 @@ using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class EmoticonsPhrasesTab : BetterFGTab
+    public class EmoticonsPhrasesTab : Tab
     {
         public EmoticonsPhrasesTab(IntPtr ptr) : base(ptr) { }
 

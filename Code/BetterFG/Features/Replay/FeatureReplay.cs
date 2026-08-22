@@ -8,7 +8,7 @@ using BetterFG.Customization.Player;
 using BetterFG.Nametag;
 using BetterFG.Network;
 using BetterFG.UI;
-using BetterFG.UI.Tab;
+using BetterFG.UI.Tabs;
 using BetterFG.Utilities;
 using Character;
 using FG.Common;

@@ -286,7 +286,61 @@ namespace BetterFG.UI.Windows
                 if (incs != null)
                     foreach (var inc in incs)
                         BuildIncrementRow(parent, tweak, inc, bg);
+
+                var sliders = tweak.GetSliders();
+                if (sliders != null)
+                    foreach (var sl in sliders)
+                        BuildSliderRow(parent, sl, bg);
             }
+        }
+
+        // slider as a sub-row in the expanded panel: label on the left (indented, like a setting),
+        // slider + value readout on the right where the toggle sits on the parent row.
+        private static void BuildSliderRow(RectTransform parent, TweakSlider sl, Color bg)
+        {
+            var rowGo = new GameObject("Slider_" + sl.Label);
+            rowGo.transform.SetParent(parent, false);
+            var le = rowGo.AddComponent<LayoutElement>();
+            le.preferredHeight = ROW_H;
+            le.flexibleWidth = 1f;
+            rowGo.AddComponent<Image>().color = bg;
+
+            const float SET_LABEL_X = PAD + 34f;
+            UGUIShip.CreateLabel(rowGo.transform,
+                new Rect(SET_LABEL_X, 0f, 200f, ROW_H),
+                sl.Label, 12,
+                new Color(1f, 1f, 1f, 0.7f),
+                TextAnchor.MiddleLeft);
+
+            const float SLIDER_W = 90f;
+            const float VAL_W = 34f;
+            float controlW = SLIDER_W + VAL_W + 4f;
+
+            var ctrlGo = new GameObject("SliderCtrl");
+            ctrlGo.transform.SetParent(rowGo.transform, false);
+            var ctrlRt = ctrlGo.AddComponent<RectTransform>();
+            ctrlRt.anchorMin = ctrlRt.anchorMax = new Vector2(1f, 0.5f);
+            ctrlRt.pivot = new Vector2(1f, 0.5f);
+            ctrlRt.anchoredPosition = new Vector2(-PAD, 0f);
+            ctrlRt.sizeDelta = new Vector2(controlW, TOGGLE_H);
+
+            int decimals = sl.Step >= 1f ? 0 : sl.Step >= 0.1f ? 1 : 2;
+            string Fmt(float v) => v.ToString("F" + decimals, System.Globalization.CultureInfo.InvariantCulture);
+
+            var readout = UGUIShip.CreateLabel(ctrlGo.transform,
+                new Rect(SLIDER_W + 4f, 0f, VAL_W, TOGGLE_H),
+                Fmt(sl.Get()), 9, Color.white, TextAnchor.MiddleRight);
+
+            var capturedSl = sl;
+            UGUIShip.CreateSlider(ctrlGo.transform, 0f, 0f, SLIDER_W,
+                "", Mathf.InverseLerp(sl.Min, sl.Max, sl.Get()), TOGGLE_H, 0f, 9,
+                new Action<float>(t =>
+                {
+                    float v = Mathf.Round(Mathf.Lerp(capturedSl.Min, capturedSl.Max, t) / capturedSl.Step) * capturedSl.Step;
+                    capturedSl.Set(v);
+                    readout.text = Fmt(v);
+                }),
+                null, null, false);
         }
 
         // increment as a sub-row in the expanded panel: label on the left (indented, like a setting),

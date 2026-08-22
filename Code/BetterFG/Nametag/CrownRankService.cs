@@ -284,12 +284,16 @@ namespace BetterFG.Nametag
         // it's driven by the game's own centre call it's re-applied every time the game re-centres.
         public static void EnforceCrownSide(CrownRankPlayerTagLayoutHelper helper)
         {
-            if (helper == null) return;
+            // the game re-centres every tag it draws, so this is on a per-tag-per-frame path in a full
+            // show. m_CachedPtr instead of the Unity == operator — that's a real il2cpp invoke each time.
+            if (helper is null || helper.m_CachedPtr == System.IntPtr.Zero) return;
 
             var nameAndCrown = helper._crownParentTransform;
+            if (nameAndCrown is null || nameAndCrown.m_CachedPtr == System.IntPtr.Zero) return;
+
             var crownGo = helper.crownRankObject;
-            var crown = crownGo != null ? crownGo.transform : null;
-            if (nameAndCrown == null || crown == null) return;
+            if (crownGo is null || crownGo.m_CachedPtr == System.IntPtr.Zero) return;
+            var crown = crownGo.transform;
 
             // canvas nametag (UGUI): the crown is a layout child, so its SIDE is just its sibling index — first
             // sibling = left of the name, last = right. no position math, and it leaves the icon where it is
@@ -297,7 +301,7 @@ namespace BetterFG.Nametag
             if (IsCanvasTag(crown))
             {
                 var parent = crown.parent;
-                if (parent == null) return;
+                if (parent is null) return;
                 int want = SwapSide ? 0 : parent.childCount - 1;
                 if (crown.GetSiblingIndex() == want) return;
                 if (SwapSide) crown.SetAsFirstSibling();

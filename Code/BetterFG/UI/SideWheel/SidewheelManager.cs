@@ -409,7 +409,10 @@ namespace BetterFG.UI.SideWheel
             if (_entries.Count == 0) return;
             for (int i = 0; i < _iconRts.Count; i++)
             {
-                float angleDeg = _currentAngle - ICON_STEP_DEG * i;
+                // wrap before use — _currentAngle accumulates unbounded from scrolling, and the tilt
+                // below multiplies by LabelTiltStrength before Quaternion.Euler's own periodicity kicks
+                // in, so an unwrapped angle drifts the label rotation further off with every lap scrolled
+                float angleDeg = Mathf.Repeat(_currentAngle - ICON_STEP_DEG * i + 180f, 360f) - 180f;
                 float angleRad = angleDeg * Mathf.Deg2Rad;
                 var pos = new Vector2(Mathf.Cos(angleRad), Mathf.Sin(angleRad)) * IconOrbitR;
                 _iconRts[i].anchoredPosition = pos;

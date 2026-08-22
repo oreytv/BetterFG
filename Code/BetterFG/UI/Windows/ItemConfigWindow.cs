@@ -36,7 +36,7 @@ namespace BetterFG.UI.Windows
 
         // ── Public API ────────────────────────────────────────────────────────
 
-        public void Configure(SkinInfo skin, SkinApplicationService appService, BetterFG.UI.BetterFGTab ownerTab = null)
+        public void Configure(SkinInfo skin, SkinApplicationService appService, BetterFG.UI.Tab ownerTab = null)
         {
             _targetSkin = skin;
             _appService = appService;

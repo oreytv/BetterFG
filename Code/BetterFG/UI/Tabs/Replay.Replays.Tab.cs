@@ -9,7 +9,7 @@ using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     public class ReplaysTab : ReplayTab
     {
@@ -18,7 +18,7 @@ namespace BetterFG.UI.Tab
         public override string TabTitle => "Replays";
 
         protected override string SwitchLabel => "Images →";
-        protected override BetterFGTab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<ReplayImagesTab>();
+        protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<ReplayImagesTab>();
 
         const float ROW_H = 48f;
         const int PAGE_SIZE = 25;

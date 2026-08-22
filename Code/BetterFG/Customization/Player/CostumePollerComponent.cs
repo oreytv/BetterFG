@@ -80,7 +80,7 @@ namespace BetterFG.Customization.Player
 
         void Update()
         {
-            if (beanGEO == null) { Destroy(this); return; }
+            if (beanGEO is null || beanGEO.m_CachedPtr == System.IntPtr.Zero) { Destroy(this); return; }
             if (Time.time < _nextCheck) return;
             _nextCheck = Time.time + CHECK_INTERVAL;
             HideBeans();

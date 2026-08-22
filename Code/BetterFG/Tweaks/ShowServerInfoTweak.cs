@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Threading;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -52,11 +52,18 @@ namespace BetterFG.Tweaks
         }
 
         // round start. spins up the label + ms/region readout. raised only on enabled tweaks
+        // the two Hazel byte-counter patches sit on Send and OnDataReceived, i.e. one native->managed
+        // crossing per packet, and the readout they feed only exists during a round. so they ride the
+        // round rather than the toggle — nothing is hooked while you're sat in a menu or a lobby.
         public override void OnRoundStart()
         {
             if (Features.UnityRound.Editor.UnityRoundLoader.InLevelEditor) return;
+            Utilities.PatchGate.SetActive("tweak.show_server_info", true);
             StartCoroutine(Run().WrapToIl2Cpp());
         }
+
+        public override void OnBannerShown() => Utilities.PatchGate.SetActive("tweak.show_server_info", false);
+        public override void OnMainMenuEntered() => Utilities.PatchGate.SetActive("tweak.show_server_info", false);
 
         // entering the level editor tears the label down (the VictoryScreenBean state hook used to do
         // this by name). only fires the destroy when we're actually in the editor
@@ -123,7 +130,7 @@ namespace BetterFG.Tweaks
                 rt.anchorMax = new Vector2(1f, 0.5f);
                 rt.pivot = new Vector2(1f, 0.5f);
                 rt.anchoredPosition = new Vector2(-40f, -40f);
-                rt.sizeDelta = new Vector2(400f, 110f);
+                rt.sizeDelta = new Vector2(400f, 145f);
             }
 
             // kick off region lookup if this is a new server
@@ -150,6 +157,10 @@ namespace BetterFG.Tweaks
             float upKBs = 0f, downKBs = 0f;
             int lastMs = int.MinValue;
             string lastRegion = null;
+            float lastFpsTime = Time.unscaledTime;
+            int lastFrameCount = Time.frameCount;
+            int fps = 0;
+            float frameMs = 0f;
 
             while (gen == _runGen && _label != null)
             {
@@ -190,14 +201,26 @@ namespace BetterFG.Tweaks
                     }
                 }
 
+                float fnow = Time.unscaledTime;
+                if (fnow - lastFpsTime >= 1f)
+                {
+                    int frames = Time.frameCount - lastFrameCount;
+                    float span = fnow - lastFpsTime;
+                    fps = Mathf.RoundToInt(frames / span);
+                    frameMs = frames > 0 ? span * 1000f / frames : 0f;
+                    lastFrameCount = Time.frameCount;
+                    lastFpsTime = fnow;
+                    sampled = true;
+                }
+
                 string region = RegionText();
                 if (sampled || ms != lastMs || !ReferenceEquals(region, lastRegion))
                 {
                     lastMs = ms;
                     lastRegion = region;
                     _label.text = unm != null
-                        ? $"{ms}ms  {ppsOut}pps  {lossPct}% loss\n↑ {upKBs:0.0} KB/s   ↓ {downKBs:0.0} KB/s\n{region}"
-                        : $"{ms}ms\n{region}";
+                        ? $"{fps} fps  {frameMs:0.00}ms\n{ms}ms  {ppsOut}pps  {lossPct}% loss\n↑ {upKBs:0.0} KB/s   ↓ {downKBs:0.0} KB/s\n{region}"
+                        : $"{fps} fps  {frameMs:0.00}ms\n{ms}ms\n{region}";
                 }
                 yield return _tick;
             }

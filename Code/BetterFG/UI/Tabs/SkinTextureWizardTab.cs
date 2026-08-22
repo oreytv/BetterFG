@@ -2,56 +2,31 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Customization.Player;
 using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class SkinTextureWizardTab : BetterFGTab
+    public class SkinTextureWizardTab : WizardTab
     {
         public SkinTextureWizardTab(IntPtr ptr) : base(ptr) { }
 
-        public int EditIndex = -1;
-
         public override string TabTitle => EditIndex >= 0 ? "Skin Texture - Edit" : "Skin Texture - New";
+        protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
 
-        private static float PAD => UIScale.PAD;
-        private static float VPAD => UIScale.VPAD;
-        private static float SH => UIScale.SH;
-        private static float LH => UIScale.LH;
-        private static float BTN_H => UIScale.BTN_H;
-        private static int FS => UIScale.FS;
-        private static int FS_SM => UIScale.FS_SM;
-
-        private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
-        private static readonly Color LABEL = new Color(1f, 1f, 1f, 0.72f);
-        private static readonly Color WHITE = Color.white;
         private static readonly Color OK = new Color(0.55f, 0.85f, 0.55f, 1f);
-        private static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
-        private static readonly Color BTN_BLUE = new Color(0.22f, 0.34f, 0.55f, 1f);
-        private static readonly Color BTN_GREEN = new Color(0.25f, 0.5f, 0.25f, 1f);
-        private static readonly Color ROW_IDLE = new Color(0.12f, 0.12f, 0.12f, 1f);
-        private static readonly Color ROW_SEL = new Color(0.25f, 0.45f, 0.25f, 1f);
 
-        private static float ROW_H => 24f * UIScale.S;
-
-        private enum Step { Costume, Material, Png, Name }
-        private static readonly string[] StepTitles =
+        private enum WizardStep { Costume, Material, Png, Name }
+        protected override string[] StepTitles => new[]
         {
             "Choose a skin",
             "Choose the texture to change",
             "Choose the texture to change to",
             "Name it"
         };
-
-        private Step _step = Step.Costume;
-        private GameObject _costumeStep, _matStep, _pngStep, _nameStep;
-        private Text _stepHeader, _status;
-        private Button _backBtn, _nextBtn;
 
         private InputField _searchField;
         private RectTransform _resultContent;
@@ -75,66 +50,6 @@ namespace BetterFG.UI.Tab
         private InputField _nameField;
         private Text _summaryLbl;
 
-        private static Texture2D _bgTex;
-        private static Texture2D _hoverTex;
-        private GameObject _bgHoverGo;
-
-        private static Texture2D LoadTex(string resource, ref Texture2D cache)
-        {
-            if (cache != null) return cache;
-            try
-            {
-                var asm = Assembly.GetExecutingAssembly();
-                using var stream = asm.GetManifestResourceStream(resource);
-                if (stream == null) return null;
-                var bytes = new byte[stream.Length];
-                stream.Read(bytes, 0, bytes.Length);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                tex.LoadImage(bytes);
-                tex.wrapMode = TextureWrapMode.Clamp;
-                cache = tex;
-            }
-            catch (Exception ex) { Plugin.Log.LogError("skin texture wizard: tex load fail: " + ex.Message); }
-            return cache;
-        }
-
-        protected override void BuildBackground(RectTransform root)
-        {
-            var bgTex = LoadTex("BetterFG.assets.ui.tab.customskintexture.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0);
-            var raw = bgGo.AddComponent<RawImage>();
-            raw.texture = bgTex;
-            raw.raycastTarget = false;
-
-            var hoverTex = LoadTex("BetterFG.assets.ui.bg_hover.png", ref _hoverTex);
-            if (hoverTex != null)
-            {
-                var hoverGo = new GameObject("BG_Hover");
-                hoverGo.transform.SetParent(bgGo.transform, false);
-                var hRt = hoverGo.AddComponent<RectTransform>();
-                hRt.anchorMin = Vector2.zero;
-                hRt.anchorMax = Vector2.one;
-                hRt.offsetMin = hRt.offsetMax = Vector2.zero;
-                hoverGo.AddComponent<RawImage>().texture = hoverTex;
-                hoverGo.SetActive(false);
-                _bgHoverGo = hoverGo;
-            }
-        }
-
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
-        }
-
         private float _tickTimer;
         void Update()
         {
@@ -144,50 +59,21 @@ namespace BetterFG.UI.Tab
             WinDialogs.Tick();
         }
 
-        protected override void BuildContent(RectTransform contentRoot)
+        protected override void BuildStep(int step, RectTransform root, float w, float bodyH)
         {
-            float w = TabWidth - PAD * 2f;
-
-            _stepHeader = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, VPAD, w, LH), "", FS, LABEL);
-
-            float bodyY = VPAD + LH + SH;
-            float bodyH = TabHeight - bodyY - BTN_H - LH - VPAD - SH * 2f;
-
-            _costumeStep = MakePanel(contentRoot, bodyY, bodyH);
-            BuildCostumeStep(_costumeStep.GetComponent<RectTransform>(), w, bodyH);
-            _matStep = MakePanel(contentRoot, bodyY, bodyH);
-            BuildMaterialStep(_matStep.GetComponent<RectTransform>(), w, bodyH);
-            _pngStep = MakePanel(contentRoot, bodyY, bodyH);
-            BuildPngStep(_pngStep.GetComponent<RectTransform>(), w, bodyH);
-            _nameStep = MakePanel(contentRoot, bodyY, bodyH);
-            BuildNameStep(_nameStep.GetComponent<RectTransform>(), w, bodyH);
-
-            float navY = bodyY + bodyH + SH;
-            float bw = (w - PAD) / 2f;
-            _backBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, navY, bw, BTN_H),
-                "< BACK", BTN_DARK, WHITE, FS_SM, new Action(OnBack));
-            _nextBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD + bw + PAD * 0.5f, navY, bw, BTN_H),
-                "NEXT >", BTN_BLUE, WHITE, FS_SM, new Action(OnNext));
-
-            _status = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, navY + BTN_H + SH, w, LH), "", FS_SM, HINT, TextAnchor.MiddleCenter);
-
-            if (EditIndex >= 0) LoadEditedEntry();
-            RefreshStep();
+            switch ((WizardStep)step)
+            {
+                case WizardStep.Costume: BuildCostumeStep(root, w, bodyH); break;
+                case WizardStep.Material: BuildMaterialStep(root, w, bodyH); break;
+                case WizardStep.Png: BuildPngStep(root, w, bodyH); break;
+                case WizardStep.Name: BuildNameStep(root, w, bodyH); break;
+            }
         }
 
-        private GameObject MakePanel(RectTransform parent, float y, float h)
-        {
-            var go = new GameObject("Panel");
-            go.transform.SetParent(parent, false);
-            var rt = go.AddComponent<RectTransform>();
-            UGUIShip.SetPixelRect(rt, new Rect(0f, y, TabWidth, h));
-            return go;
-        }
-
-        private void LoadEditedEntry()
+        protected override int LoadEditedEntry()
         {
             var entries = SkinApplicationService.LoadEntries();
-            if (EditIndex >= entries.Count) { EditIndex = -1; return; }
+            if (EditIndex >= entries.Count) { EditIndex = -1; return -1; }
 
             var entry = entries[EditIndex];
             _costumeName = entry.costumeName;
@@ -197,11 +83,12 @@ namespace BetterFG.UI.Tab
             UGUIShip.SetInputText(_nameField, entry.entryName, false);
             LoadPngPreview();
             RebuildMatRows();
-            _step = Step.Material;
 
             var costume = FindCostume(_costumeName);
             if (costume != null) StartCoroutine(CacheCostumeRoutine(costume).WrapToIl2Cpp());
             else SetStatus(_costumeName + " isn't loaded, search for it again to see its textures");
+
+            return (int)WizardStep.Material;
         }
 
         private static CostumeOption FindCostume(string costumeName)
@@ -219,55 +106,17 @@ namespace BetterFG.UI.Tab
             return null;
         }
 
-        private void OnBack()
-        {
-            if (_step == Step.Costume) { LeaveToList(); return; }
-            _step = (Step)((int)_step - 1);
-            RefreshStep();
-        }
+        protected override Tab MakeListTarget() => BetterFGTabRegistry.CreateTab("Skin Texture");
 
-        private void OnNext()
+        protected override bool CanAdvance(int step)
         {
-            if (_step == Step.Name) { Save(); return; }
-            _step = (Step)((int)_step + 1);
-            RefreshStep();
-        }
-
-        private void LeaveToList()
-            => BetterFGUIMan.Instance?.SwitchSlotTab(this, BetterFGTabRegistry.CreateTab("Skin Texture"));
-
-        private bool CanAdvance()
-        {
-            switch (_step)
+            switch ((WizardStep)step)
             {
-                case Step.Costume: return _matNames.Count > 0;
-                case Step.Material: return _matIdx >= 0 && _matIdx < _matNames.Count;
-                case Step.Png: return !string.IsNullOrEmpty(_pngPath);
+                case WizardStep.Costume: return _matNames.Count > 0;
+                case WizardStep.Material: return _matIdx >= 0 && _matIdx < _matNames.Count;
+                case WizardStep.Png: return !string.IsNullOrEmpty(_pngPath);
                 default: return true;
             }
-        }
-
-        private void RefreshStep()
-        {
-            _costumeStep.SetActive(_step == Step.Costume);
-            _matStep.SetActive(_step == Step.Material);
-            _pngStep.SetActive(_step == Step.Png);
-            _nameStep.SetActive(_step == Step.Name);
-
-            _stepHeader.text = $"Step {(int)_step + 1} of 4  -  {StepTitles[(int)_step]}";
-
-            bool last = _step == Step.Name;
-            var nlbl = _nextBtn.GetComponentInChildren<Text>();
-            if (nlbl != null) nlbl.text = last ? (EditIndex >= 0 ? "SAVE CHANGES" : "SAVE") : "NEXT >";
-
-            bool can = CanAdvance();
-            _nextBtn.interactable = can;
-            if (nlbl != null) nlbl.color = can ? WHITE : HINT;
-
-            var blbl = _backBtn.GetComponentInChildren<Text>();
-            if (blbl != null) blbl.text = _step == Step.Costume ? "< CANCEL" : "< BACK";
-
-            if (_step == Step.Name) RefreshSummary();
         }
 
         private void BuildCostumeStep(RectTransform root, float w, float bodyH)
@@ -661,22 +510,22 @@ namespace BetterFG.UI.Tab
             _summaryLbl.alignment = TextAnchor.UpperLeft;
         }
 
-        private void RefreshSummary()
+        protected override void RefreshSummary()
         {
             string mat = _matIdx >= 0 && _matIdx < _matNames.Count ? _matNames[_matIdx] : "?";
             _summaryLbl.text = $"skin: {_costumeName}\ntexture: {mat}\npng: {(string.IsNullOrEmpty(_pngPath) ? "?" : Path.GetFileName(_pngPath))}";
         }
 
-        private void Save()
+        protected override bool Save()
         {
             string name = _nameField.text?.Trim() ?? "";
-            if (string.IsNullOrEmpty(name)) { SetStatus("give it a name first"); return; }
+            if (string.IsNullOrEmpty(name)) { SetStatus("give it a name first"); return false; }
 
             var entries = SkinApplicationService.LoadEntries();
             for (int i = 0; i < entries.Count; i++)
             {
                 if (i == EditIndex) continue;
-                if (entries[i].entryName == name) { SetStatus("you already have one called that"); return; }
+                if (entries[i].entryName == name) { SetStatus("you already have one called that"); return false; }
             }
 
             bool editing = EditIndex >= 0 && EditIndex < entries.Count;
@@ -696,13 +545,7 @@ namespace BetterFG.UI.Tab
             SkinApplicationService.SaveEntries(entries);
             SkinApplicationService.ReapplyAllEnabled(entries, null);
             Plugin.Log.LogInfo($"skin texture {(editing ? "updated" : "added")}: {name} -> {entry.costumeName}/{(_matIdx >= 0 && _matIdx < _matNames.Count ? _matNames[_matIdx] : "?")}");
-
-            LeaveToList();
-        }
-
-        private void SetStatus(string msg)
-        {
-            if (_status != null) _status.text = msg;
+            return true;
         }
     }
 }

@@ -14,13 +14,13 @@ using BetterFG.Features.MorePlatformIcon;
 using HarmonyLib;
 using FGClient;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     // the nametag font + materials don't exist at the absolute start of the game (nothing loaded yet),
     // so cache them on main menu enter — that's when the game has those assets around. one call from
     // OnMainMenuEntered, not a per-frame poll. re-entering the menu is harmless (early-outs once filled).
 
-    public class NametagTab : BetterFGTab
+    public class NametagTab : Tab
     {
         public NametagTab(IntPtr ptr) : base(ptr) { }
 

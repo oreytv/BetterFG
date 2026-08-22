@@ -11,6 +11,7 @@ using FGClient.UI.Core;
 using FGClient;
 using System.Runtime.InteropServices;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Wushu.Framework.ExtensionMethods;
 using TMPro;
 using FallGuysLib.UI;
@@ -88,9 +89,10 @@ namespace BetterFG.Features.QualificationTime
         public static void CreateInMenu()
         {
             if (!On("menu")) return;
-            var tabsLayout = GameObject.Find("UICanvas_Client_V2(Clone)/Default/Topbar_Prime(Clone)/SafeArea/TabsHorizontalLayout")?.transform;
+            var topbar = GameObject.Find("UICanvas_Client_V2(Clone)/Default/Topbar_Prime(Clone)");
+            var tabsLayout = topbar?.transform.Find("SafeArea/TabsHorizontalLayout");
             var shopBtn = tabsLayout?.Find("ShopButton");
-            if (tabsLayout == null || shopBtn == null) return;
+            if (topbar == null || tabsLayout == null || shopBtn == null) return;
             if (tabsLayout.Find("ShopButton(Clone)") != null) return;
 
             var clone = UnityEngine.Object.Instantiate(shopBtn.gameObject, tabsLayout);
@@ -98,11 +100,45 @@ namespace BetterFG.Features.QualificationTime
 
             tabsLayout.localScale = Vector3.one * 0.9f;
 
+            // the clone came off ShopButton so it carries the store tab's VM — kill it or it fights
+            // us trying to drive the store subscreen when our tab lights up.
+            var storeVm = clone.GetComponent<SymphonyStoreMenuTabViewModel>();
+            if (storeVm != null) UnityEngine.Object.Destroy(storeVm);
+
             var toggle = clone.GetComponent<UnityEngine.UI.Toggle>();
             if (toggle != null)
             {
                 toggle.onValueChanged.RemoveAllListeners();
-                toggle.onValueChanged.AddListener((UnityEngine.Events.UnityAction<bool>)(val => { if (val) ShowPbPopup(); }));
+                toggle.isOn = false;
+                PBTabView.TabToggle = toggle;
+                // the clone is in the tab ToggleGroup, so it goes on when picked and off the instant
+                // ANY other tab is picked — by click OR nav. that on/off IS the show/hide signal, so we
+                // don't have to guess from view indices. (Hide uses SetIsOnWithoutNotify so it never
+                // re-enters here.)
+                toggle.onValueChanged.AddListener((UnityEngine.Events.UnityAction<bool>)(val =>
+                {
+                    if (val) PBTabView.Show();
+                    else PBTabView.Hide();
+                }));
+            }
+
+            // register the clone into the top bar's Rewired navigation so a controller/keyboard can
+            // reach it as the last tab. it's a plain GameObject[] the nav cycles through positionally,
+            // so it lands on view 6 (Settings) — the nav patch catches that and shows our tab instead.
+            var nav = topbar.GetComponent<SwitchableViewRewiredNavigation>();
+            if (nav != null && nav._menuTabs != null)
+            {
+                var old = nav._menuTabs;
+                bool already = false;
+                for (int i = 0; i < old.Length; i++) if (old[i] == clone) { already = true; break; }
+                if (!already)
+                {
+                    var grown = new Il2CppReferenceArray<GameObject>(old.Length + 1);
+                    for (int i = 0; i < old.Length; i++) grown[i] = old[i];
+                    grown[old.Length] = clone;
+                    PBTabView.MenuTabIndex = old.Length;
+                    nav.SetupMenuTabs(grown);
+                }
             }
 
             var icon = clone.transform.Find("Icon");
@@ -112,6 +148,10 @@ namespace BetterFG.Features.QualificationTime
                 if (img != null)
                     img.sprite = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.feature.qualificationtime.featurequalificationtime_icon.png");
             }
+
+            MenuCustomizationApplication.Instance?.SeedForegroundCloneOriginals(shopBtn.gameObject, clone);
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(clone.transform);
+
             clone.SetActive(true);
         }
 
@@ -553,12 +593,6 @@ namespace BetterFG.Features.QualificationTime
                 UnityEngine.Object.Destroy(clone);
         }
 
-        public static void ShowPbPopup()
-        {
-            GameObject.Find("MainMenuManager").GetComponent<MainMenuManager>().NavigateToView(MainMenuViews.Customiser);
-            PBPopup.Show();
-        }
-
         static void ShowPbLabel(Transform cloneRoot, bool isPb, string levelName, float elapsed, float prevPb)
         {
             var tmps = cloneRoot.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true);
@@ -671,11 +705,6 @@ namespace BetterFG.Features.QualificationTime
         static GameObject _liveTimerGo;
         static FGClient.TimeAttackResultViewModel _liveTimerVm;
         static TextMeshProUGUI _liveTimerText;
-        // SpawnLiveTimer destroys the old timer and assigns the new one in the same frame, so the
-        // previous round's 50Hz ticker wakes to a non-null _liveTimerGo (the NEW one) and never
-        // exits — one extra ticker per race round, each spamming RaiseAllPropertiesChanged. the
-        // ticker captures the generation it was spawned for and bails when a newer spawn takes over.
-        static int _liveTimerGen;
 
         static bool? _isRaceRoundCache = null;
         static string _roundIdCache = null;
@@ -937,9 +966,8 @@ namespace BetterFG.Features.QualificationTime
 
             _liveTimerGo = clone;
             _liveTimerVm = vm;
-            _liveTimerGen++;
 
-            BetterFGUIMan.Instance.StartCoroutine(LiveTimerTickCoroutine().WrapToIl2Cpp());
+            HookLiveTimer(true);
             Plugin.Log.LogInfo("QualTime: live timer spawned");
         }
 
@@ -959,6 +987,7 @@ namespace BetterFG.Features.QualificationTime
         {
             if (_liveTimerGo == null) return null;
 
+            HookLiveTimer(false);
             var go = _liveTimerGo;
             _liveTimerGo = null;
             _liveTimerVm = null;
@@ -990,6 +1019,7 @@ namespace BetterFG.Features.QualificationTime
 
         static void DestroyLiveTimer()
         {
+            HookLiveTimer(false);
             if (_liveTimerGo != null)
             {
                 UnityEngine.Object.Destroy(_liveTimerGo);
@@ -999,28 +1029,44 @@ namespace BetterFG.Features.QualificationTime
             }
         }
 
-        static IEnumerator LiveTimerTickCoroutine()
+        // the game's own gameplay timer VM refreshes the same clock we display, so its Update is the
+        // moment the value changes. patched in only while our timer object is alive.
+        static System.Reflection.MethodInfo _hookedLiveTimer;
+        static string _liveTimerLast;
+
+        static void HookLiveTimer(bool on)
         {
-            int gen = _liveTimerGen;
-            var wait = new WaitForSeconds(1f / 50f);
-            string last = null;
+            var h = Plugin.HarmonyInstance;
+            if (h == null) return;
 
-            var gsv = GlobalGameStateClient.Instance?.GameStateView;
-
-            while (gen == _liveTimerGen && _liveTimerGo != null)
+            if (!on)
             {
-                if (_liveTimerText != null && gsv != null)
-                {
-                    TimeSpan t = TimeSpan.FromSeconds(gsv.GameplayTimeElapsed);
-                    string formatted = string.Format("{0:D2}:{1:D2}:{2:D3}", t.Minutes, t.Seconds, t.Milliseconds);
-                    if (formatted != last)
-                    {
-                        _liveTimerText.text = formatted;
-                        last = formatted;
-                    }
-                }
-                yield return wait;
+                if (_hookedLiveTimer == null) return;
+                h.Unpatch(_hookedLiveTimer, HarmonyPatchType.Postfix, h.Id);
+                _hookedLiveTimer = null;
+                return;
             }
+
+            _liveTimerLast = null;
+            if (_hookedLiveTimer != null) return;
+            var target = AccessTools.Method(typeof(GameplayTimerViewModel), "Update");
+            if (target == null) { Plugin.Log.LogWarning("QualTime: no GameplayTimerViewModel.Update, live timer will not tick"); return; }
+            h.Patch(target, postfix: new HarmonyMethod(AccessTools.Method(typeof(FeatureQualificationTime), nameof(LiveTimerPostfix))));
+            _hookedLiveTimer = target;
+        }
+
+        static void LiveTimerPostfix()
+        {
+            var text = _liveTimerText;
+            if (text is null || text.m_CachedPtr == IntPtr.Zero) return;
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            if (gsv == null) return;
+
+            TimeSpan t = TimeSpan.FromSeconds(gsv.GameplayTimeElapsed);
+            string formatted = string.Format("{0:D2}:{1:D2}:{2:D3}", t.Minutes, t.Seconds, t.Milliseconds);
+            if (formatted == _liveTimerLast) return;
+            _liveTimerLast = formatted;
+            text.text = formatted;
         }
 
         // ── Ghost run ─────────────────────────────────────────────────────────
@@ -1232,10 +1278,11 @@ namespace BetterFG.Features.QualificationTime
         {
             var wait = new WaitForSeconds(1f / 20f);
             FallGuysCharacterController local = null;
+            Transform localTf = null;
             Animator localAnim = null;
             while (_ghostRecording && _ghostGen == gen)
             {
-                if (local == null)
+                if (local is null || local.m_CachedPtr == IntPtr.Zero)
                 {
                     // cheap cached getter — NOT a FindObjectsOfTypeAll heap scan. when spectating there's
                     // no local player so this stays null all round; scanning the whole heap 20x/sec here
@@ -1243,9 +1290,12 @@ namespace BetterFG.Features.QualificationTime
                     local = FallGuysLib.Players.PlayerUtils.PlayerController;
                     if (local != null && !local.IsLocalPlayer) local = null;
                     if (local != null)
+                    {
+                        localTf = local.transform;
                         localAnim = FindBeanAnimator(local.gameObject);
+                    }
                 }
-                if (local != null)
+                if (localTf is not null && localTf.m_CachedPtr != IntPtr.Zero)
                 {
                     float t = GlobalGameStateClient.Instance?.GameStateView?.GameplayTimeElapsed ?? 0f;
                     int sh = 0; float at = 0f;
@@ -1255,7 +1305,9 @@ namespace BetterFG.Features.QualificationTime
                         sh = info.shortNameHash;
                         at = info.normalizedTime;
                     }
-                    _ghostFrames.Add((t, local.transform.position, local.transform.rotation, sh, at));
+                    // one free call instead of two boxing transform getters plus the Transform fetch
+                    localTf.GetPositionAndRotation(out var p, out var r);
+                    _ghostFrames.Add((t, p, r, sh, at));
                 }
                 yield return wait;
             }
@@ -1320,6 +1372,14 @@ namespace BetterFG.Features.QualificationTime
                     UnityEngine.Object.Destroy(col);
 
                 var ghostAnim = FindBeanAnimator(ghostGo);
+                if (ghostAnim != null)
+                {
+                    // the ghost's pose is recorded, not simulated — so when it's off screen Unity can
+                    // skip the retarget/IK/transform-write pass entirely. the state machine keeps
+                    // running underneath, so it's in the right state the frame it comes back into view.
+                    ghostAnim.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+                    ghostAnim.applyRootMotion = false;
+                }
                 UnityEngine.Object.Destroy(ghost);
 
                 BetterFGUIMan.Instance.StartCoroutine(GhostDressCoroutine(ghostGo, gen).WrapToIl2Cpp());
@@ -1404,6 +1464,12 @@ namespace BetterFG.Features.QualificationTime
                     if (t != null && t.name.StartsWith("Body_LOD")) t.gameObject.SetActive(false);
             }
 
+            // a ghost is never in the invisibeans/powerup renderer lists, so the sync components the
+            // skin apply hung on it have nothing to follow — and leaving them registered would hold
+            // the invisibility patches in the game for no reason.
+            foreach (var sync in ghostGo.GetComponentsInChildren<InvisibilitySyncComponent>(true))
+                UnityEngine.Object.Destroy(sync);
+
             var mat = AssetManager.GhostMaterial;
             if (mat == null) yield break;
             foreach (var smr in ghostGo.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -1411,12 +1477,21 @@ namespace BetterFG.Features.QualificationTime
                 var mats = smr.sharedMaterials;
                 for (int i = 0; i < mats.Length; i++) mats[i] = mat;
                 smr.sharedMaterials = mats;
+                // a translucent ghost casting a solid shadow looked wrong anyway, and dropping it
+                // takes the whole bean out of every shadow cascade. Bone2 halves the skinning weights
+                // — on a fall guy that's not a difference you can see.
+                smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                smr.receiveShadows = false;
+                smr.quality = SkinQuality.Bone2;
+                smr.skinnedMotionVectors = false;
             }
             foreach (var mr in ghostGo.GetComponentsInChildren<MeshRenderer>(true))
             {
                 var mats = mr.sharedMaterials;
                 for (int i = 0; i < mats.Length; i++) mats[i] = mat;
                 mr.sharedMaterials = mats;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mr.receiveShadows = false;
             }
         }
 
@@ -1424,70 +1499,64 @@ namespace BetterFG.Features.QualificationTime
         {
             int idx = 0;
             bool finished = false;
-            Vector3 prevPos = Vector3.zero;
-            bool havePrevPos = false;
             int lastState = 0;
             int driftFrames = 0;
-            int driftIdx = -1;
-            bool lastGrounded = true;
-            float lastSlopeAngle = 0f;
-            float nextGroundCheck = 0f;
+            int drivenIdx = -1;
+            bool hasAnim = ghostAnim != null;
             var ghostTf = ghostGo.transform;
             var gsv = GlobalGameStateClient.Instance?.GameStateView;
-            while (ghostGo != null && _ghostGen == gen && idx < frames.Count)
+            while (ghostGo.m_CachedPtr != IntPtr.Zero && _ghostGen == gen && idx < frames.Count)
             {
                 float elapsed = gsv != null ? gsv.GameplayTimeElapsed : 0f;
                 while (idx + 1 < frames.Count && frames[idx + 1].t <= elapsed)
                     idx++;
-                Vector3 pos;
                 if (idx + 1 < frames.Count)
                 {
                     float den = frames[idx + 1].t - frames[idx].t;
                     float frac = den > 0f ? Mathf.Clamp01((elapsed - frames[idx].t) / den) : 0f;
-                    pos = Vector3.Lerp(frames[idx].pos, frames[idx + 1].pos, frac);
-                    ghostTf.SetPositionAndRotation(pos, Quaternion.Slerp(frames[idx].rot, frames[idx + 1].rot, frac));
+                    ghostTf.SetPositionAndRotation(
+                        Vector3.Lerp(frames[idx].pos, frames[idx + 1].pos, frac),
+                        Quaternion.Slerp(frames[idx].rot, frames[idx + 1].rot, frac));
                 }
                 else
                 {
-                    pos = frames[idx].pos;
-                    ghostTf.SetPositionAndRotation(pos, frames[idx].rot);
+                    ghostTf.SetPositionAndRotation(frames[idx].pos, frames[idx].rot);
                     // hit the last frame with live elapsed already past it — ghost has "qualified".
                     if (elapsed >= frames[idx].t) { finished = true; break; }
                 }
-                if (ghostAnim != null)
+
+                // Play on a recorded state change, and re-assert if the graph drifts off and stays off.
+                // the 4-frame delay avoids stomping short transitions, which restarts the slide clip
+                if (hasAnim && frames[idx].stateHash != lastState)
                 {
-                    // Play on a recorded state change, and re-assert if the graph drifts off and stays off.
-                    // the 4-frame delay avoids stomping short transitions, which restarts the slide clip
-                    if (frames[idx].stateHash != lastState)
-                    {
-                        lastState = frames[idx].stateHash;
-                        ghostAnim.Play(lastState, 0, 0f);
-                        driftFrames = 0;
-                    }
-                    else if (idx != driftIdx)
-                    {
-                        driftIdx = idx;
-                        if (ghostAnim.GetCurrentAnimatorStateInfo(0).shortNameHash != lastState)
-                        {
-                            if (++driftFrames >= 4) { ghostAnim.Play(lastState, 0, 0f); driftFrames = 0; }
-                        }
-                        else driftFrames = 0;
-                    }
+                    lastState = frames[idx].stateHash;
+                    ghostAnim.Play(lastState, 0, 0f);
+                    driftFrames = 0;
+                    drivenIdx = -1;
+                }
 
-                    // grounded/slope come from a real SphereCast, but ghosts don't need it re-cast every
-                    // render frame — 20Hz is way faster than grounded state actually changes. position and
-                    // every animator param below still update every frame, so movement stays fully smooth.
-                    if (Time.unscaledTime >= nextGroundCheck)
-                    {
-                        nextGroundCheck = Time.unscaledTime + 1f / 20f;
-                        lastGrounded = BeanAnimationUtil.CheckGrounded(ghostTf, out lastSlopeAngle);
-                    }
+                // everything below is constant across a keyframe segment: the ghost's velocity comes
+                // straight out of the two frames bracketing it, so at 240fps this was writing the same
+                // six animator params twelve times over, plus a SphereCast and a boxed state-info read.
+                // it all rides the 20Hz recording boundary now, which is the rate the data changes at.
+                if (hasAnim && idx != drivenIdx)
+                {
+                    drivenIdx = idx;
 
-                    BeanAnimationUtil.DriveLocomotion(ghostAnim, ghostTf,
-                        havePrevPos && Time.deltaTime > 0f ? (pos - prevPos) / Time.deltaTime : Vector3.zero,
-                        lastGrounded, lastSlopeAngle);
-                    prevPos = pos;
-                    havePrevPos = true;
+                    if (ghostAnim.GetCurrentAnimatorStateInfo(0).shortNameHash != lastState)
+                    {
+                        if (++driftFrames >= 4) { ghostAnim.Play(lastState, 0, 0f); driftFrames = 0; }
+                    }
+                    else driftFrames = 0;
+
+                    Vector3 v = Vector3.zero;
+                    if (idx + 1 < frames.Count)
+                    {
+                        float den = frames[idx + 1].t - frames[idx].t;
+                        if (den > 0f) v = (frames[idx + 1].pos - frames[idx].pos) / den;
+                    }
+                    bool grounded = BeanAnimationUtil.CheckGrounded(ghostTf, out float slopeAngle);
+                    BeanAnimationUtil.DriveLocomotion(ghostAnim, ghostTf, v, grounded, slopeAngle);
                 }
                 yield return null;
             }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -207,13 +207,11 @@ namespace BetterFG.Features.TimePlacement
         // 20-30 score events in a single frame and each used to trigger a full ForceMeshUpdate repaint
         // (48 mesh rebuilds) synchronously inside the patch — that burst is the visible stutter. one
         // coalesced repaint per frame kills it while staying frame-fresh.
-        static bool _soloDirty;
         // bumped every Reset. the poll coroutines capture the generation they were spawned for and
         // exit when it changes — `while (_panels.Count > 0)` alone leaks them, because Reset+SpawnList
         // clears and refills _panels inside one frame while the old coroutines are asleep in their
         // 0.5s wait, so they wake to a non-empty list and run forever. 3 leaked polls per round = the
         // game getting laggier every round played.
-        static int _spawnGen;
 
         // ── lifecycle ─────────────────────────────────────────────────────────
 
@@ -244,7 +242,7 @@ namespace BetterFG.Features.TimePlacement
             _soloToggleprompt?.Destroy();
             _soloToggleprompt = null;
             BeanPortraits.Clear();
-            _spawnGen++;   // retire any poll coroutines from the previous round
+            _repaintQueued = false;
         }
 
         // called from HandleServerStartRoundPa — clone the squad-scores list once per host state
@@ -368,26 +366,11 @@ namespace BetterFG.Features.TimePlacement
             _seenPlayers.Clear();
             Plugin.Log.LogInfo($"TimePlacement: spawned {_panels.Count} panel(s), entries captured on first finish");
 
-            // ALWAYS start the squad poll — a real squad round always shows the squad-points
-            // leaderboard, no toggle and no race/hunt check. _roundSquads isn't populated yet at
-            // round start, so the coroutine keeps re-checking HasSquadData() and paints once it's
-            // confirmed a squad round.
+            // the board no longer sweeps for changes. every source that can move a row (solo points,
+            // squad points, a tag change, a finish, a death, a disconnect) raises QueueRepaint, and
+            // the round type resolves itself on the first of those instead of on a re-check tick.
             if (BetterFGUIMan.Instance != null)
-                BetterFGUIMan.Instance.StartCoroutine(SquadScorePollCoroutine().WrapToIl2Cpp());
-
-            // ALWAYS start the solo-score poll — GameRules / _soloScoreManager usually aren't
-            // populated yet at round start, so we can't decide here. the coroutine keeps re-checking
-            // IsScoringRound() and only paints once it's actually a scoring round.
-            if (BetterFGUIMan.Instance != null)
-                BetterFGUIMan.Instance.StartCoroutine(SoloScorePollCoroutine().WrapToIl2Cpp());
-
-            // qualification-status roster — only paints once QualStatusActive() confirms a solo
-            // round with the toggle on, so it no-ops everywhere else.
-            if (BetterFGUIMan.Instance != null)
-            {
-                BetterFGUIMan.Instance.StartCoroutine(QualStatusPollCoroutine().WrapToIl2Cpp());
                 BetterFGUIMan.Instance.StartCoroutine(BeanPortraits.CaptureCoroutine().WrapToIl2Cpp());
-            }
 
             // only spawn the squad/per-player toggle when we're actually in a squad round — solo
             // (SquadSize <= 1) would collide with the Respawn prompt on the same controller button.
@@ -805,14 +788,14 @@ namespace BetterFG.Features.TimePlacement
         {
             if (!_updating || !Enabled || _panels.Count == 0) return;
             // qualify-highlight: repaint the roster immediately on each qualification (this is THE
-            // qualify signal) instead of waiting on the poll — eliminations still come from the poll.
+            // qualify signal). eliminations come through OnPlayerEliminated on the same message.
             if (QualStatusActive()) { RefreshQualStatus(); return; }
             // scoring round with the toggle on: the live score view owns the rows, don't draw finish
             // order underneath it.
             if (QualStatusOn) return;
-            // a real squad round always shows squad points — the poll owns the list, don't draw
-            // finish order over it. check this first so a squad hunt doesn't fall into solo mode.
-            if (HasSquadData()) return;
+            // a real squad round always shows squad points and a crown/finish squad final scores off
+            // completedLevel, so hand it to the squad path rather than drawing finish order over it.
+            if (HasSquadData()) { QueueRepaint(); return; }
             // scoring rounds (hunt/bubble/score-target, non-squad) show live points from the solo
             // score manager — the poll owns the list, so don't draw finish order over it.
             if (IsScoringRound()) return;
@@ -1375,17 +1358,26 @@ namespace BetterFG.Features.TimePlacement
             return names;
         }
 
-        static IEnumerator SquadScorePollCoroutine()
+        // one coalesced repaint per frame no matter how many sources fired in it. the dispatch mirrors
+        // what the three separate sweeps used to decide independently.
+        static bool _repaintQueued;
+
+        public static void QueueRepaint()
         {
-            int gen = _spawnGen;
-            var wait = new WaitForSeconds(0.5f);
-            // runs the whole round — RefreshSquadScores() only paints once HasSquadData() confirms
-            // a real squad round, so non-squad rounds just no-op here.
-            while (gen == _spawnGen && _panels.Count > 0)
-            {
-                RefreshSquadScores();
-                yield return wait;
-            }
+            if (_repaintQueued || !_updating || !Enabled || _panels.Count == 0) return;
+            if (BetterFGUIMan.Instance == null) return;
+            _repaintQueued = true;
+            BetterFGUIMan.Instance.StartCoroutine(RepaintCoalesced().WrapToIl2Cpp());
+        }
+
+        static IEnumerator RepaintCoalesced()
+        {
+            yield return null;
+            _repaintQueued = false;
+            if (!_updating || !Enabled || _panels.Count == 0) yield break;
+            if (QualStatusActive()) { RefreshQualStatus(); yield break; }
+            if (IsScoringRound()) { RefreshSoloScores(); yield break; }
+            RefreshSquadScores();
         }
 
         // spawn the LE_Zoom_Out (right-stick-click) prompt once when the leaderboard spawns. flips
@@ -1685,45 +1677,22 @@ namespace BetterFG.Features.TimePlacement
                 HideRow(i);
         }
 
-        static IEnumerator SoloScorePollCoroutine()
-        {
-            int gen = _spawnGen;
-            // drain per frame (not 0.5s): a frame with score events sets _soloDirty and we repaint
-            // once here, coalescing the whole burst. also force a repaint on a slow ~0.5s cadence as
-            // a safety net for anything that changes the board without going through the patches.
-            float sinceForced = 0f;
-            while (gen == _spawnGen && _panels.Count > 0)
-            {
-                if (IsScoringRound())
-                {
-                    sinceForced += Time.unscaledDeltaTime;
-                    bool forced = sinceForced >= 0.5f;
-                    if (_soloDirty || forced)
-                    {
-                        _soloDirty = false;
-                        if (forced) sinceForced = 0f;
-                        RefreshSoloScores();
-                    }
-                }
-                yield return null;
-            }
-        }
 
         // portraits land a second in, by which point the board may already be painted on an unchanged
-        // signature, so drop it and let the next tick repaint
+        // signature, so drop it and let the coalesced repaint redraw
         public static void OnPortraitsReady()
         {
             _lastSoloSig = 0;
-            _soloDirty = true;
+            QueueRepaint();
         }
 
-        // called from the SoloScoreManager patches when a score changes — just mark dirty. the poll
-        // drains it once next frame, so a burst of 24 score events in one frame is one repaint, not 24.
+        // called from the SoloScoreManager patches when a score changes. a burst of 24 score events in
+        // one frame still collapses to one repaint, it just no longer costs a frame to notice.
         public static void OnSoloScoreChanged()
         {
             if (!_updating || !Enabled || _panels.Count == 0) return;
             if (!IsScoringRound()) return;
-            _soloDirty = true;
+            QueueRepaint();
         }
 
         // ── qualification-status roster (yellow = in, red = out) ───────────────
@@ -1756,16 +1725,6 @@ namespace BetterFG.Features.TimePlacement
             return map;
         }
 
-        static IEnumerator QualStatusPollCoroutine()
-        {
-            int gen = _spawnGen;
-            var wait = new WaitForSeconds(0.5f);
-            while (gen == _spawnGen && _panels.Count > 0)
-            {
-                if (QualStatusActive()) RefreshQualStatus();
-                yield return wait;
-            }
-        }
 
         // qualify-highlight leaderboard: qualified players ranked by finish time (yellow, with time),
         // then eliminated players (red, no time). still-racing players get no row so the list starts
@@ -2013,23 +1972,42 @@ namespace BetterFG.Features.TimePlacement
         }
     }
 
-    // solo scoring (hunt / bubble / score-target) fires these on the SoloScoreManager whenever a
-    // player's points change. log them and kick an immediate leaderboard repaint so the points list
-    // updates the instant a score lands instead of waiting for the poll tick.
-    // Harmony binds params by name — we only need the int score arg, so we skip the MPGNetID
-    // (avoids needing to name its interop type) and just take amount/value.
-    [HarmonyPatch(typeof(FG.Common.SoloScoreManager), "AwardSoloPoints")]
-    internal static class Patch_TimePlacement_AwardSoloPoints
+    // solo points (hunt/bubble/score-target, incl. Explore objectives) all land through this one
+    // CGM hub as the server message arrives — same shape as TryUpdateSquadScore below. set_Score
+    // patched instead of this used to leave the board minutes stale: that private setter only gets
+    // called once UpdateSoloScore has already applied the new value, but Harmony's IL2Cpp trampoline
+    // for a compiler-generated property setter on a hot path silently missed most calls, so the
+    // board only repainted on the rare frame something else (a finish/death) also queued one.
+    [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.UpdateSoloScore))]
+    internal static class Patch_TimePlacement_SoloScore
     {
         [HarmonyPostfix]
         public static void Postfix() => FeatureTimePlacement.OnSoloScoreChanged();
     }
 
-    [HarmonyPatch(typeof(FG.Common.SoloScoreManager), "SetSoloScore")]
-    internal static class Patch_TimePlacement_SetSoloScore
+    // squad points arrive here from the server. this is the signal the old 0.5s squad sweep existed
+    // to notice, so it repaints on the message instead of a beat later.
+    [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.TryUpdateSquadScore))]
+    internal static class Patch_TimePlacement_SquadScore
     {
         [HarmonyPostfix]
-        public static void Postfix() => FeatureTimePlacement.OnSoloScoreChanged();
+        public static void Postfix() => FeatureTimePlacement.QueueRepaint();
+    }
+
+    // Royal Fumble derives squad points from who is holding the tail, and the tail changes hands
+    // without any score, finish or death message — these two are the only events that move it.
+    [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.HandleServerTagPlayer))]
+    internal static class Patch_TimePlacement_TagPlayer
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => FeatureTimePlacement.QueueRepaint();
+    }
+
+    [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.HandleServerUntagPlayer))]
+    internal static class Patch_TimePlacement_UntagPlayer
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => FeatureTimePlacement.QueueRepaint();
     }
 
     // when a banner (Qualified / Eliminated / Winner / OutForNow / RoundEnded) opens, reparent its

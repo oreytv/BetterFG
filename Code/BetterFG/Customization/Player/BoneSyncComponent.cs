@@ -18,7 +18,7 @@ namespace BetterFG.Customization.Player
         private Transform customSkinRoot;
         private readonly List<BonePair> cachedBones = new List<BonePair>();
         private int lastSyncFrame = -1;
-    
+
         // When true, prefer mapping custom bones to player bones using the
         // SkinnedMeshRenderer.bones array from the custom skin's Body_LOD0.
         // This is only used for the local player when no explicit offsets exist.
@@ -62,14 +62,19 @@ namespace BetterFG.Customization.Player
             for (int i = 0; i < cachedBones.Count; i++)
             {
                 var pair = cachedBones[i];
-                if (pair.customBone == null || pair.playerBone == null) continue;
+                // per bone, every frame — the Unity == operator is a real il2cpp invoke, m_CachedPtr isn't
+                if (pair.customBone is null || pair.customBone.m_CachedPtr == IntPtr.Zero) continue;
+                if (pair.playerBone is null || pair.playerBone.m_CachedPtr == IntPtr.Zero) continue;
 
-                pair.customBone.rotation = pair.playerBone.rotation;
+                pair.playerBone.GetPositionAndRotation(out var pos, out var rot);
                 if (pair.hasOffset)
+                {
+                    pair.customBone.rotation = rot;
                     pair.customBone.localPosition = pair.offset;
+                }
                 else
                     // world space direct copy -- local space math breaks when custom skin is scaled (e.g. 100x from blender)
-                    pair.customBone.position = pair.playerBone.position;
+                    pair.customBone.SetPositionAndRotation(pos, rot);
             }
 
             ForceScaledTorsoLocalPos();
@@ -94,14 +99,14 @@ namespace BetterFG.Customization.Player
 
         void LateUpdate()
         {
-            if (playerObject == null || !playerObject.activeInHierarchy) return;
+            if (playerObject is null || playerObject.m_CachedPtr == IntPtr.Zero || !playerObject.activeInHierarchy) return;
             SyncNow();
         }
 
         void Update()
         {
             if (isRemote) return;
-            if (playerObject == null || !playerObject.activeInHierarchy)
+            if (playerObject is null || playerObject.m_CachedPtr == IntPtr.Zero || !playerObject.activeInHierarchy)
                 Destroy(gameObject);
         }
 

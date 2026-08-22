@@ -96,6 +96,105 @@ namespace BetterFG.Customization.Menu
         private static readonly Dictionary<int, Color> _origBackdropColor = new Dictionary<int, Color>();
         private static readonly Dictionary<int, Texture> _origPattern = new Dictionary<int, Texture>();
 
+        // the SAME originals, but keyed by Screen instead of by (transient, per-instance) id — most of
+        // these screens' containers only exist for the few seconds their loading screen is up, so the
+        // per-instance dictionaries above are useless once that instance is destroyed. this survives:
+        // captured once, the first time we ever see each screen's container, whether or not custom
+        // colours are enabled — so the Background tab can preview a screen's real default look without
+        // needing that screen to be live right now.
+        private static readonly Dictionary<Screen, Sprite> _screenDefaultSprite = new Dictionary<Screen, Sprite>();
+        private static readonly Dictionary<Screen, Color> _screenDefaultColor = new Dictionary<Screen, Color>();
+        private static readonly Dictionary<Screen, Texture> _screenDefaultPattern = new Dictionary<Screen, Texture>();
+
+        public static void CacheScreenDefault(Screen s, Transform container)
+        {
+            if (container == null || _screenDefaultSprite.ContainsKey(s)) return;
+
+            var backdrop = container.Find("Backdrop");
+            var img = backdrop != null ? backdrop.GetComponent<Image>() : null;
+            if (img == null) return;
+            int id = img.GetInstanceID();
+            _screenDefaultSprite[s] = _origBackdropSprite.TryGetValue(id, out var os) ? os : img.sprite;
+            _screenDefaultColor[s] = _origBackdropColor.TryGetValue(id, out var oc) ? oc : img.color;
+
+            var circles = container.Find("Circles");
+            var cimg = circles != null ? circles.GetComponent<Image>() : null;
+            if (cimg != null && cimg.material != null)
+            {
+                int cid = cimg.GetInstanceID();
+                _screenDefaultPattern[s] = _origPattern.TryGetValue(cid, out var op) ? op : cimg.material.GetTexture("_Pattern");
+            }
+        }
+
+        public static bool TryGetScreenDefault(Screen s, out Sprite sprite, out Color color, out Texture pattern)
+        {
+            sprite = _screenDefaultSprite.TryGetValue(s, out var sp) ? sp : null;
+            color = _screenDefaultColor.TryGetValue(s, out var c) ? c : Color.white;
+            pattern = _screenDefaultPattern.TryGetValue(s, out var p) ? p : null;
+            return _screenDefaultSprite.ContainsKey(s);
+        }
+
+        // these loading-screen canvases are NOT transient — they're pre-instantiated and inactive off
+        // the same MainMenu scene as everything else, same story as ShowSelectorBg. Resources.FindObjectsOfTypeAll
+        // sees inactive objects (unlike GameObject.Find), so there's no need to have actually lived
+        // through that loading screen this session — the Background tab's preview can clone straight
+        // off these any time.
+        //
+        // each of these canvases holds BOTH a "normal round" backdrop AND a "final round" backdrop as
+        // sibling children (Generic_UI_CurrentSeasonBackground_Container / Generic_UI_FinalRoundBackground_Prefab)
+        // — the game picks one at runtime depending on which round is actually loading. FinalRound isn't
+        // a separate ViewModel at all, it's the other sibling under the SAME plain canvas as LoadingLevel.
+        // confirmed live via FGRuntimeConsole: `go Prime_UI_RoundSelected_Prefab_Canvas` lists both as
+        // direct children.
+        private const string ChildNormalRound = "Generic_UI_CurrentSeasonBackground_Container";
+        private const string ChildFinalRound = "Generic_UI_FinalRoundBackground_Prefab";
+
+        // canvas names confirmed live via FGRuntimeConsole (`scan RoundSelected`) — searching by
+        // ViewModel TYPE instead (LoadingGameScreenViewModel etc.) looked cleaner but was unreliable:
+        // Resources.FindObjectsOfTypeAll<T>() matches T's subclasses, and IL2CPP interop appears to
+        // always wrap the results AS the requested T regardless of the object's true concrete type, so
+        // a GetType() == typeof(T) filter never actually excluded the UP/UGC variants — LoadingLevel and
+        // FinalRound (both searching the base type) silently landed on whichever of the three canvases
+        // happened to enumerate first. Explore only looked reliable because its leaf-type search had
+        // nothing else to collide with. Name-based lookup sidesteps the whole issue.
+        private const string CanvasPlain = "Prime_UI_RoundSelected_Prefab_Canvas";
+        private const string CanvasUP = "Prime_UI_RoundSelected_UP_Prefab_Canvas";
+
+        public static Transform FindPreviewSource(Screen s)
+        {
+            string canvasName;
+            string childName;
+            switch (s)
+            {
+                case Screen.LoadingLevel:
+                    canvasName = CanvasPlain;
+                    childName = ChildNormalRound;
+                    break;
+                case Screen.FinalRound:
+                    canvasName = CanvasPlain;
+                    childName = ChildFinalRound;
+                    break;
+                case Screen.Explore:
+                    canvasName = CanvasUP;
+                    childName = ChildNormalRound;
+                    break;
+                default:
+                    return null;
+            }
+
+            GameObject vmGo = null;
+            foreach (var go in Resources.FindObjectsOfTypeAll<GameObject>())
+                if (go != null && go.name == canvasName) { vmGo = go; break; }
+            if (vmGo == null) return null;
+
+            var root = vmGo.transform.Find(childName);
+            if (root == null) return null;
+
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                if (t != null && t.Find("Backdrop")?.GetComponent<Image>() != null) return t;
+            return null;
+        }
+
         // apply this screen's gradient + pattern onto a single background container — any transform
         // that holds a "Backdrop" child (and usually a "Circles" pattern child). this covers both the
         // SeasonS11Background Mask and the FinalRoundBackground "Area".
@@ -169,6 +268,7 @@ namespace BetterFG.Customization.Menu
         public static void Apply(Screen s, Transform mask)
         {
             if (mask == null) { Plugin.Log.LogInfo($"ScreenBg: Apply {Id(s)}: mask null"); return; }
+            CacheScreenDefault(s, mask);
             if (!Enabled(s)) { Plugin.Log.LogInfo($"ScreenBg: Apply {Id(s)}: not enabled, skipping"); return; }
             Plugin.Log.LogInfo($"ScreenBg: Apply {Id(s)} onto {mask.name}");
             ApplyToContainer(s, mask);
@@ -180,10 +280,13 @@ namespace BetterFG.Customization.Menu
         public static void ApplyUnder(Screen s, Transform root)
         {
             if (root == null) return;
+            var containers = FindContainers(root);
+            foreach (var c in containers) CacheScreenDefault(s, c);
+
             if (!Enabled(s)) { Plugin.Log.LogInfo($"ScreenBg: ApplyUnder {Id(s)}: not enabled, reverting"); RevertUnder(root); return; }
 
             int n = 0;
-            foreach (var c in FindContainers(root)) { ApplyToContainer(s, c); n++; }
+            foreach (var c in containers) { ApplyToContainer(s, c); n++; }
             Plugin.Log.LogInfo($"ScreenBg: ApplyUnder {Id(s)}: applied to {n} container(s)");
         }
 

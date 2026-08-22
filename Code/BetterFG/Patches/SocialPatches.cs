@@ -201,7 +201,7 @@ namespace BetterFG.Patches.Social
     {
         [HarmonyPostfix]
         public static void Postfix(SocialPrimeHandler __instance)
-            => BetterFG.UI.Tab.EmoticonsPhrasesTab.OnPrimeClicked(__instance.gameObject);
+            => BetterFG.UI.Tabs.EmoticonsPhrasesTab.OnPrimeClicked(__instance.gameObject);
     }
 
     // reapply before wheel renders so first open already has custom slots

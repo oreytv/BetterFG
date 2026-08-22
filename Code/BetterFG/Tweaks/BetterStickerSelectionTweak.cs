@@ -57,15 +57,14 @@ namespace BetterFG.Tweaks
         private int _repX, _repY;
         private float _repTimer;
 
+        public override void DisableTweak()
+        {
+            if (_grid != null) Close(false);
+            ClearTip();
+        }
+
         void Update()
         {
-            if (!IsEnabled)
-            {
-                if (_grid != null) Close(false);
-                ClearTip();
-                return;
-            }
-
             if (_grid != null) { TickOpen(); return; }
             if (_reArm != null) { TickReArm(); return; }
 

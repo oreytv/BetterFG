@@ -5,9 +5,9 @@ using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
-    public class FeaturesTab : BetterFGTab
+    public class FeaturesTab : Tab
     {
         public FeaturesTab(IntPtr ptr) : base(ptr) { }
 

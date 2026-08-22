@@ -15,7 +15,7 @@ namespace BetterFG.Tweaks
     {
         private float _nextCheck;
         private readonly Dictionary<string, float> _lastKick = new Dictionary<string, float>();
-        public static readonly string[] DefaultChecks = { "size", "<", ">", "\\u003" };
+        public static readonly string[] DefaultChecks = { "size", "scale", "<", ">", "\\u003" };
 
         private const string CountKey = "tweak.lobby_autokick.contains.count";
 

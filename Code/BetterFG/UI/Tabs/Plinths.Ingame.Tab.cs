@@ -4,7 +4,7 @@ using BetterFG.Customization.Menu;
 using BetterFG.Utilities;
 using UnityEngine;
 
-namespace BetterFG.UI.Tab
+namespace BetterFG.UI.Tabs
 {
     public class PlinthsInGameTab : PlinthsTab
     {
@@ -14,7 +14,7 @@ namespace BetterFG.UI.Tab
         protected override string TitleDisplay => "Plinths - In-game";
 
         protected override string SwitchLabel => "UGC →";
-        protected override BetterFGTab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<PlinthsUgcTab>();
+        protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<PlinthsUgcTab>();
 
         static readonly Dictionary<string, Texture2D> _covers = new Dictionary<string, Texture2D>();
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using BetterFG.Utilities;
 using FG.Common;
@@ -28,148 +28,96 @@ namespace BetterFG.Tweaks
         public override void EnableTweak()
         {
             Active = true;
-            HookCollisions(true);
+            var gs = GlobalGameStateClient.Instance?._gameStateMachine?.CurrentState;
+            if (gs?.TryCast<StateGameInProgress>() != null) { HookRoundEvents(true); ApplyFix(); }
         }
 
         public override void DisableTweak()
         {
             Active = false;
-            HookCollisions(false);
+            HookRoundEvents(false);
         }
 
-        public override void OnRoundStart() => ApplyFix();
+        public override void OnRoundStart()
+        {
+            HookRoundEvents(true);
+            ApplyFix();
+        }
 
-        // OnCollisionEnter fires on every bean against every collider seam, and an il2cpp harmony
-        // trampoline there costs a managed transition plus two wrapper allocations per hit whether or
-        // not we do anything in it. that showed up as a permanent frame-time tax in creative levels
-        // even with the tweak off, so the patch goes in and out with the toggle instead of at load.
-        private static MethodInfo _hooked;
+        public override void OnBannerShown() => HookRoundEvents(false);
+        public override void OnMainMenuEntered() => HookRoundEvents(false);
 
-        private static void HookCollisions(bool on)
+        // the hooks only exist while a round is actually running, never in menus or lobbies.
+        private static MethodInfo _hookedVfx;
+
+        private static void HookRoundEvents(bool on)
         {
             var h = Plugin.HarmonyInstance;
             if (h == null) return;
 
             if (!on)
             {
-                if (_hooked == null) return;
-                h.Unpatch(_hooked, HarmonyPatchType.Postfix, h.Id);
-                _hooked = null;
-                Plugin.Log.LogInfo("fall guy noises off, dropped the OnCollisionEnter hook");
+                if (_hookedVfx != null) { h.Unpatch(_hookedVfx, HarmonyPatchType.Postfix, h.Id); _hookedVfx = null; }
                 return;
             }
 
-            if (_hooked != null) return;
-            var target = AccessTools.Method(typeof(FallGuysCharacterController), nameof(FallGuysCharacterController.OnCollisionEnter));
-            if (target == null) { Plugin.Log.LogWarning("no OnCollisionEnter to hook? remote hit noises won't play"); return; }
-            h.Patch(target, postfix: new HarmonyMethod(AccessTools.Method(typeof(BringBackFallGuyNoisesTweak), nameof(CollisionPostfix))));
-            _hooked = target;
+            if (_hookedVfx != null) return;
+            var target = AccessTools.Method(typeof(FallGuysCharacterController), nameof(FallGuysCharacterController.HandleVfxCollision));
+            if (target == null) { Plugin.Log.LogWarning("no HandleVfxCollision to hook? remote hit noises won't play"); return; }
+            h.Patch(target, postfix: new HarmonyMethod(AccessTools.Method(typeof(BringBackFallGuyNoisesTweak), nameof(VfxCollisionPostfix))));
+            _hookedVfx = target;
         }
 
-        // OnCollisionEnter is the busiest thing in a round — every bean against every floor seam, every
-        // frame they're moving. the overwhelming majority of those are the same bean scraping again well
-        // inside its yelp cooldown, so settle that from a dictionary before asking the controller or the
-        // collision anything, since both of those are interop.
-        private static void CollisionPostfix(FallGuysCharacterController __instance, UnityEngine.Collision collision)
+        // the game already decided this contact was worth a vfx puff, so its own filter replaces the
+        // magnitude gate the old OnCollisionEnter hook needed. impactStrength is left alone: the
+        // quantities compared against HitThreshold/HardLandingThreshold are re-derived here exactly as
+        // the sampled version derived them, so no meaning is inferred from the game's own scale.
+        private static void VfxCollisionPostfix(FallGuysCharacterController __instance, UnityEngine.Collision collision, bool landed)
         {
-            if (!Active || __instance == null) return;
-
-            var key = (__instance.Pointer, Voe.Hit);
-            _last.TryGetValue(key, out float last);
-            if (Time.time - last < HitVoiceCooldown) return;
-
+            if (!Active || __instance is null || __instance.m_CachedPtr == IntPtr.Zero) return;
             if (__instance.IsLocalPlayer) return;
+
+            if (landed)
+            {
+                float landSpeed = -__instance.AnimatedPlayerVelocity.y;
+                if (landSpeed >= HardLandingThreshold) Yelp(__instance, landSpeed);
+                return;
+            }
+
             HandleRemoteCollision(__instance, collision);
         }
 
-        const float RemoteTickInterval = 1f / 20f;
-        float _nextRemoteTick;
-
-        void Update()
-        {
-            if (!Active) return;
-            if (Time.time < _nextRemoteTick) return;
-            _nextRemoteTick = Time.time + RemoteTickInterval;
-            TickAllRemotes();
-        }
-
-        static void TickAllRemotes()
-        {
-            var gsv = GlobalGameStateClient.Instance?.GameStateView;
-            if (gsv == null || !gsv.GetLiveClientGameManager(out ClientGameManager cgm)) return;
-
-            var index = cgm?._clientPlayerManager?._playerIdIndex;
-            if (index == null) return;
-
-            foreach (var kvp in index)
-            {
-                if (BeanNetworkUtil.IsFakeBean(kvp.Key)) continue;
-                var fgcc = kvp.Value?.fgcc;
-                if (fgcc == null || fgcc.IsLocalPlayer) continue;
-                TickRemote(fgcc, RemoteTickInterval);
-            }
-        }
-
-        private static readonly AudioParamContainer _params = new AudioParamContainer();
-        private const float RewooCooldown = 1.25f;
-        private const float FallingWoo = 0.8f;
-        private const float HardLandingThreshold = 4f;
-        private const float HitThreshold = 3f;
+        private const float BaseHardLandingThreshold = 4f;
+        private const float BaseHitThreshold = 3f;
         private const float HitVoiceCooldown = 0.3f;
 
-        private enum Voe { Falling, Dive, Hit }
+        // multiplies both thresholds so landing and collision noises stay proportional as it moves.
+        // 1.0 = default game feel, 0.2 = max sensitivity (nearly every bump yelps). slider's Min/Max
+        // are given reversed (2 -> 0.2) so dragging right still reads as "more sensitive".
+        private const string SensitivityKey = "tweak.bring_back_fallguy_noises.sensitivity";
+
+        internal static float ThresholdMultiplier
+        {
+            get => float.TryParse(Services.SettingsService.Get(SensitivityKey, "1"),
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v)
+                ? Mathf.Clamp(v, 0.2f, 2f) : 1f;
+            set => Services.SettingsService.Set(SensitivityKey, Mathf.Clamp(value, 0.2f, 2f).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        private static float HardLandingThreshold => BaseHardLandingThreshold * ThresholdMultiplier;
+        private static float HitThreshold => BaseHitThreshold * ThresholdMultiplier;
+
+        public override System.Collections.Generic.List<TweakSlider> GetSliders() => new System.Collections.Generic.List<TweakSlider>
+        {
+            new TweakSlider { Label = "Sensitivity", Min = 2f, Max = 0.2f, Step = 0.1f, Get = () => ThresholdMultiplier, Set = v => ThresholdMultiplier = v }
+        };
 
         // keyed on the il2cpp pointer, which is a plain field read — GetInstanceID is a runtime_invoke
-        // and this is all per bean per tick (and per collision)
-        private static readonly System.Collections.Generic.Dictionary<(IntPtr, Voe), bool> _was = new System.Collections.Generic.Dictionary<(IntPtr, Voe), bool>();
-        private static readonly System.Collections.Generic.Dictionary<(IntPtr, Voe), float> _last = new System.Collections.Generic.Dictionary<(IntPtr, Voe), float>();
-        private static readonly System.Collections.Generic.Dictionary<IntPtr, bool> _wasGrounded = new System.Collections.Generic.Dictionary<IntPtr, bool>();
-        private static readonly System.Collections.Generic.Dictionary<IntPtr, float> _peakFall = new System.Collections.Generic.Dictionary<IntPtr, float>();
-        private static readonly System.Collections.Generic.Dictionary<IntPtr, float> _fallTime = new System.Collections.Generic.Dictionary<IntPtr, float>();
-
-        internal static void TickRemote(FallGuysCharacterController c, float elapsed)
-        {
-            if (c == null) return;
-            try
-            {
-                var master = AudioManager.EventMasterData;
-                if (master == null) return;
-
-                IntPtr id = c.Pointer;
-                bool grounded = c.IsTouchingGround;
-                float yvel = c.AnimatedPlayerVelocity.y;
-
-                bool descending = !grounded && yvel < 0f;
-                _fallTime.TryGetValue(id, out float dropping);
-                dropping = descending ? dropping + elapsed : 0f;
-                _fallTime[id] = dropping;
-
-                Fire(c, Voe.Falling, dropping >= FallingWoo, master.VO_Falling);
-                Fire(c, Voe.Dive, c.IsDiving, master.Dive);
-
-                if (!grounded)
-                {
-                    _peakFall.TryGetValue(id, out float peak);
-                    if (yvel < peak) _peakFall[id] = yvel;
-                }
-
-                _wasGrounded.TryGetValue(id, out bool wasGrounded);
-                _wasGrounded[id] = grounded;
-
-                if (grounded && !wasGrounded)
-                {
-                    _peakFall.TryGetValue(id, out float peak);
-                    _peakFall[id] = 0f;
-                    float landSpeed = -peak;
-                    if (landSpeed >= HardLandingThreshold) Yelp(c, landSpeed);
-                }
-            }
-            catch { }
-        }
+        private static readonly System.Collections.Generic.Dictionary<IntPtr, float> _last = new System.Collections.Generic.Dictionary<IntPtr, float>();
 
         internal static void HandleRemoteCollision(FallGuysCharacterController c, UnityEngine.Collision collision)
         {
-            if (c == null || collision == null) return;
+            if (c is null || collision is null) return;
             try
             {
                 float rel = collision.relativeVelocity.magnitude;
@@ -179,8 +127,8 @@ namespace BetterFG.Tweaks
 
                 var rb = collision.rigidbody;
                 var otherBean = rb != null ? rb.GetComponent<FallGuysCharacterController>() : null;
-                if (otherBean == null) otherBean = collision.gameObject.GetComponentInParent<FallGuysCharacterController>();
-                if (otherBean == null || otherBean.IsLocalPlayer) return;
+                if (otherBean is null) otherBean = collision.gameObject.GetComponentInParent<FallGuysCharacterController>();
+                if (otherBean is null || otherBean.IsLocalPlayer) return;
 
                 Yelp(otherBean, rel);
             }
@@ -214,7 +162,7 @@ namespace BetterFG.Tweaks
 
         private static void Yelp(FallGuysCharacterController c, float strength)
         {
-            var key = Key(c, Voe.Hit);
+            IntPtr key = c.Pointer;
             _last.TryGetValue(key, out float last);
             if (Time.time - last < HitVoiceCooldown) return;
             _last[key] = Time.time;
@@ -225,44 +173,41 @@ namespace BetterFG.Tweaks
             var p = new AudioParamContainer(2);
             p.AddBool(true);
             p.AddFloat(master.ImpactStrengthParam, Mathf.Clamp(strength * 25f, 60f, 500f));
-            AudioManager.PlayCharacterAudio(master.VO_Hit, c, c.transform.position, p);
+            PlayThroughGate(master.VO_Hit, c, p);
         }
 
-        private static void Fire(FallGuysCharacterController c, Voe ev, bool condition, AudioEvent2D3DPairSO pair)
+        // RemovePlayersAudioActive is the game's own cull of every remote bean's audio. it used to be
+        // pinned false for the whole round just so our PlayCharacterAudio calls would clear
+        // CanCharacterPlayAudio — which also handed every other player's footsteps, foley and voice
+        // back to FMOD as live 3D events, a cost that grows with the crowd. PlayCharacterAudio does
+        // that check inside the call, so the flag only has to be down across the call itself and the
+        // player's own audio setting is back before anything else can read it.
+        private static AudioManager _am;
+        private static bool _stockRemovePlayersAudio;
+
+        private static void PlayThroughGate(AudioEvent2D3DPairSO pair, FallGuysCharacterController c, AudioParamContainer p)
         {
-            var key = Key(c, ev);
-
-            _was.TryGetValue(key, out bool was);
-            _was[key] = condition;
-            if (!condition || was) return;
-
-            if (IsOnCooldown(c, ev)) return;
-            StampCooldown(c, ev);
-            PlayPair(c, pair);
-        }
-
-        private static (IntPtr, Voe) Key(FallGuysCharacterController c, Voe ev) => (c.Pointer, ev);
-
-        private static bool IsOnCooldown(FallGuysCharacterController c, Voe ev)
-        {
-            _last.TryGetValue(Key(c, ev), out float last);
-            return Time.time - last < RewooCooldown;
-        }
-
-        private static void StampCooldown(FallGuysCharacterController c, Voe ev) => _last[Key(c, ev)] = Time.time;
-
-        private static void PlayPair(FallGuysCharacterController c, AudioEvent2D3DPairSO pair)
-        {
-            if (pair == null) return;
-            AudioManager.PlayCharacterAudio(pair, c, c.transform.position, _params);
+            if (_am is null || _am.m_CachedPtr == IntPtr.Zero)
+            {
+                AudioManager.PlayCharacterAudio(pair, c, c.transform.position, p);
+                return;
+            }
+            _am.RemovePlayersAudioActive = false;
+            try { AudioManager.PlayCharacterAudio(pair, c, c.transform.position, p); }
+            finally { _am.RemovePlayersAudioActive = _stockRemovePlayersAudio; }
         }
 
         internal static void ApplyFix()
         {
             try
             {
-                var am = UnityEngine.Object.FindObjectOfType<AudioManager>();
-                if (am != null) am.RemovePlayersAudioActive = false;
+                if (_am is null || _am.m_CachedPtr == IntPtr.Zero)
+                    _am = UnityEngine.Object.FindObjectOfType<AudioManager>();
+                if (_am != null)
+                {
+                    _stockRemovePlayersAudio = _am.RemovePlayersAudioActive;
+                    Plugin.Log.LogInfo($"fallguy noises: game's remote-audio culling is {(_stockRemovePlayersAudio ? "ON" : "off")}, gate opens only around our own plays");
+                }
             }
             catch { }
 
