@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 19;
+        public const int FormatVersion = 20;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 
@@ -102,25 +102,29 @@ namespace BetterFG.Features.Replay
             foreach (var p in rec.players)
                 foreach (var tex in p.bfgTextures)
                 {
-                    var bytes = TextureBytes(tex);
-                    bw.Write(bytes == null ? 0 : bytes.Length);
-                    if (bytes == null || bytes.Length == 0) continue;
-                    bw.Write(bytes);
-                    packed++;
+                    bw.Write(tex.overrides.Count);
+                    foreach (var ov in tex.overrides)
+                    {
+                        var bytes = TextureBytes(ov);
+                        bw.Write(bytes == null ? 0 : bytes.Length);
+                        if (bytes == null || bytes.Length == 0) continue;
+                        bw.Write(bytes);
+                        packed++;
+                    }
                 }
 
             if (packed > 0) Plugin.Log.LogInfo($"{packed} custom textures packed into the replay");
         }
 
-        static byte[] TextureBytes(SkinTexEntry tex)
+        static byte[] TextureBytes(SkinTexOverride ov)
         {
-            if (tex.texData != null && tex.texData.Length > 0) return tex.texData;
+            if (ov.texData != null && ov.texData.Length > 0) return ov.texData;
             try
             {
-                if (!string.IsNullOrEmpty(tex.texPath) && File.Exists(tex.texPath))
-                    return File.ReadAllBytes(tex.texPath);
+                if (!string.IsNullOrEmpty(ov.texPath) && File.Exists(ov.texPath))
+                    return File.ReadAllBytes(ov.texPath);
             }
-            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't pack the texture for '{tex.entryName}': {ex.Message}"); }
+            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't pack the texture '{ov.texName}': {ex.Message}"); }
             return null;
         }
 
@@ -468,8 +472,16 @@ namespace BetterFG.Features.Replay
                     var tex = p.bfgTextures[t];
                     sb.Append('{');
                     Str(sb, "entryName", tex.entryName, true);
-                    Num(sb, "matIdx", tex.matIdx);
                     Str(sb, "matNames", string.Join("|", tex.matNames));
+                    sb.Append(",\"overrides\":[");
+                    for (int o = 0; o < tex.overrides.Count; o++)
+                    {
+                        if (o > 0) sb.Append(',');
+                        sb.Append('{');
+                        Str(sb, "texName", tex.overrides[o].texName, true);
+                        sb.Append('}');
+                    }
+                    sb.Append(']');
                     sb.Append('}');
                 }
                 sb.Append(']');

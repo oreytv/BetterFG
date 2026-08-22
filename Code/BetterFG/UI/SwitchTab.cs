@@ -22,6 +22,8 @@ namespace BetterFG.UI
         protected virtual string SwitchLabel => "";
         protected virtual Tab MakeSwitchTarget() => null;
 
+        public override Tab MakeFallbackTab() => MakeSwitchTarget();
+
         protected override void BuildTitleExtras(Transform titleBar, Text title)
         {
             _titleText = title;

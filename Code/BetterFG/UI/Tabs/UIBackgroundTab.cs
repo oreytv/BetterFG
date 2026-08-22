@@ -13,8 +13,15 @@ namespace BetterFG.UI.Tabs
 
         public override string TabTitle => "UI - Background";
 
+        // set by UIPatternPickerTab's back link so returning from a pattern pick lands back on
+        // whichever screen you were customising, instead of resetting to FallForce.
+        public ScreenBackgroundService.Screen? InitialScreen { get; set; }
+        public int? InitialSubtab { get; set; }
+
         protected override void BuildContent(RectTransform contentRoot)
         {
+            if (InitialScreen.HasValue) _screenSel = InitialScreen.Value;
+            if (InitialSubtab.HasValue) _screenSubtab = InitialSubtab.Value;
             float w = TabWidth - PAD * 2f;
             float y = VPAD;
 
@@ -38,8 +45,14 @@ namespace BetterFG.UI.Tabs
         private float _scBotR = 1f, _scBotG = 1f, _scBotB = 1f;
         private float _scBias, _scSmooth = 1f;
         private bool _scEnabled;
+        // fixed carousel above the scroll view — Gradient (top/bottom colour, shape) vs Pattern
+        // (browse + tint). ShowSelector has no pattern feature so it's forced to Gradient.
+        private static readonly string[] ScreenSubtabs = { "Gradient", "Pattern" };
+        private int _screenSubtab;
         private string _scPattern = "";
-        private Button _scEnabledBtn;
+        private float _scPatternR = 1f, _scPatternG = 1f, _scPatternB = 1f, _scPatternA = 1f;
+        private Image _scPatternSwatch;
+        private Image _scTopSwatch, _scBotSwatch;
 
         // ── live clone preview (Backdrop + Circles) ────────────────────────────
         private const float SCREEN_PREVIEW_H = 100f;
@@ -49,6 +62,7 @@ namespace BetterFG.UI.Tabs
         private Sprite _scPreviewDefaultBackdrop;
         private Color _scPreviewDefaultBackdropColor;
         private Texture _scPreviewDefaultPattern;
+        private Color _scPreviewDefaultCirclesColor = Color.white;
         private Texture2D _scPreviewGradTex;
         private Texture2D _scPreviewPatternTex;
         private string _scPreviewPatternPath;
@@ -185,15 +199,46 @@ namespace BetterFG.UI.Tabs
             else if (_fallingSel) { LoadFallingSettings(); BuildFallingBody(bodyRt, x, 0f, w, _screenBodyH); }
             else BuildScreenBody(bodyRt, x, 0f, w, _screenBodyH);
 
-            // apply / remove row pinned at the bottom
             float by = y + bodyH + PAD;
             UGUIShip.CreatePanel(parent, new Rect(PAD, by, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             by += 1f + PAD;
-            float btnw = (w - PAD * 0.5f) / 2f;
+            float btnw = (w - PAD * 1.5f) / 4f;
             UGUIShip.CreateButton(parent, new Rect(PAD, by, btnw, BTN_H),
-                "Apply", BTN_APPLY, WHITE, FS, new Action(() => { if (_creativeSel) OnCreativeApply(); else if (_fallingSel) OnFallingApply(); else OnScreenApply(); }));
-            UGUIShip.CreateButton(parent, new Rect(PAD + btnw + PAD * 0.5f, by, btnw, BTN_H),
-                "Remove", BTN_REMOVE, WHITE, FS, new Action(() => { if (_creativeSel) OnCreativeRemove(); else if (_fallingSel) OnFallingRemove(); else OnScreenRemove(); }));
+                "Apply", BTN_APPLY, WHITE, FS_SM, new Action(() => { if (_creativeSel) OnCreativeApply(); else if (_fallingSel) OnFallingApply(); else OnScreenApply(); }));
+            UGUIShip.CreateButton(parent, new Rect(PAD + (btnw + PAD * 0.5f), by, btnw, BTN_H),
+                "Remove", BTN_REMOVE, WHITE, FS_SM, new Action(() => { if (_creativeSel) OnCreativeRemove(); else if (_fallingSel) OnFallingRemove(); else OnScreenRemove(); }));
+            UGUIShip.CreateButton(parent, new Rect(PAD + (btnw + PAD * 0.5f) * 2f, by, btnw, BTN_H),
+                "Enable All", BTN_ON, WHITE, FS_SM, new Action(() => SetScreenEnabled(true)));
+            UGUIShip.CreateButton(parent, new Rect(PAD + (btnw + PAD * 0.5f) * 3f, by, btnw, BTN_H),
+                "Disable All", BTN_REMOVE, WHITE, FS_SM, new Action(() => SetScreenEnabled(false)));
+        }
+
+        private void SetScreenEnabled(bool on)
+        {
+            if (_creativeSel)
+            {
+                _crEnabled = on;
+                SettingsService.Set(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, on ? "true" : "false");
+                ApplyCreativeLive();
+            }
+            else if (_fallingSel)
+            {
+                _lbEnabled = on;
+                SettingsService.Set(MenuCustomizationApplication.KEY_LOBBYBG_ENABLED, on ? "true" : "false");
+                ApplyFallingLive();
+            }
+            else
+            {
+                _scEnabled = on;
+                SettingsService.Set(ScreenBackgroundService.KeyEnabled(_screenSel), on ? "true" : "false");
+                if (_screenSel == ScreenBackgroundService.Screen.FallForce)
+                {
+                    SettingsService.Set(MenuCustomizationApplication.KEY_BG_ENABLED, on ? "true" : "false");
+                    MenuCustomizationApplication.Instance?.SetMenuBgEnabled(on);
+                }
+                ApplyScreenLive();
+            }
+            RebuildScreenBody();
         }
 
         private void RebuildScreenBody()
@@ -210,104 +255,128 @@ namespace BetterFG.UI.Tabs
             else BuildScreenBody(rt, PAD, 0f, _screenBodyW, _screenBodyH);
         }
 
+        private void BuildScreenSubtabCarousel(RectTransform parent, float x, float y, float w)
+        {
+            bool hasPattern = _screenSel != ScreenBackgroundService.Screen.ShowSelector;
+            if (!hasPattern) _screenSubtab = 0;
+
+            if (!hasPattern)
+            {
+                UGUIShip.CreateLabel(parent, new Rect(x, y, w, BTN_H), ScreenSubtabs[0], FS_SM, WHITE, TextAnchor.MiddleCenter);
+                return;
+            }
+
+            float arrow = 22f;
+            UGUIShip.CreateButton(parent, new Rect(x, y, arrow, BTN_H), "‹", BTN_DARK, WHITE, FS_SM, new Action(() => CycleScreenSubtab(-1)));
+            UGUIShip.CreateLabel(parent, new Rect(x + arrow, y, w - arrow * 2f, BTN_H), ScreenSubtabs[_screenSubtab], FS_SM, WHITE, TextAnchor.MiddleCenter);
+            UGUIShip.CreateButton(parent, new Rect(x + w - arrow, y, arrow, BTN_H), "›", BTN_DARK, WHITE, FS_SM, new Action(() => CycleScreenSubtab(+1)));
+        }
+
+        private void CycleScreenSubtab(int d)
+        {
+            int len = _screenSel != ScreenBackgroundService.Screen.ShowSelector ? ScreenSubtabs.Length : 1;
+            _screenSubtab = (_screenSubtab + d + len) % len;
+            RebuildScreenBody();
+        }
+
         private void BuildScreenBody(RectTransform parent, float x, float y, float w, float h)
         {
-            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y, TabWidth, h));
+            float headerH = BTN_H + SH;
+            BuildScreenSubtabCarousel(parent, x, y, w);
+            UGUIShip.CreatePanel(parent, new Rect(x, y + headerH - SH, w, 1f), new Color(1f, 1f, 1f, 0.06f));
+
+            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y + headerH, TabWidth, h - headerH));
+            // the scroll view's content is narrower than TabWidth by the scrollbar's inset on both
+            // sides (UGUIShip insets the viewport symmetrically) — rows built at the outer `w` run
+            // past content's real right edge and get clipped by the viewport mask.
+            w = TabWidth - UGUIShip.SCROLLBAR_INSET * 2f - PAD * 2f;
 
             BuildScreenPreview(scrollRect.transform.Find("Viewport"), x, w);
 
             float cy = SCREEN_PREVIEW_H + PAD;
 
-            // single on/off — for FallForce this also flips the menu BG visibility so showing
-            // custom colours always means showing the custom BG. (other screens have no separate
-            // BG concept.)
-            bool isFallForce = _screenSel == ScreenBackgroundService.Screen.FallForce;
-            _scEnabledBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
-                _scEnabled ? "Show custom bg: ON" : "Show custom bg: OFF", _scEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
-                new Action(() =>
-                {
-                    _scEnabled = !_scEnabled;
-                    SettingsService.Set(ScreenBackgroundService.KeyEnabled(_screenSel), _scEnabled ? "true" : "false");
-                    if (isFallForce)
-                    {
-                        SettingsService.Set(MenuCustomizationApplication.KEY_BG_ENABLED, _scEnabled ? "true" : "false");
-                        MenuCustomizationApplication.Instance?.SetMenuBgEnabled(_scEnabled);
-                    }
-                    var lbl = _scEnabledBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _scEnabled ? "Show custom bg: ON" : "Show custom bg: OFF";
-                    var img = _scEnabledBtn?.GetComponent<Image>();
-                    if (img != null) img.color = _scEnabled ? BTN_ON : BTN_DARK;
-                    ApplyScreenLive();
-                    RefreshScreenPreview();
-                }));
-            cy += BTN_H + SH;
-            UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
-            cy += 1f + PAD;
-
-            float slidersW = w;
-
-            // top color
-            UGUIShip.CreateLabel(content, new Rect(x, cy, slidersW, LH), "TOP COLOR", FS_SM, HINT);
-            cy += LH + SH;
-            UGUIShip.CreateColorControls(content, x, ref cy, slidersW,
-                () => _scTopR, () => _scTopG, () => _scTopB,
-                v => _scTopR = v, v => _scTopG = v, v => _scTopB = v, () => RefreshScreenPreview(), out _, out _, out _,
-                Color.black);
-
-            // bottom color
-            UGUIShip.CreateLabel(content, new Rect(x, cy, slidersW, LH), "BOTTOM COLOR", FS_SM, HINT);
-            cy += LH + SH;
-            UGUIShip.CreateColorControls(content, x, ref cy, slidersW,
-                () => _scBotR, () => _scBotG, () => _scBotB,
-                v => _scBotR = v, v => _scBotG = v, v => _scBotB = v, () => RefreshScreenPreview(), out _, out _, out _,
-                Color.white);
-
-            UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
-            cy += 1f + PAD;
-
-            // shader (texture bake) params
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "GRADIENT SHAPE", FS_SM, HINT);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Bias", _scBias, -1f, 1f, v => { _scBias = v; RefreshScreenPreview(); }, 0f);
-            cy += LH + SH;
-            BuildSliderRaw(content, x, cy, w, "Smooth", _scSmooth, 0.1f, 8f, v => { _scSmooth = v; RefreshScreenPreview(); }, 1f);
-            cy += LH + PAD;
-
-            // circles pattern — ShowSelector has a Circles image but no working pattern feature in-game
-            if (_screenSel != ScreenBackgroundService.Screen.ShowSelector)
+            if (_screenSubtab == 0)
             {
+                // top color
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "TOP COLOR", FS_SM, HINT);
+                cy += LH + SH;
+                float topSwatchW = BTN_H, topSliderW = w - topSwatchW - PAD;
+                var topSwGo = new GameObject("TopSwatch");
+                topSwGo.transform.SetParent(content, false);
+                UGUIShip.SetPixelRect(topSwGo.AddComponent<RectTransform>(), new Rect(x + topSliderW + PAD, cy, topSwatchW, (LH + SH) * 3f - SH));
+                _scTopSwatch = topSwGo.AddComponent<Image>();
+                _scTopSwatch.color = new Color(_scTopR, _scTopG, _scTopB);
+                UGUIShip.CreateColorControls(content, x, ref cy, topSliderW,
+                    () => _scTopR, () => _scTopG, () => _scTopB,
+                    v => _scTopR = v, v => _scTopG = v, v => _scTopB = v,
+                    () => { if (_scTopSwatch != null) _scTopSwatch.color = new Color(_scTopR, _scTopG, _scTopB); RefreshScreenPreview(); },
+                    out _, out _, out _, Color.black);
+
+                // bottom color
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "BOTTOM COLOR", FS_SM, HINT);
+                cy += LH + SH;
+                float botSwatchW = BTN_H, botSliderW = w - botSwatchW - PAD;
+                var botSwGo = new GameObject("BotSwatch");
+                botSwGo.transform.SetParent(content, false);
+                UGUIShip.SetPixelRect(botSwGo.AddComponent<RectTransform>(), new Rect(x + botSliderW + PAD, cy, botSwatchW, (LH + SH) * 3f - SH));
+                _scBotSwatch = botSwGo.AddComponent<Image>();
+                _scBotSwatch.color = new Color(_scBotR, _scBotG, _scBotB);
+                UGUIShip.CreateColorControls(content, x, ref cy, botSliderW,
+                    () => _scBotR, () => _scBotG, () => _scBotB,
+                    v => _scBotR = v, v => _scBotG = v, v => _scBotB = v,
+                    () => { if (_scBotSwatch != null) _scBotSwatch.color = new Color(_scBotR, _scBotG, _scBotB); RefreshScreenPreview(); },
+                    out _, out _, out _, Color.white);
+
                 UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
                 cy += 1f + PAD;
 
-                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "CIRCLES PATTERN", FS_SM, HINT);
+                // shader (texture bake) params
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "GRADIENT SHAPE", FS_SM, HINT);
                 cy += LH + SH;
-                float patBtnW = BTN_H * 2.5f, resetW = BTN_H * 2f;
-                float patLblW = w - patBtnW - resetW - PAD * 2f;
+                BuildSliderRaw(content, x, cy, w, "Bias", _scBias, -1f, 1f, v => { _scBias = v; RefreshScreenPreview(); }, 0f);
+                cy += LH + SH;
+                BuildSliderRaw(content, x, cy, w, "Smooth", _scSmooth, 0.1f, 8f, v => { _scSmooth = v; RefreshScreenPreview(); }, 1f);
+                cy += LH + PAD;
+            }
+            else
+            {
+                // circles pattern — ShowSelector has a Circles image but no working pattern feature in-game,
+                // and forces _screenSubtab back to 0 above, so this branch never runs for it.
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PATTERN", FS_SM, HINT);
+                cy += LH + SH;
+                float patBtnW = BTN_H * 2.5f;
+                float patLblW = w - patBtnW - PAD;
                 _scPatternLabel = UGUIShip.CreateLabel(content, new Rect(x, cy, patLblW, BTN_H),
-                    string.IsNullOrEmpty(_scPattern) ? "none" : System.IO.Path.GetFileName(_scPattern),
+                    ScreenBackgroundService.PatternDisplayName(_scPattern),
                     FS_SM, HINT, TextAnchor.MiddleLeft);
                 UGUIShip.CreateButton(content, new Rect(x + patLblW + PAD, cy, patBtnW, BTN_H),
-                    "Browse", BTN_DARK, WHITE, FS_SM,
-                    new Action(() => WinDialogs.PickPng("Select pattern PNG", path =>
+                    "Browse", BTN_DARK, WHITE, FS_SM, new Action(() =>
                     {
-                        if (string.IsNullOrEmpty(path)) return;
-                        _scPattern = path;
-                        SettingsService.Set(ScreenBackgroundService.KeyPattern(_screenSel), path);
-                        if (_scPatternLabel != null) _scPatternLabel.text = System.IO.Path.GetFileName(path);
-                        RefreshScreenPreview();
-                    })));
-                UGUIShip.CreateButton(content, new Rect(x + patLblW + PAD + patBtnW + PAD, cy, resetW, BTN_H),
-                    "Reset", BTN_REMOVE, WHITE, FS_SM,
-                    new Action(() =>
-                    {
-                        _scPattern = "";
-                        SettingsService.Remove(ScreenBackgroundService.KeyPattern(_screenSel));
-                        if (_scPatternLabel != null) _scPatternLabel.text = "none";
-                        if (_screenSel == ScreenBackgroundService.Screen.FallForce)
-                            MenuCustomizationApplication.Instance?.RestorePattern();
-                        RefreshScreenPreview();
+                        var t = BetterFGTabRegistry.NewTab<UIPatternPickerTab>();
+                        t.Screen = _screenSel;
+                        BetterFGUIMan.Instance?.SwitchSlotTab(this, t);
                     }));
                 cy += BTN_H + PAD;
+
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PATTERN COLOR", FS_SM, HINT);
+                cy += LH + SH;
+                float patSwatchW = BTN_H, patSliderW = w - patSwatchW - PAD;
+                var swGo = new GameObject("PatternSwatch");
+                swGo.transform.SetParent(content, false);
+                UGUIShip.SetPixelRect(swGo.AddComponent<RectTransform>(), new Rect(x + patSliderW + PAD, cy, patSwatchW, (LH + SH) * 4f - SH));
+                _scPatternSwatch = swGo.AddComponent<Image>();
+                _scPatternSwatch.color = new Color(_scPatternR, _scPatternG, _scPatternB, _scPatternA);
+                void SyncPatternSwatch()
+                {
+                    if (_scPatternSwatch != null) _scPatternSwatch.color = new Color(_scPatternR, _scPatternG, _scPatternB, _scPatternA);
+                    RefreshScreenPreview();
+                }
+                UGUIShip.CreateColorControls(content, x, ref cy, patSliderW,
+                    () => _scPatternR, () => _scPatternG, () => _scPatternB,
+                    v => _scPatternR = v, v => _scPatternG = v, v => _scPatternB = v, SyncPatternSwatch, out _, out _, out _,
+                    Color.white);
+                BuildSliderRaw(content, x, cy, patSliderW, "Alpha", _scPatternA, 0f, 1f, v => { _scPatternA = v; SyncPatternSwatch(); }, 1f);
+                cy += LH + PAD;
             }
 
             content.sizeDelta = new Vector2(0f, cy + PAD);
@@ -387,21 +456,26 @@ namespace BetterFG.UI.Tabs
                 _scPreviewCircles.material = _scPreviewCirclesMat;
             }
 
-            // FallForce's Backdrop sprite/colour are never touched by the live game at all (the visible
-            // menu bg is a separate quad BettrFG spawns on top), so reading it straight off the clone
-            // is always the true default — no taint risk, unlike every other screen. those go through
-            // ScreenBackgroundService's cache instead (populated above via CacheScreenDefault, which IS
-            // taint-protected), see RefreshScreenPreview.
+            // FallForce's Backdrop, like Circles, IS mutated live by ApplyGradientFromSettings — if a
+            // custom gradient is already active this session, reading the clone's sprite straight off
+            // would hand us back our OWN texture as the "default". route through the guarded capture
+            // instead, which remembers the real original from before any custom was applied.
             if (_screenSel == ScreenBackgroundService.Screen.FallForce && _scPreviewBackdrop != null)
             {
-                _scPreviewDefaultBackdrop = _scPreviewBackdrop.sprite;
-                _scPreviewDefaultBackdropColor = _scPreviewBackdrop.color;
+                _scPreviewDefaultBackdrop = MenuCustomizationApplication.Instance?.EnsureOriginalBackdropSpriteCaptured();
+                _scPreviewDefaultBackdropColor = Color.white;
             }
             // Circles' pattern, unlike Backdrop, IS mutated live by ApplyPatternFromSettings — if a
             // custom pattern is already active this session, reading the clone's material straight
             // off would hand us back our OWN texture as the "default". route through the guarded
             // capture instead, which remembers the real original from before any custom was applied.
             _scPreviewDefaultPattern = MenuCustomizationApplication.Instance?.EnsureOriginalCirclesPatternCaptured();
+            if (_screenSel == ScreenBackgroundService.Screen.FallForce)
+                _scPreviewDefaultCirclesColor = MenuCustomizationApplication.Instance?.EnsureOriginalCirclesColorCaptured() ?? Color.white;
+            else if (ScreenBackgroundService.TryGetScreenDefaultCirclesColor(_screenSel, out var defCol))
+                _scPreviewDefaultCirclesColor = defCol;
+            else if (_scPreviewCircles != null)
+                _scPreviewDefaultCirclesColor = _scPreviewCircles.color;
 
             _scPreviewHintLabel = UGUIShip.CreateLabel(holderRt, new Rect(PAD, 0f, w - PAD * 2f, SCREEN_PREVIEW_H),
                 "haven't seen this screen's real default yet this session — visit it once, or turn custom colours on above to preview those instead",
@@ -461,20 +535,18 @@ namespace BetterFG.UI.Tabs
                 Texture patternTex = _scPreviewDefaultPattern;
                 if (!isFallForce && ScreenBackgroundService.TryGetScreenDefault(_screenSel, out _, out _, out var cachedPattern))
                     patternTex = cachedPattern;
-                if (_scEnabled && !string.IsNullOrEmpty(_scPattern) && System.IO.File.Exists(_scPattern))
+                if (_scEnabled && !string.IsNullOrEmpty(_scPattern))
                 {
                     if (_scPreviewPatternPath != _scPattern)
                     {
                         if (_scPreviewPatternTex != null) Destroy(_scPreviewPatternTex);
-                        var ptex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                        ptex.LoadImage(System.IO.File.ReadAllBytes(_scPattern));
-                        ptex.Apply();
-                        _scPreviewPatternTex = ptex;
+                        _scPreviewPatternTex = ScreenBackgroundService.LoadPatternTexture(_scPattern);
                         _scPreviewPatternPath = _scPattern;
                     }
-                    patternTex = _scPreviewPatternTex;
+                    if (_scPreviewPatternTex != null) patternTex = _scPreviewPatternTex;
                 }
                 _scPreviewCircles.material.SetTexture("_Pattern", patternTex);
+                _scPreviewCircles.color = _scEnabled ? new Color(_scPatternR, _scPatternG, _scPatternB, _scPatternA) : _scPreviewDefaultCirclesColor;
             }
         }
 
@@ -494,6 +566,10 @@ namespace BetterFG.UI.Tabs
             _scSmooth = P(ScreenBackgroundService.KeySmooth(s), 1f);
             _scEnabled = SettingsService.Get(ScreenBackgroundService.KeyEnabled(s), "false") == "true";
             _scPattern = SettingsService.Get(ScreenBackgroundService.KeyPattern(s), "");
+            _scPatternR = P(ScreenBackgroundService.KeyPatternR(s), 1f);
+            _scPatternG = P(ScreenBackgroundService.KeyPatternG(s), 1f);
+            _scPatternB = P(ScreenBackgroundService.KeyPatternB(s), 1f);
+            _scPatternA = P(ScreenBackgroundService.KeyPatternA(s), 1f);
         }
 
         private void OnScreenApply()
@@ -509,6 +585,10 @@ namespace BetterFG.UI.Tabs
             S(ScreenBackgroundService.KeyBotB(s), _scBotB);
             S(ScreenBackgroundService.KeyBias(s), _scBias);
             S(ScreenBackgroundService.KeySmooth(s), _scSmooth);
+            S(ScreenBackgroundService.KeyPatternR(s), _scPatternR);
+            S(ScreenBackgroundService.KeyPatternG(s), _scPatternG);
+            S(ScreenBackgroundService.KeyPatternB(s), _scPatternB);
+            S(ScreenBackgroundService.KeyPatternA(s), _scPatternA);
             SettingsService.Set(ScreenBackgroundService.KeyEnabled(s), _scEnabled ? "true" : "false");
 
             ApplyScreenLive();
@@ -535,7 +615,7 @@ namespace BetterFG.UI.Tabs
                 else
                 {
                     // revert menu gradient + pattern to default
-                    MenuCustomizationApplication.Instance?.ApplyGradient(Color.black, Color.white, 0f, 1f);
+                    MenuCustomizationApplication.Instance?.RestoreBackdrop();
                     MenuCustomizationApplication.Instance?.RestorePattern();
                 }
             }
@@ -560,16 +640,19 @@ namespace BetterFG.UI.Tabs
                 ScreenBackgroundService.KeyBotR(s), ScreenBackgroundService.KeyBotG(s), ScreenBackgroundService.KeyBotB(s),
                 ScreenBackgroundService.KeyBias(s), ScreenBackgroundService.KeySmooth(s),
                 ScreenBackgroundService.KeyEnabled(s), ScreenBackgroundService.KeyPattern(s),
+                ScreenBackgroundService.KeyPatternR(s), ScreenBackgroundService.KeyPatternG(s),
+                ScreenBackgroundService.KeyPatternB(s), ScreenBackgroundService.KeyPatternA(s),
             })
                 SettingsService.Remove(k);
 
             _scTopR = _scTopG = _scTopB = 0f;
             _scBotR = _scBotG = _scBotB = 1f;
             _scBias = 0f; _scSmooth = 1f; _scEnabled = false; _scPattern = "";
+            _scPatternR = _scPatternG = _scPatternB = _scPatternA = 1f;
 
             if (s == ScreenBackgroundService.Screen.FallForce)
             {
-                MenuCustomizationApplication.Instance?.ApplyGradient(Color.black, Color.white, 0f, 1f);
+                MenuCustomizationApplication.Instance?.RestoreBackdrop();
                 MenuCustomizationApplication.Instance?.RestorePattern();
             }
             RebuildScreenBody();
@@ -589,6 +672,7 @@ namespace BetterFG.UI.Tabs
         private void BuildFallingBody(RectTransform parent, float x, float y, float w, float h)
         {
             var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y, TabWidth, h));
+            w = TabWidth - UGUIShip.SCROLLBAR_INSET * 2f - PAD * 2f;
 
             float cy = PAD;
 
@@ -732,6 +816,7 @@ namespace BetterFG.UI.Tabs
         private void BuildCreativeBody(RectTransform parent, float x, float y, float w, float h)
         {
             var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y, TabWidth, h));
+            w = TabWidth - UGUIShip.SCROLLBAR_INSET * 2f - PAD * 2f;
 
             BuildCreativePreview(scrollRect.transform.Find("Viewport"), x, w);
 

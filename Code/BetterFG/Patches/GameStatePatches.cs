@@ -354,6 +354,9 @@ namespace BetterFG.Patches.GameStates
                 MenuCustomizationApplication.Instance.StartCoroutine(
                     MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine(builder != null ? builder.transform : null).WrapToIl2Cpp());
             }
+            else if (view == MainMenuViews.Settings)
+                MenuCustomizationApplication.Instance?.ReapplyPatternNextFrame();
+
             SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals();
             BetterFG.Services.DiscordPresenceService.Push();
         }
@@ -827,13 +830,13 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix(LoadingScreenViewModel __instance)
         {
             if (__instance == null) return;
+            BetterFG.Tweaks.ChangeSplashScreenTweak.OnLoadingScreenUpdateDisplay(__instance);
             var game = __instance.TryCast<LoadingGameScreenViewModel>();
             if (game == null)
             {
                 BetterFG.Services.FGInputLockService.RefreshLoadingScreenLock();
                 return;
             }
-            BetterFG.Tweaks.ChangeSplashScreenTweak.OnLoadingScreenUpdateDisplay();
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnLoadingScreenUpdateDisplay();
             BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh();
             var ugc = __instance.TryCast<LoadingUGCGameScreenViewModel>();
@@ -1391,6 +1394,8 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix()
         {
             BetterFG.Utilities.PatchGate.SetRoundActive(true);
+            if (BetterFG.Tweaks.HideZoneArchEffectsTweak.Instance?.IsEnabled == true)
+                BetterFG.Tweaks.HideZoneArchEffectsTweak.StripSpeedArchCameraLines();
             BetterFGUnityRounds.StartCustomMusicIfAny();
             BetterFG.Patches.SeasonProgressHoverPatch.SetMenuActive(false);
 
@@ -1549,6 +1554,9 @@ namespace BetterFG.Patches.GameStates
 
                 MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
             }
+
+            MenuCustomizationApplication.Instance?.ApplyPatternFromSettings();
+            MenuCustomizationApplication.Instance?.ApplyGradientFromSettings();
 
             if (scope != null) NametagFinder.ReapplyNameplatesInScope(scope);
             else NametagFinder.ReapplyAllNameplates();

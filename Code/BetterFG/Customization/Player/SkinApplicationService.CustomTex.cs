@@ -7,18 +7,38 @@ using BetterFG.Services;
 
 namespace BetterFG.Customization.Player
 {
-    // one user-created texture override entry
+    // one texture slot swap within an entry - texName is the ORIGINAL texture's name, the
+    // identity we match against on a bean's live materials (see ApplyTextureToGameObject)
+    public class SkinTexOverride
+    {
+        public string texName;
+        public string texPath;
+        public byte[] texData;
+    }
+
+    // one shader property tweak on a named material - matName is the CleanMatName identity we
+    // match against on a bean's live materials. kind: "color" | "vector" (both use x/y/z/w),
+    // or "float" (covers Float/Range/Int - f only)
+    public class MatPropOverride
+    {
+        public string matName;
+        public string prop;
+        public string kind;
+        public float f;
+        public float x, y, z, w;
+    }
+
+    // one user-created costume retexture - can carry several texture swaps (one per slot) plus
+    // optional material property tweaks (rim colour, emissive, metallic/smoothness, etc)
     public class SkinTexEntry
     {
         public string entryName;
-        public string texPath;
-        public byte[] texData;
-        public int matIdx;
         public bool enabled;
         public string costumeName;
 
-        public List<Material> mats = new List<Material>();
         public List<string> matNames = new List<string>();
+        public List<SkinTexOverride> overrides = new List<SkinTexOverride>();
+        public List<MatPropOverride> matProps = new List<MatPropOverride>();
     }
 
     public partial class SkinApplicationService
@@ -33,7 +53,39 @@ namespace BetterFG.Customization.Player
         // background freeze after a texture is applied. cleared on revert so a settings/costume
         // change re-attempts cleanly.
         private HashSet<int> customTexAttemptedBeans = new HashSet<int>();
-        private static readonly string[] customTexProps = { "_MainTex", "_BaseMap", "_BaseTexture", "_MainTex2" };
+        // was a fixed 4-name list (_MainTex/_BaseMap/etc) - now reads every texture slot the
+        // shader actually declares, so metallic/normal/emission maps show up too, not just albedo
+        public static IEnumerable<string> GetTextureProps(Material mat)
+        {
+            var shader = mat != null ? mat.shader : null;
+            if (shader == null) yield break;
+            int count = shader.GetPropertyCount();
+            for (int i = 0; i < count; i++)
+                if (shader.GetPropertyType(i) == UnityEngine.Rendering.ShaderPropertyType.Texture)
+                    yield return shader.GetPropertyName(i);
+        }
+
+        // every non-texture property the shader declares - rim colour, emissive, metallic,
+        // smoothness, gradient vectors, whatever the shader actually has. rangeMin/Max are only
+        // meaningful when type is Range (Shader.GetPropertyRangeLimits); otherwise both 0.
+        public static IEnumerable<(string name, UnityEngine.Rendering.ShaderPropertyType type, float rangeMin, float rangeMax)> GetEditableProps(Material mat)
+        {
+            var shader = mat != null ? mat.shader : null;
+            if (shader == null) yield break;
+            int count = shader.GetPropertyCount();
+            for (int i = 0; i < count; i++)
+            {
+                var t = shader.GetPropertyType(i);
+                if (t == UnityEngine.Rendering.ShaderPropertyType.Texture) continue;
+                float rMin = 0f, rMax = 0f;
+                if (t == UnityEngine.Rendering.ShaderPropertyType.Range)
+                {
+                    var limits = shader.GetPropertyRangeLimits(i);
+                    rMin = limits.x; rMax = limits.y;
+                }
+                yield return (shader.GetPropertyName(i), t, rMin, rMax);
+            }
+        }
 
         private struct CustomTexOriginal
         {
@@ -42,6 +94,19 @@ namespace BetterFG.Customization.Player
             public string prop;
             public Texture texture;
             public string textureName;
+        }
+
+        // keyed by bean instance id — original color/float values before a MatPropOverride touched them
+        private Dictionary<int, List<CustomPropOriginal>> customPropOriginals = new Dictionary<int, List<CustomPropOriginal>>();
+
+        private struct CustomPropOriginal
+        {
+            public Renderer renderer;
+            public int matIdx;
+            public string prop;
+            public string kind;
+            public float f;
+            public Vector4 v;
         }
 
         // process-wide cache of decoded custom textures. each bean push used to re-read the file
@@ -66,17 +131,44 @@ namespace BetterFG.Customization.Player
                 var e = new SkinTexEntry
                 {
                     entryName = SettingsService.Get(EK(i, "name"), "entry " + i),
-                    texPath = SettingsService.Get(EK(i, "texPath"), ""),
-                    matIdx = 0,
                     enabled = SettingsService.Get(EK(i, "enabled"), "1") == "1",
                     costumeName = SettingsService.Get(EK(i, "costume"), "")
                 };
-                if (int.TryParse(SettingsService.Get(EK(i, "matIdx"), "0"), out int mi))
-                    e.matIdx = mi;
 
                 // matNames come back pipe-joined so match building works without recaching the costume
                 foreach (var n in SettingsService.Get(EK(i, "matNames"), "").Split('|'))
                     if (!string.IsNullOrEmpty(n)) e.matNames.Add(n);
+
+                int ovCount = int.TryParse(SettingsService.Get(EK(i, "overrideCount"), "0"), out int oc) ? oc : 0;
+                for (int j = 0; j < ovCount; j++)
+                {
+                    string texName = SettingsService.Get(EK(i, $"override.{j}.texName"), "");
+                    string texPath = SettingsService.Get(EK(i, $"override.{j}.texPath"), "");
+                    if (string.IsNullOrEmpty(texName)) continue;
+                    e.overrides.Add(new SkinTexOverride { texName = texName, texPath = texPath });
+                }
+
+                int propCount = int.TryParse(SettingsService.Get(EK(i, "propCount"), "0"), out int pc) ? pc : 0;
+                for (int k = 0; k < propCount; k++)
+                {
+                    string matName = SettingsService.Get(EK(i, $"prop.{k}.matName"), "");
+                    string propName = SettingsService.Get(EK(i, $"prop.{k}.name"), "");
+                    string kind = SettingsService.Get(EK(i, $"prop.{k}.kind"), "");
+                    if (string.IsNullOrEmpty(matName) || string.IsNullOrEmpty(propName) || string.IsNullOrEmpty(kind)) continue;
+                    var po = new MatPropOverride { matName = matName, prop = propName, kind = kind };
+                    if (kind == "float")
+                    {
+                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.f"), "0"), out po.f);
+                    }
+                    else
+                    {
+                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.x"), "0"), out po.x);
+                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.y"), "0"), out po.y);
+                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.z"), "0"), out po.z);
+                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.w"), "1"), out po.w);
+                    }
+                    e.matProps.Add(po);
+                }
 
                 entries.Add(e);
             }
@@ -90,11 +182,35 @@ namespace BetterFG.Customization.Player
             {
                 var e = entries[i];
                 SettingsService.Set(EK(i, "name"), e.entryName);
-                SettingsService.Set(EK(i, "texPath"), e.texPath);
-                SettingsService.Set(EK(i, "matIdx"), e.matIdx.ToString());
                 SettingsService.Set(EK(i, "enabled"), e.enabled ? "1" : "0");
                 SettingsService.Set(EK(i, "costume"), e.costumeName);
                 SettingsService.Set(EK(i, "matNames"), string.Join("|", e.matNames));
+                SettingsService.Set(EK(i, "overrideCount"), e.overrides.Count.ToString());
+                for (int j = 0; j < e.overrides.Count; j++)
+                {
+                    SettingsService.Set(EK(i, $"override.{j}.texName"), e.overrides[j].texName);
+                    SettingsService.Set(EK(i, $"override.{j}.texPath"), e.overrides[j].texPath);
+                }
+
+                SettingsService.Set(EK(i, "propCount"), e.matProps.Count.ToString());
+                for (int k = 0; k < e.matProps.Count; k++)
+                {
+                    var po = e.matProps[k];
+                    SettingsService.Set(EK(i, $"prop.{k}.matName"), po.matName);
+                    SettingsService.Set(EK(i, $"prop.{k}.name"), po.prop);
+                    SettingsService.Set(EK(i, $"prop.{k}.kind"), po.kind);
+                    if (po.kind == "float")
+                    {
+                        SettingsService.Set(EK(i, $"prop.{k}.f"), po.f.ToString());
+                    }
+                    else
+                    {
+                        SettingsService.Set(EK(i, $"prop.{k}.x"), po.x.ToString());
+                        SettingsService.Set(EK(i, $"prop.{k}.y"), po.y.ToString());
+                        SettingsService.Set(EK(i, $"prop.{k}.z"), po.z.ToString());
+                        SettingsService.Set(EK(i, $"prop.{k}.w"), po.w.ToString());
+                    }
+                }
             }
         }
 
@@ -103,14 +219,27 @@ namespace BetterFG.Customization.Player
         public static void PrewarmCustomTexCache()
         {
             foreach (var entry in LoadEntries())
-                if (entry.enabled) GetCachedCustomTex(entry);
+                if (entry.enabled)
+                    foreach (var ov in entry.overrides)
+                        GetCachedCustomTex(ov);
         }
 
+        public static Texture2D GetCachedCustomTex(SkinTexOverride ov)
+        {
+            if (ov.texData != null && ov.texData.Length > 0)
+                return DecodeCustomTex("replay:" + ov.texName, ov.texData.Length, ov.texData);
+            return GetCachedCustomTex(ov.texPath);
+        }
+
+        // thumbnail for the entry row - first override that has a decodable texture
         public static Texture2D GetCachedCustomTex(SkinTexEntry entry)
         {
-            if (entry.texData != null && entry.texData.Length > 0)
-                return DecodeCustomTex("replay:" + entry.entryName, entry.texData.Length, entry.texData);
-            return GetCachedCustomTex(entry.texPath);
+            foreach (var ov in entry.overrides)
+            {
+                var t = GetCachedCustomTex(ov);
+                if (t != null) return t;
+            }
+            return null;
         }
 
         private static Texture2D GetCachedCustomTex(string path)
@@ -141,11 +270,23 @@ namespace BetterFG.Customization.Player
         public static Texture GetMaterialTexture(Material mat)
         {
             if (mat == null) return null;
-            foreach (var prop in customTexProps)
+            foreach (var prop in GetTextureProps(mat))
             {
-                if (!mat.HasProperty(prop)) continue;
                 var t = mat.GetTexture(prop);
                 if (t != null) return t;
+            }
+            return null;
+        }
+
+        // finds the texture on this material whose own name matches (a material can carry
+        // several named textures now - albedo, metallic map, normal map, etc)
+        private static Texture FindNamedTexture(Material mat, string name)
+        {
+            if (mat == null || string.IsNullOrEmpty(name)) return null;
+            foreach (var prop in GetTextureProps(mat))
+            {
+                var t = mat.GetTexture(prop);
+                if (t != null && t.name == name) return t;
             }
             return null;
         }
@@ -154,7 +295,7 @@ namespace BetterFG.Customization.Player
         {
             if (mats != null && idx >= 0 && idx < mats.Count)
             {
-                var t = GetMaterialTexture(mats[idx]);
+                var t = FindNamedTexture(mats[idx], matName) ?? GetMaterialTexture(mats[idx]);
                 if (t != null) return t;
             }
 
@@ -174,9 +315,13 @@ namespace BetterFG.Customization.Player
                 if (shared == null) continue;
                 foreach (var m in shared)
                 {
-                    var t = GetMaterialTexture(m);
-                    if (t == null) continue;
-                    if (t.name == matName || CleanMatName(m.name) == matName) return t;
+                    var t = FindNamedTexture(m, matName);
+                    if (t != null) return t;
+                    if (CleanMatName(m.name) == matName)
+                    {
+                        t = GetMaterialTexture(m);
+                        if (t != null) return t;
+                    }
                 }
             }
             return null;
@@ -212,34 +357,6 @@ namespace BetterFG.Customization.Player
             }
         }
 
-        public static HashSet<string> BuildMatchNames(SkinTexEntry entry)
-        {
-            var matchNames = new HashSet<string>();
-            if (entry.matNames.Count > 0 && entry.matIdx >= 0 && entry.matIdx < entry.matNames.Count)
-            {
-                var name = entry.matNames[entry.matIdx];
-                if (!string.IsNullOrEmpty(name)) matchNames.Add(name);
-            }
-
-            if (matchNames.Count > 0) return matchNames;
-
-            if (entry.mats.Count > 0 && entry.matIdx >= 0 && entry.matIdx < entry.mats.Count)
-            {
-                var mat = entry.mats[entry.matIdx];
-                if (mat != null)
-                {
-                    if (!string.IsNullOrEmpty(mat.name)) matchNames.Add(CleanMatName(mat.name));
-                    foreach (var prop in customTexProps)
-                    {
-                        if (!mat.HasProperty(prop)) continue;
-                        var t = mat.GetTexture(prop);
-                        if (t != null && !string.IsNullOrEmpty(t.name)) { matchNames.Add(t.name); break; }
-                    }
-                }
-            }
-            return matchNames;
-        }
-
         public static List<GameObject> GatherBeans()
         {
             var beans = new List<GameObject>();
@@ -253,9 +370,16 @@ namespace BetterFG.Customization.Player
         public static int ApplyEntryToBean(SkinTexEntry entry, GameObject bean)
         {
             if (Instance == null || bean == null) return 0;
-            var tex = GetCachedCustomTex(entry);
-            if (tex == null) return 0;
-            return Instance.ApplyCustomTexture(bean, entry.matIdx, tex, BuildMatchNames(entry));
+            int total = 0;
+            foreach (var ov in entry.overrides)
+            {
+                if (string.IsNullOrEmpty(ov.texName)) continue;
+                var tex = GetCachedCustomTex(ov);
+                if (tex == null) continue;
+                total += Instance.ApplyCustomTexture(bean, 0, tex, new HashSet<string> { ov.texName });
+            }
+            total += Instance.ApplyMatProps(bean, entry.matProps);
+            return total;
         }
 
         public static void ApplyEntriesToBean(List<SkinTexEntry> entries, GameObject bean)
@@ -306,13 +430,13 @@ namespace BetterFG.Customization.Player
             foreach (var entry in LoadEntries())
             {
                 if (!entry.enabled) continue;
-
-                // no match name = skip, don't blast everything
-                var matchNames = BuildMatchNames(entry);
-                if (matchNames.Count == 0) continue;
-
-                var tex = GetCachedCustomTex(entry);
-                if (tex != null) total += ApplyCustomTexture(bean, entry.matIdx, tex, matchNames);
+                foreach (var ov in entry.overrides)
+                {
+                    if (string.IsNullOrEmpty(ov.texName)) continue;
+                    var tex = GetCachedCustomTex(ov);
+                    if (tex != null) total += ApplyCustomTexture(bean, 0, tex, new HashSet<string> { ov.texName });
+                }
+                total += ApplyMatProps(bean, entry.matProps);
             }
             return total;
         }
@@ -406,12 +530,10 @@ namespace BetterFG.Customization.Player
 
                     bool hadTextureSlot = false;
 
-                    foreach (var prop in customTexProps)
+                    foreach (var prop in GetTextureProps(m))
                     {
                         try
                         {
-                            if (!m.HasProperty(prop)) continue;
-
                             var originalTex = FindCustomTexOriginal(originalList, r, i, prop, out string savedName);
                             if (originalTex == null)
                                 originalTex = m.GetTexture(prop);
@@ -449,7 +571,106 @@ namespace BetterFG.Customization.Player
             return count;
         }
 
-        private static string CleanMatName(string name)
+        // scans bean GEO for materials whose (cleaned) name matches, sets the color/float
+        public int ApplyMatProps(GameObject bean, List<MatPropOverride> props)
+        {
+            if (bean == null || props == null || props.Count == 0) return 0;
+            var geo = FindBeanGEO(bean);
+            if (geo == null) return 0;
+            return ApplyMatPropsToGameObject(geo.gameObject, props, bean.GetInstanceID());
+        }
+
+        private int ApplyMatPropsToGameObject(GameObject costumeObj, List<MatPropOverride> props, int beanId)
+        {
+            int count = 0;
+            var renderers = costumeObj.GetComponentsInChildren<Renderer>(true);
+            bool alreadyHadOriginals = customPropOriginals.TryGetValue(beanId, out var originalList);
+            if (originalList == null)
+                originalList = new List<CustomPropOriginal>();
+
+            foreach (var r in renderers)
+            {
+                if (r == null) continue;
+                var mats = r.materials;
+                if (mats == null) continue;
+                bool touched = false;
+
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null) continue;
+                    string matName = CleanMatName(m.name);
+
+                    foreach (var po in props)
+                    {
+                        if (po.matName != matName || !m.HasProperty(po.prop)) continue;
+                        try
+                        {
+                            RememberCustomPropOriginal(originalList, r, i, po.prop, po.kind, m);
+                            if (po.kind == "color") m.SetColor(po.prop, new Color(po.x, po.y, po.z, po.w));
+                            else if (po.kind == "vector") m.SetVector(po.prop, new Vector4(po.x, po.y, po.z, po.w));
+                            else m.SetFloat(po.prop, po.f);
+                            touched = true;
+                        }
+                        catch { }
+                    }
+                }
+
+                if (touched)
+                {
+                    r.materials = mats;
+                    count++;
+                }
+            }
+            if (count > 0 && !alreadyHadOriginals)
+                customPropOriginals[beanId] = originalList;
+            return count;
+        }
+
+        private static void RememberCustomPropOriginal(List<CustomPropOriginal> originals, Renderer renderer, int matIdx, string prop, string kind, Material m)
+        {
+            foreach (var o in originals)
+                if (o.renderer == renderer && o.matIdx == matIdx && o.prop == prop) return;
+
+            originals.Add(new CustomPropOriginal
+            {
+                renderer = renderer,
+                matIdx = matIdx,
+                prop = prop,
+                kind = kind,
+                f = kind == "float" ? m.GetFloat(prop) : 0f,
+                v = kind == "color" ? (Vector4)m.GetColor(prop) : kind == "vector" ? m.GetVector(prop) : default
+            });
+        }
+
+        public void RevertMatProps(GameObject bean)
+        {
+            if (bean == null) return;
+            int beanId = bean.GetInstanceID();
+            if (!customPropOriginals.TryGetValue(beanId, out var originals)) return;
+
+            foreach (var o in originals)
+            {
+                var r = o.renderer;
+                if (r == null) continue;
+                try
+                {
+                    var mats = r.materials;
+                    if (mats == null || o.matIdx < 0 || o.matIdx >= mats.Length) continue;
+                    var m = mats[o.matIdx];
+                    if (m == null || !m.HasProperty(o.prop)) continue;
+                    if (o.kind == "color") m.SetColor(o.prop, (Color)o.v);
+                    else if (o.kind == "vector") m.SetVector(o.prop, o.v);
+                    else m.SetFloat(o.prop, o.f);
+                    r.materials = mats;
+                }
+                catch { }
+            }
+
+            customPropOriginals.Remove(beanId);
+        }
+
+        public static string CleanMatName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "";
             return name.EndsWith(" (Instance)") ? name.Substring(0, name.Length - 11) : name;
@@ -490,6 +711,8 @@ namespace BetterFG.Customization.Player
         public void RevertCustomTexture(GameObject bean)
         {
             if (bean == null) return;
+            RevertMatProps(bean);
+
             int beanId = bean.GetInstanceID();
             // always re-enable a fresh attempt next time the bean rebinds — even for beans that
             // never matched (those aren't in customTexOriginals but DID get marked attempted)

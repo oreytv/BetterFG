@@ -17,6 +17,7 @@ namespace BetterFG.UI.Tabs
         public CustomCreativeTextureTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Creative - Custom Textures";
+        public override Tab MakeFallbackTab() => BetterFGTabRegistry.NewTab<CreativeTab>();
 
         private static float PAD => UIScale.PAD;
         private static float VPAD => UIScale.VPAD;

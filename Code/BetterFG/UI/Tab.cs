@@ -105,6 +105,8 @@ namespace BetterFG.UI
 
         public virtual string TabTitle => "Tab";
 
+        public virtual Tab MakeFallbackTab() => null;
+
         protected virtual string TitleDisplay => TabTitle;
         private Text _titleLabel;
         protected void RefreshTitle() => _titleLabel.text = TitleDisplay.ToUpper();

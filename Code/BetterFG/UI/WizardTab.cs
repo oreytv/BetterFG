@@ -36,7 +36,8 @@ namespace BetterFG.UI
         protected static readonly Color ROW_SEL = new Color(0.25f, 0.45f, 0.25f, 1f);
 
         protected virtual string[] StepTitles => Array.Empty<string>();
-        protected int Step { get; private set; }
+        // settable so ResumeWip can jump straight to the step the user was on before a linked tab
+        protected int Step { get; set; }
 
         private GameObject[] _panels;
         private Text _stepHeader, _status;
@@ -46,11 +47,23 @@ namespace BetterFG.UI
         protected virtual void BuildStep(int step, RectTransform root, float w, float bodyH) { }
         // EditIndex >= 0: restore saved state and return the step to open on, or -1 to stay on step 0
         protected virtual int LoadEditedEntry() => -1;
+        // true to skip the LoadEditedEntry disk reload entirely - for a subclass resuming WIP state
+        // handed over from a linked tab instead (see ResumeWip), where re-reading from disk would
+        // stomp the in-progress edit
+        protected virtual bool SkipLoadEditedEntry => false;
+        // called once, after every step panel exists (and after LoadEditedEntry, unless skipped) -
+        // for a subclass resuming state handed over from an out-of-band linked tab (e.g. a "back"
+        // link on a sub-tab), distinct from LoadEditedEntry's disk-backed reload. no-op by default.
+        protected virtual void ResumeWip() { }
         protected virtual bool CanAdvance(int step) => true;
         protected virtual void RefreshSummary() { }
         // validate + persist; return true to leave back to the list, false (with a SetStatus) to stay
         protected virtual bool Save() => false;
         protected virtual Tab MakeListTarget() => null;
+        // called right before switching away to the list tab, on both save and cancel - a subclass
+        // that live-previews edits before Save persists them can revert here
+        protected virtual void OnLeave() { }
+        public override Tab MakeFallbackTab() => MakeListTarget();
 
         protected void SetStatus(string msg) { if (_status != null) _status.text = msg; }
 
@@ -79,11 +92,12 @@ namespace BetterFG.UI
 
             _status = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, navY + BTN_H + SH, w, LH), "", FS_SM, HINT, TextAnchor.MiddleCenter);
 
-            if (EditIndex >= 0)
+            if (EditIndex >= 0 && !SkipLoadEditedEntry)
             {
                 int start = LoadEditedEntry();
                 if (start >= 0) Step = start;
             }
+            ResumeWip();
             RefreshStep();
         }
 
@@ -110,7 +124,11 @@ namespace BetterFG.UI
             RefreshStep();
         }
 
-        protected void LeaveToList() => BetterFGUIMan.Instance?.SwitchSlotTab(this, MakeListTarget());
+        protected void LeaveToList()
+        {
+            OnLeave();
+            BetterFGUIMan.Instance?.SwitchSlotTab(this, MakeListTarget());
+        }
 
         protected void RefreshStep()
         {

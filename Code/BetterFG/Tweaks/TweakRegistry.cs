@@ -66,6 +66,7 @@ namespace BetterFG.Tweaks
             Add<CinematicSpectatorTweak>(TweakCategory.Gameplay);
             Add<CreativeIntroCameraTweak>(TweakCategory.Gameplay);
             Add<ObjectiveRoundNumberTweak>(TweakCategory.Gameplay);
+            Add<HideZoneArchEffectsTweak>(TweakCategory.Gameplay);
 
             // ── Audio ──
             Add<SpectatorMusicTweak>(TweakCategory.Audio);

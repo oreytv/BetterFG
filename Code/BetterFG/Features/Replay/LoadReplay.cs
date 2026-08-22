@@ -331,15 +331,30 @@ namespace BetterFG.Features.Replay
                 rec.levelJson = sr.ReadToEnd();
         }
 
-        static void ReadTextures(BinaryReader br, ReplayRecording rec)
+        static void ReadTextures(BinaryReader br, ReplayRecording rec, int version)
         {
             foreach (var player in rec.players)
                 foreach (var tex in player.bfgTextures)
                 {
-                    int length = br.ReadInt32();
-                    if (length <= 0) continue;
-                    tex.texData = br.ReadBytes(length);
-                    tex.texPath = "";
+                    if (version >= 20)
+                    {
+                        int ovCount = br.ReadInt32();
+                        for (int j = 0; j < ovCount; j++)
+                        {
+                            int length = br.ReadInt32();
+                            if (length <= 0) continue;
+                            var bytes = br.ReadBytes(length);
+                            if (j < tex.overrides.Count) { tex.overrides[j].texData = bytes; tex.overrides[j].texPath = ""; }
+                        }
+                    }
+                    else
+                    {
+                        // pre-20 replays packed exactly one texture per entry
+                        int length = br.ReadInt32();
+                        if (length <= 0) continue;
+                        var bytes = br.ReadBytes(length);
+                        if (tex.overrides.Count > 0) { tex.overrides[0].texData = bytes; tex.overrides[0].texPath = ""; }
+                    }
                 }
         }
 
@@ -489,7 +504,7 @@ namespace BetterFG.Features.Replay
                             if (container.version >= 19) ReadTail(br, container);
                             if (container.version >= 4) ReadLevel(br, container);
                             if (container.version >= 6) ReadWorld(br, container, container.version >= 11);
-                            if (container.version >= 7) ReadTextures(br, container);
+                            if (container.version >= 7) ReadTextures(br, container, container.version);
                             if (container.version >= 8) ReadSpeech(br, container);
                             if (container.version >= 16) ReadGhosts(br, container);
 
@@ -695,13 +710,28 @@ namespace BetterFG.Features.Replay
                     var texEntry = new BetterFG.Customization.Player.SkinTexEntry
                     {
                         entryName = JsonUtil.GetValue(tex, "entryName"),
-                        texPath = JsonUtil.GetValue(tex, "texPath"),
-                        matIdx = JsonUtil.GetInt(tex, "matIdx"),
                         enabled = true,
                     };
 
                     foreach (var name in JsonUtil.GetValue(tex, "matNames").Split('|'))
                         if (!string.IsNullOrEmpty(name)) texEntry.matNames.Add(name);
+
+                    var overrides = JsonUtil.GetArray(tex, "overrides");
+                    if (overrides != null && overrides.Count > 0)
+                    {
+                        foreach (var ov in overrides)
+                            texEntry.overrides.Add(new BetterFG.Customization.Player.SkinTexOverride
+                            {
+                                texName = JsonUtil.GetValue(ov, "texName")
+                            });
+                    }
+                    else
+                    {
+                        // pre-20 replays: one implicit override, identified by matIdx into matNames
+                        int matIdx = JsonUtil.GetInt(tex, "matIdx");
+                        string name = matIdx >= 0 && matIdx < texEntry.matNames.Count ? texEntry.matNames[matIdx] : "";
+                        texEntry.overrides.Add(new BetterFG.Customization.Player.SkinTexOverride { texName = name });
+                    }
 
                     player.bfgTextures.Add(texEntry);
                 }

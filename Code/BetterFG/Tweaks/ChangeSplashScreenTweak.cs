@@ -8,7 +8,6 @@ using BetterFG.UI;
 using FGClient;
 using HarmonyLib;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace BetterFG.Tweaks
 {
@@ -22,7 +21,7 @@ namespace BetterFG.Tweaks
 
         private const string PathKey = "tweak.custom_splash.path";
 
-        private Image _targetImg;
+        private LoadingScreenViewModel _targetVm;
         private Sprite _originalSprite;
         private Sprite _customSprite;
 
@@ -50,14 +49,7 @@ namespace BetterFG.Tweaks
             yield return null;
             if (IsEnabled) DisableTweak();
             _customSprite = LoadSprite(bytes);
-            foreach (var img in Resources.FindObjectsOfTypeAll<Image>())
-            {
-                if (img.sprite == null || img.sprite.name != "UI_Splash") continue;
-                _targetImg = img;
-                _originalSprite = img.sprite;
-                img.sprite = _customSprite;
-                break;
-            }
+            ApplyToLiveInstance();
         }
 
         public override void EnableTweak()
@@ -65,20 +57,25 @@ namespace BetterFG.Tweaks
             var bytes = LoadBytes();
             if (bytes == null) return;
             _customSprite = LoadSprite(bytes);
-            foreach (var img in Resources.FindObjectsOfTypeAll<Image>())
+            ApplyToLiveInstance();
+        }
+
+        private void ApplyToLiveInstance()
+        {
+            foreach (var vm in Resources.FindObjectsOfTypeAll<LoadingScreenViewModel>())
             {
-                if (img.sprite == null || img.sprite.name != "UI_Splash") continue;
-                _targetImg = img;
-                _originalSprite = img.sprite;
-                img.sprite = _customSprite;
+                if (vm == null || vm._loadingScreenImage == null) continue;
+                _targetVm = vm;
+                _originalSprite = vm._loadingScreenImage.sprite;
+                vm._loadingScreenImage.sprite = _customSprite;
                 break;
             }
         }
 
         public override void DisableTweak()
         {
-            if (_targetImg != null && _originalSprite != null)
-                _targetImg.sprite = _originalSprite;
+            if (_targetVm != null && _targetVm._loadingScreenImage != null && _originalSprite != null)
+                _targetVm._loadingScreenImage.sprite = _originalSprite;
         }
 
         private byte[] LoadBytes()
@@ -97,37 +94,18 @@ namespace BetterFG.Tweaks
             return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
         }
 
-        private float _nextSweep;
-
-        public void ReapplySplash()
-        {
-            if (_customSprite == null) return;
-            // runs on every loading screen UpdateDisplay tick. re-asserting the known target is
-            // near free (Image.sprite setter no-ops when unchanged) and instantly heals the usual
-            // "game stomped the sprite back" case. the whole-heap Image scan only exists to catch a
-            // freshly spawned splash instance, so it gets a 1s throttle instead of running per tick
-            if (_targetImg != null)
-                _targetImg.sprite = _customSprite;
-
-            if (Time.realtimeSinceStartup < _nextSweep) return;
-            _nextSweep = Time.realtimeSinceStartup + 1f;
-
-            foreach (var img in Resources.FindObjectsOfTypeAll<Image>())
-            {
-                if (img.sprite == null || img.sprite.name != "UI_Splash") continue;
-                if (_originalSprite == null) _originalSprite = img.sprite;
-                img.sprite = _customSprite;
-                _targetImg = img;
-                break;
-            }
-        }
-
         // called from the shared LoadingScreenViewModel.UpdateDisplay hub in GameStatePatches.
-        public static void OnLoadingScreenUpdateDisplay()
+        // RefreshLoadingScreenImage reassigns _loadingScreenImage.sprite from the game's own
+        // asset whenever the screen shows/updates, which is what was stomping the old sprite-name
+        // scan. writing straight to the instance's own field on every tick beats that race.
+        public static void OnLoadingScreenUpdateDisplay(LoadingScreenViewModel instance)
         {
             var inst = Instance;
-            if (inst == null || !inst.IsEnabled) return;
-            inst.ReapplySplash();
+            if (inst == null || !inst.IsEnabled || inst._customSprite == null) return;
+            if (instance == null || instance._loadingScreenImage == null) return;
+            if (inst._originalSprite == null) inst._originalSprite = instance._loadingScreenImage.sprite;
+            instance._loadingScreenImage.sprite = inst._customSprite;
+            inst._targetVm = instance;
         }
     }
 }

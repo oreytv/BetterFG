@@ -21,16 +21,9 @@ namespace BetterFG.Customization.Menu
         private const string FGUI_ORIGINAL_BACKDROP_PATH = "3D Environment/Generic_UI_CurrentSeasonBackground_Container_MainMenu_Variant/Generic_UI_SeasonS11Background_Canvas_Variant/Mask/Backdrop";
         private const string FGUI_ORIGINAL_CIRCLES_PATH = "3D Environment/Generic_UI_CurrentSeasonBackground_Container_MainMenu_Variant/Generic_UI_SeasonS11Background_Canvas_Variant/Mask/Circles";
 
-        private Vector3 FG_UI_ORIGINAL_BACKDROP_PREFERREDLOCALPOS = new Vector3(-0f, 6f, -15);
         private Vector3 FG_UI_ORIGINAL_CIRCLES_PREFERREDLOCALPOS = new Vector3(0f, 0f, -95.4f);
-        private Vector3 FG_UI_CUSTOM_BACKDROP_PREFERREDLOCALPOS = new Vector3(-0, -121f, -50.5f);
+        private bool _bgTweakApplied;
 
-        // menu background
-        private GameObject _menuBgGo;
-        private Material _menuBgMat;
-        // BG GO active toggle — separate from screen.fallforce.enabled (which now only governs
-        // whether the custom gradient/pattern apply). users wanted to choose "use the BettrFG bg"
-        // independent of "use my custom colours".
         public const string KEY_BG_ENABLED = "screen.fallforce.bg.enabled";
 
         // title screen background — same SeasonS11Background Mask as the menu one but under the
@@ -45,6 +38,8 @@ namespace BetterFG.Customization.Menu
         private Texture _originalPatternTex;
         private bool _originalPatternCaptured;
         private Texture2D _appliedPatternTex; // the custom tex we last set, so we can destroy it on swap/remove
+        private Material _circlesMatInstance;
+        private int _circlesMatOwnerId;
 
         // menu background images — a library of saved images. every enabled entry gets its own quad
         // and renders simultaneously (not exclusive), keyed by entry name.
@@ -53,6 +48,7 @@ namespace BetterFG.Customization.Menu
             public GameObject go;
             public Material mat;
             public Texture2D tex;
+            public string loadedPath;
         }
         private readonly Dictionary<string, BgImageRuntime> _bgImageRuntimes = new Dictionary<string, BgImageRuntime>();
 
@@ -215,32 +211,9 @@ namespace BetterFG.Customization.Menu
 
         public void SpawnMenuBg()
         {
-            // gradient prefab: spawn once
-            if (_menuBgGo == null)
-            {
-                TweakFallGuysBgForBetterfg();
+            if (!_bgTweakApplied) { TweakFallGuysBgForBetterfg(); _bgTweakApplied = true; }
 
-                var go = AssetManager.SpawnPersistent("betterfg_menubg");
-                if (go == null) { Plugin.Log.LogWarning("menubg prefab missing from the bundle"); return; }
-
-                _menuBgGo = go;
-                _menuBgGo.transform.SetParent(GameObject.Find(FGUI_CUSTOM_BACKDROP_PARENT_PATH).transform, true);
-                _menuBgGo.transform.localPosition = FG_UI_CUSTOM_BACKDROP_PREFERREDLOCALPOS;
-                _menuBgGo.transform.localRotation = Quaternion.Euler(270, 0, 0);
-                _menuBgGo.layer = LayerMask.NameToLayer("PlayerUI");
-                _menuBgGo.name = "BetterFG_MenuBg";
-
-                var rend = _menuBgGo.GetComponent<Renderer>();
-                if (rend != null) _menuBgMat = rend.material;
-            }
-
-            // restore everything every menu enter (not just first time)
-            ApplyGradientFromSettings();
             BetterFG.UI.Tabs.UIScalingTab.ApplyCanvasScalingFromSettings();
-
-            bool bgEnabled = SettingsService.Get(KEY_BG_ENABLED, "false") == "true";
-            if (_menuBgGo != null) _menuBgGo.SetActive(bgEnabled);
-
             ApplyImageBgFromSettings();
 
             // sun GO is fresh each menu enter — recapture its original rotation before applying.
@@ -272,6 +245,20 @@ namespace BetterFG.Customization.Menu
             }
         }
 
+        public void ReapplyPatternNextFrame()
+        {
+            StartCoroutine(ReapplyPatternNextFrameLoop().WrapToIl2Cpp());
+        }
+
+        private IEnumerator ReapplyPatternNextFrameLoop()
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                yield return null;
+                ApplyPatternFromSettings();
+            }
+        }
+
         private IEnumerator ApplyAmbientAndSunNextFrame()
         {
             yield return null;
@@ -279,6 +266,7 @@ namespace BetterFG.Customization.Menu
             ApplySunFromSettings();
             ApplyPlinthColorFromSettings();
             ApplyPatternFromSettings();
+            ApplyGradientFromSettings();
 
             // game re-runs its own scene lighting setup a bit into the menu and stomps our ambient.
             // coming back from a game the scene takes longer to settle than a single 0.1s window, so
@@ -287,6 +275,7 @@ namespace BetterFG.Customization.Menu
             {
                 yield return new WaitForSeconds(0.12f);
                 ApplyAmbientFromSettings();
+                ApplyGradientFromSettings();
             }
         }
 
@@ -401,18 +390,26 @@ namespace BetterFG.Customization.Menu
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
             {
                 rt.mat.mainTexture = null;
+                rt.loadedPath = null;
                 return;
             }
+
+            // scrubbing a transform slider re-calls this every frame with the SAME path — re-decoding
+            // a high-res PNG off disk that often is what made dragging position/rotation/scale feel
+            // laggy. only the transform changed, so skip the reload when the texture's already current.
+            if (rt.tex != null && path == rt.loadedPath) return;
 
             try
             {
                 var bytes = System.IO.File.ReadAllBytes(path);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, true);
                 if (!tex.LoadImage(bytes)) { Plugin.Log.LogWarning($"not a decodable image: {System.IO.Path.GetFileName(path)}"); return; }
                 tex.wrapMode = TextureWrapMode.Clamp;
-                tex.Apply();
+                tex.filterMode = FilterMode.Trilinear;
+                tex.Apply(true, false);
                 if (rt.tex != null) Destroy(rt.tex);
                 rt.tex = tex;
+                rt.loadedPath = path;
 
                 foreach (var prop in new[] { "_MainTex", "_BaseMap", "_BaseColorMap", "_UnlitColorMap", "_Texture", "_Tex" })
                     if (rt.mat.HasProperty(prop))
@@ -477,13 +474,11 @@ namespace BetterFG.Customization.Menu
         public void SetMenuBgEnabled(bool enabled)
         {
             SettingsService.Set(KEY_BG_ENABLED, enabled ? "true" : "false");
-            if (_menuBgGo != null)
-                _menuBgGo.SetActive(enabled);
+            ApplyGradientFromSettings();
         }
 
         public void TweakFallGuysBgForBetterfg()
         {
-            GameObject.Find(FGUI_ORIGINAL_BACKDROP_PATH).transform.localPosition = FG_UI_ORIGINAL_BACKDROP_PREFERREDLOCALPOS;
             GameObject.Find(FGUI_ORIGINAL_CIRCLES_PATH).transform.localPosition = FG_UI_ORIGINAL_CIRCLES_PREFERREDLOCALPOS;
         }
 
@@ -492,13 +487,31 @@ namespace BetterFG.Customization.Menu
         // screen is up; the Background tab clones it as a live preview source.
         public static GameObject FindBackgroundContainer() => GameObject.Find(FGUI_CUSTOM_BACKDROP_PARENT_PATH);
 
+        private Material EnsureCirclesMaterialInstance(UnityEngine.UI.Image img)
+        {
+            if (img == null || img.material == null) return null;
+            int id = img.GetInstanceID();
+            if (_circlesMatInstance == null || _circlesMatOwnerId != id)
+            {
+                _circlesMatInstance = new Material(img.material);
+                img.material = _circlesMatInstance;
+                _circlesMatOwnerId = id;
+            }
+            return _circlesMatInstance;
+        }
+
         // cache the REAL original pattern texture exactly once per session. only safe to read off the
         // live material when we haven't applied a custom one yet — once we have, GetTexture("_Pattern")
         // would just return our own custom tex back to us.
+        private Color _originalCirclesColor = Color.white;
+
         private void CaptureOriginalPattern(UnityEngine.UI.Image img)
         {
             if (_originalPatternCaptured || _appliedPatternTex != null || img == null || img.material == null) return;
-            _originalPatternTex = img.material.GetTexture("_Pattern");
+            var mat = EnsureCirclesMaterialInstance(img);
+            if (mat == null) return;
+            _originalPatternTex = mat.GetTexture("_Pattern");
+            _originalCirclesColor = img.color;
             _originalPatternCaptured = true;
         }
 
@@ -511,36 +524,38 @@ namespace BetterFG.Customization.Menu
             return _originalPatternTex;
         }
 
-        // applies the saved circles pattern texture onto the Circles image material. safe to call
-        // repeatedly — the Circles GO is fresh each menu enter so we re-resolve it every time, and
-        // we cache the untouched original on first apply so RestorePattern can put it back.
+        public Color EnsureOriginalCirclesColorCaptured()
+        {
+            CaptureOriginalPattern(GameObject.Find(FGUI_ORIGINAL_CIRCLES_PATH)?.GetComponent<UnityEngine.UI.Image>());
+            return _originalCirclesColor;
+        }
+
+        private static bool Is3DBackgroundShowing() =>
+            GameObject.Find("3D Environment")?.GetComponent<MainMenuBackgroundViewModel>()?.Show3DBackground ?? false;
+
         public void ApplyPatternFromSettings()
         {
             var circlesGo = GameObject.Find(FGUI_ORIGINAL_CIRCLES_PATH);
-            if (circlesGo == null) return; // not up yet — retry loop will catch it
+            if (circlesGo == null) return;
 
             var img = circlesGo.GetComponent<UnityEngine.UI.Image>();
             if (img == null || img.material == null) return;
 
             CaptureOriginalPattern(img);
+            var mat = EnsureCirclesMaterialInstance(img);
+            if (mat == null) return;
 
-            string path = SettingsService.Get(KEY_PATTERN_PATH, "");
-            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
-
-            try
+            string value = SettingsService.Get(KEY_PATTERN_PATH, "");
+            var tex = ScreenBackgroundService.LoadPatternTexture(value);
+            if (tex != null)
             {
-                byte[] data = System.IO.File.ReadAllBytes(path);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                tex.LoadImage(data);
-                tex.Apply();
-
                 if (_appliedPatternTex != null) Destroy(_appliedPatternTex);
                 _appliedPatternTex = tex;
-
-                img.material.SetTexture("_Pattern", tex);
-                Plugin.Log.LogInfo($"menu pattern -> {System.IO.Path.GetFileName(path)}");
+                mat.SetTexture("_Pattern", tex);
             }
-            catch (Exception ex) { Plugin.Log.LogError($"menu pattern failed: {ex.Message}"); }
+
+            var pc = ScreenBackgroundService.PatternColor(ScreenBackgroundService.Screen.FallForce);
+            img.color = Is3DBackgroundShowing() ? new Color(pc.r, pc.g, pc.b, 0f) : pc;
         }
 
         public void RestorePattern()
@@ -553,7 +568,10 @@ namespace BetterFG.Customization.Menu
             var img = circlesGo.GetComponent<UnityEngine.UI.Image>();
             if (img == null || img.material == null) return;
 
-            img.material.SetTexture("_Pattern", _originalPatternTex);
+            var mat = EnsureCirclesMaterialInstance(img);
+            if (mat == null) return;
+            mat.SetTexture("_Pattern", _originalPatternTex);
+            img.color = _originalCirclesColor;
 
             if (_appliedPatternTex != null)
             {
@@ -562,17 +580,66 @@ namespace BetterFG.Customization.Menu
             }
         }
 
+        private Sprite _originalBackdropSprite;
+        private bool _originalBackdropCaptured;
+        private Texture2D _appliedBackdropTex;
+
+        private void CaptureOriginalBackdrop(UnityEngine.UI.Image img)
+        {
+            if (_originalBackdropCaptured || _appliedBackdropTex != null || img == null) return;
+            _originalBackdropSprite = img.sprite;
+            _originalBackdropCaptured = true;
+        }
+
+        public Sprite EnsureOriginalBackdropSpriteCaptured()
+        {
+            CaptureOriginalBackdrop(GameObject.Find(FGUI_ORIGINAL_BACKDROP_PATH)?.GetComponent<UnityEngine.UI.Image>());
+            return _originalBackdropSprite;
+        }
+
         public void ApplyGradient(Color top, Color bot, float bias, float smoothness)
         {
-            if (_menuBgMat == null) return;
-            _menuBgMat.SetColor("_TopColor", top);
-            _menuBgMat.SetColor("_BottomColor", bot);
-            _menuBgMat.SetFloat("_Bias", bias);
-            _menuBgMat.SetFloat("_Smoothness", smoothness);
+            var backdropGo = GameObject.Find(FGUI_ORIGINAL_BACKDROP_PATH);
+            if (backdropGo == null) return;
+            var img = backdropGo.GetComponent<UnityEngine.UI.Image>();
+            if (img == null) return;
+
+            CaptureOriginalBackdrop(img);
+
+            var tex = ScreenBackgroundService.BuildGradientTex(top, bot, bias, smoothness);
+            if (_appliedBackdropTex != null) Destroy(_appliedBackdropTex);
+            _appliedBackdropTex = tex;
+            img.sprite = Sprite.Create(tex, new Rect(0, 0, 1, tex.height), new UnityEngine.Vector2(0.5f, 0.5f));
+            img.color = Is3DBackgroundShowing() ? new Color(1f, 1f, 1f, 0f) : Color.white;
+        }
+
+        public void RestoreBackdrop()
+        {
+            if (!_originalBackdropCaptured && _appliedBackdropTex == null) return;
+
+            var backdropGo = GameObject.Find(FGUI_ORIGINAL_BACKDROP_PATH);
+            if (backdropGo == null) return;
+            var img = backdropGo.GetComponent<UnityEngine.UI.Image>();
+            if (img == null) return;
+
+            img.sprite = _originalBackdropSprite;
+            img.color = Color.white;
+
+            if (_appliedBackdropTex != null)
+            {
+                Destroy(_appliedBackdropTex);
+                _appliedBackdropTex = null;
+            }
         }
 
         public void ApplyGradientFromSettings()
         {
+            if (SettingsService.Get(KEY_BG_ENABLED, "false") != "true")
+            {
+                RestoreBackdrop();
+                return;
+            }
+
             var ci = System.Globalization.CultureInfo.InvariantCulture;
             float Parse(string key, float def) =>
                 float.TryParse(SettingsService.Get(key, def.ToString(ci)), System.Globalization.NumberStyles.Float, ci, out float v) ? v : def;

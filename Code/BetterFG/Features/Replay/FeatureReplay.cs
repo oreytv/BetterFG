@@ -835,7 +835,7 @@ namespace BetterFG.Features.Replay
                     p.bfgFaceplate = app.GetAppliedGameFaceplateId();
 
                     foreach (var tex in SkinApplicationService.LoadEntries())
-                        if (tex.enabled && !string.IsNullOrEmpty(tex.texPath)) p.bfgTextures.Add(tex);
+                        if (tex.enabled && tex.overrides.Count > 0) p.bfgTextures.Add(tex);
                 }
 
                 if (p.bfgSkins.Count > 0 || p.bfgTextures.Count > 0 || !string.IsNullOrEmpty(p.bfgCosmetics)) dressed++;

@@ -140,6 +140,29 @@ namespace BetterFG.UI
             return null;
         }
 
+        private static readonly Dictionary<string, Func<Tab>> _partialTabs = new Dictionary<string, Func<Tab>>();
+
+        public static void RegisterPartialTab<T>() where T : Tab
+        {
+            string title = ReadTitle<T>();
+            if (string.IsNullOrEmpty(title)) return;
+            _partialTabs[title] = () => NewTab<T>();
+        }
+
+        public static Tab CreateFallbackTab(string title)
+        {
+            if (string.IsNullOrEmpty(title)) return null;
+            if (_partialTabs.TryGetValue(title, out var factory))
+            {
+                var probe = factory();
+                var target = probe.MakeFallbackTab();
+                UnityEngine.Object.Destroy(probe.gameObject);
+                return target;
+            }
+            if (title.StartsWith("UI - ")) return CreateTab("User Interface");
+            return null;
+        }
+
         // build a tab instance directly by type — used for drill-in tabs that aren't registered (so
         // they never appear in the slot dropdown) but are reached from an in-tab button.
         public static T NewTab<T>() where T : Tab
@@ -720,7 +743,9 @@ namespace BetterFG.UI
 
         private void SwapSlot(int slotIdx, string tabName, bool save)
         {
-            var newTab = BetterFGTabRegistry.CreateTab(tabName);
+            var newTab = BetterFGTabRegistry.CreateTab(tabName)
+                ?? BetterFGTabRegistry.CreateFallbackTab(tabName)
+                ?? CreateFirstAvailableTab();
             if (newTab == null) return;
             AddTabToSlot(slotIdx, newTab);
             if (save) SaveSlots();

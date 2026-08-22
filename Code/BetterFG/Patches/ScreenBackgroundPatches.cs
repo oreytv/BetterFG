@@ -456,4 +456,23 @@ namespace BetterFG.Patches
         public CreativeEditorBgApplier(IntPtr ptr) : base(ptr) { }
         void OnEnable() => MenuCustomizationApplication.Instance?.RefreshCreativeCanvas(transform);
     }
+
+    [HarmonyPatch(typeof(MainMenuBackgroundViewModel), nameof(MainMenuBackgroundViewModel.AssignBgFromCMS))]
+    internal static class MainMenuBackgroundAssignBgFromCMSPatch
+    {
+        [HarmonyPostfix]
+        static void Postfix(MainMenuBackgroundViewModel __instance) => MainMenuBackgroundAwakePatch.Force2dBackgroundWhite(__instance);
+    }
+
+    [HarmonyPatch(typeof(MainMenuBackgroundViewModel), nameof(MainMenuBackgroundViewModel.Awake))]
+    internal static class MainMenuBackgroundAwakePatch
+    {
+        [HarmonyPostfix]
+        static void Postfix(MainMenuBackgroundViewModel __instance) => Force2dBackgroundWhite(__instance);
+
+        internal static void Force2dBackgroundWhite(MainMenuBackgroundViewModel instance)
+        {
+            if (instance != null) instance._2dBackgroundColor = Color.white;
+        }
+    }
 }

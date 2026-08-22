@@ -160,11 +160,13 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<UIFontTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UIFontWizardTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UIBackgroundTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<UIPatternPickerTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UIScalingTab>();
             ClassInjector.RegisterTypeInIl2Cpp<EmoticonsPhrasesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<FeaturesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomSkinTextureTab>();
             ClassInjector.RegisterTypeInIl2Cpp<SkinTextureWizardTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<SkinTextureMaterialPropsTab>();
             ClassInjector.RegisterTypeInIl2Cpp<AllCosmeticsTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CreativeTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomCreativeTextureTab>();
@@ -233,6 +235,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<CinematicSpectatorTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<CreativeIntroCameraTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<ObjectiveRoundNumberTweak>();
+            ClassInjector.RegisterTypeInIl2Cpp<HideZoneArchEffectsTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomCursorTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<DisableAntiAfkTweak>();
             ClassInjector.RegisterTypeInIl2Cpp<StartupTitleScreenTweak>();
@@ -318,6 +321,18 @@ namespace BetterFG
             BetterFGTabRegistry.Register<PersonalBestTab>();
             BetterFGTabRegistry.Register<ReplaysTab>();
             BetterFGTabRegistry.Register<PlinthsInGameTab>();
+
+            BetterFGTabRegistry.RegisterPartialTab<UIBackgroundTab>();
+            BetterFGTabRegistry.RegisterPartialTab<UIFontTab>();
+            BetterFGTabRegistry.RegisterPartialTab<UIScalingTab>();
+            BetterFGTabRegistry.RegisterPartialTab<UIPatternPickerTab>();
+            BetterFGTabRegistry.RegisterPartialTab<PlinthsUgcTab>();
+            BetterFGTabRegistry.RegisterPartialTab<ReplayImagesTab>();
+            BetterFGTabRegistry.RegisterPartialTab<CustomCreativeTextureTab>();
+            BetterFGTabRegistry.RegisterPartialTab<SkinTextureWizardTab>();
+            BetterFGTabRegistry.RegisterPartialTab<SkinTextureMaterialPropsTab>();
+            BetterFGTabRegistry.RegisterPartialTab<UIFontWizardTab>();
+            BetterFGTabRegistry.RegisterPartialTab<MenuBackgroundImageWizardTab>();
 
             var uiManGo = new GameObject("BetterFG_UI");
             uiManGo.hideFlags = HideFlags.HideAndDontSave;

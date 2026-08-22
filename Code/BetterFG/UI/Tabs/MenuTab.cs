@@ -727,7 +727,7 @@ namespace BetterFG.UI.Tabs
                 RemoveBgKeys();
                 var app = MenuCustomizationApplication.Instance;
                 if (app != null)
-                    app.ApplyGradient(Color.black, Color.white, 0f, 1f);
+                    app.RestoreBackdrop();
                 _topR = _topG = _topB = 0f;
                 _botR = _botG = _botB = 1f;
                 _bias = 0f; _smooth = 1f;

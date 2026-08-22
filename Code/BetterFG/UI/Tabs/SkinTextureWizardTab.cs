@@ -10,7 +10,7 @@ using LayoutElement = UnityEngine.UI.LayoutElement;
 
 namespace BetterFG.UI.Tabs
 {
-    public class SkinTextureWizardTab : WizardTab
+    public partial class SkinTextureWizardTab : WizardTab
     {
         public SkinTextureWizardTab(IntPtr ptr) : base(ptr) { }
 
@@ -18,13 +18,15 @@ namespace BetterFG.UI.Tabs
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
 
         private static readonly Color OK = new Color(0.55f, 0.85f, 0.55f, 1f);
+        private static readonly Color CHECK = new Color(0.55f, 0.9f, 0.55f, 1f);
 
-        private enum WizardStep { Costume, Material, Png, Name }
+        private enum WizardStep { Costume, Material, Png, PropsPrompt, Name }
         protected override string[] StepTitles => new[]
         {
             "Choose a skin",
             "Choose the texture to change",
             "Choose the texture to change to",
+            "Material properties (optional)",
             "Name it"
         };
 
@@ -41,11 +43,19 @@ namespace BetterFG.UI.Tabs
 
         private RectTransform _matContent;
         private int _matIdx = -1;
+        // texture name -> replacement png path, one entry per overridden slot (name is the
+        // identity ApplyTextureToGameObject matches against on the live bean's materials).
+        // go back from the Png step to Material and pick another row to add more than one.
+        private readonly Dictionary<string, string> _overridePaths = new Dictionary<string, string>();
 
         private string _pngPath = "";
         private Texture2D _pngTex;
         private RawImage _pngPreview;
         private Text _pngPathLbl;
+
+        // keyed "matName|propName" - every shader property tweak, across every material touched
+        // so far in this entry (not just the currently selected one)
+        private readonly Dictionary<string, MatPropOverride> _matProps = new Dictionary<string, MatPropOverride>();
 
         private InputField _nameField;
         private Text _summaryLbl;
@@ -66,6 +76,7 @@ namespace BetterFG.UI.Tabs
                 case WizardStep.Costume: BuildCostumeStep(root, w, bodyH); break;
                 case WizardStep.Material: BuildMaterialStep(root, w, bodyH); break;
                 case WizardStep.Png: BuildPngStep(root, w, bodyH); break;
+                case WizardStep.PropsPrompt: BuildPropsPromptStep(root, w, bodyH); break;
                 case WizardStep.Name: BuildNameStep(root, w, bodyH); break;
             }
         }
@@ -78,10 +89,13 @@ namespace BetterFG.UI.Tabs
             var entry = entries[EditIndex];
             _costumeName = entry.costumeName;
             _matNames.AddRange(entry.matNames);
-            _matIdx = entry.matIdx;
-            _pngPath = entry.texPath;
+            _overridePaths.Clear();
+            foreach (var ov in entry.overrides)
+                if (!string.IsNullOrEmpty(ov.texName)) _overridePaths[ov.texName] = ov.texPath;
+            _matProps.Clear();
+            foreach (var po in entry.matProps)
+                _matProps[po.matName + "|" + po.prop] = po;
             UGUIShip.SetInputText(_nameField, entry.entryName, false);
-            LoadPngPreview();
             RebuildMatRows();
 
             var costume = FindCostume(_costumeName);
@@ -108,13 +122,42 @@ namespace BetterFG.UI.Tabs
 
         protected override Tab MakeListTarget() => BetterFGTabRegistry.CreateTab("Skin Texture");
 
+        // set by SkinTextureMaterialPropsTab's "‹ back" link before switching, so the wizard
+        // resumes the in-progress edit instead of losing it or re-reading a stale disk copy
+        public SkinTextureMaterialPropsTab ResumeSource;
+        protected override bool SkipLoadEditedEntry => ResumeSource != null;
+
+        protected override void ResumeWip()
+        {
+            var src = ResumeSource;
+            if (src == null) return;
+            ResumeSource = null;
+
+            EditIndex = src.EditIndex;
+            _costumeName = src.CostumeName;
+            _mats.Clear(); _mats.AddRange(src.Mats);
+            _matNames.Clear(); _matNames.AddRange(src.MatNames);
+            _overridePaths.Clear();
+            foreach (var kv in src.OverridePaths) _overridePaths[kv.Key] = kv.Value;
+            _matProps.Clear();
+            foreach (var kv in src.MatProps) _matProps[kv.Key] = kv.Value;
+            _matIdx = src.MatIdx;
+            if (!string.IsNullOrEmpty(src.EntryName)) UGUIShip.SetInputText(_nameField, src.EntryName, false);
+
+            RebuildMatRows();
+            if (_matIdx >= 0 && _matIdx < _matNames.Count)
+            {
+                _pngPath = _overridePaths.TryGetValue(_matNames[_matIdx], out var existing) ? existing : "";
+                LoadPngPreview();
+            }
+            Step = (int)WizardStep.PropsPrompt;
+        }
+
         protected override bool CanAdvance(int step)
         {
             switch ((WizardStep)step)
             {
                 case WizardStep.Costume: return _matNames.Count > 0;
-                case WizardStep.Material: return _matIdx >= 0 && _matIdx < _matNames.Count;
-                case WizardStep.Png: return !string.IsNullOrEmpty(_pngPath);
                 default: return true;
             }
         }
@@ -285,8 +328,6 @@ namespace BetterFG.UI.Tabs
                 yield break;
             }
 
-            string keepMat = _matIdx >= 0 && _matIdx < _matNames.Count ? _matNames[_matIdx] : null;
-
             instance.SetActive(false);
             _mats.Clear();
             _matNames.Clear();
@@ -294,13 +335,14 @@ namespace BetterFG.UI.Tabs
             GameObject.Destroy(instance);
 
             try { _costumeName = option.name ?? ""; } catch { _costumeName = ""; }
-            _matIdx = keepMat != null ? _matNames.IndexOf(keepMat) : -1;
             RebuildMatRows();
             RefreshStep();
 
             SetStatus($"{_costumeName} has {_matNames.Count} texture(s), hit next");
         }
 
+        // walks every texture slot the shader declares, not just _MainTex - so metallic/normal/
+        // emission maps etc all show up as pickable entries too
         private static void CollectMatsRecursive(Transform t, List<Material> mats, List<string> names)
         {
             var r = t.GetComponent<Renderer>();
@@ -312,12 +354,20 @@ namespace BetterFG.UI.Tabs
                     foreach (var m in sharedMats)
                     {
                         if (m == null) continue;
-                        var mainTex = m.mainTexture;
-                        string texName = mainTex != null ? mainTex.name : m.name;
-                        if (!string.IsNullOrEmpty(texName) && !names.Contains(texName))
+
+                        bool any = false;
+                        foreach (var prop in SkinApplicationService.GetTextureProps(m))
+                        {
+                            var tex = m.GetTexture(prop);
+                            if (tex == null || string.IsNullOrEmpty(tex.name) || names.Contains(tex.name)) continue;
+                            mats.Add(m);
+                            names.Add(tex.name);
+                            any = true;
+                        }
+                        if (!any && !string.IsNullOrEmpty(m.name) && !names.Contains(m.name))
                         {
                             mats.Add(m);
-                            names.Add(texName);
+                            names.Add(m.name);
                         }
                     }
                 }
@@ -375,6 +425,7 @@ namespace BetterFG.UI.Tabs
                 return;
             }
 
+            float rowW = TabWidth - PAD * 2f - 8f;
             for (int i = 0; i < _matNames.Count; i++)
             {
                 int idx = i;
@@ -397,15 +448,28 @@ namespace BetterFG.UI.Tabs
                 if (tex != null) raw.texture = tex;
                 else raw.color = new Color(0f, 0f, 0f, 0.4f);
 
+                bool set = _overridePaths.ContainsKey(_matNames[idx]);
+                float checkW = 18f * UIScale.S;
                 float textX = ROW_H + 3f;
-                UGUIShip.CreateLabel(btn.transform, new Rect(textX, 0f, TabWidth - PAD * 2f - textX - 8f, ROW_H),
+                UGUIShip.CreateLabel(btn.transform, new Rect(textX, 0f, rowW - textX - checkW, ROW_H),
                     _matNames[idx], FS_SM, WHITE, TextAnchor.MiddleLeft);
+
+                var checkLbl = UGUIShip.CreateLabel(btn.transform, new Rect(0f, 0f, checkW, ROW_H),
+                    set ? "✓" : "", FS_SM, CHECK, TextAnchor.MiddleCenter);
+                var checkRt = checkLbl.GetComponent<RectTransform>();
+                checkRt.anchorMin = new Vector2(1f, 0.5f);
+                checkRt.anchorMax = new Vector2(1f, 0.5f);
+                checkRt.pivot = new Vector2(1f, 0.5f);
+                checkRt.anchoredPosition = new Vector2(-4f, 0f);
+                checkRt.sizeDelta = new Vector2(checkW, ROW_H);
             }
         }
 
         private void SelectMat(int idx)
         {
             _matIdx = idx;
+            _pngPath = _overridePaths.TryGetValue(_matNames[idx], out var existing) ? existing : "";
+            LoadPngPreview();
             RebuildMatRows();
             RefreshStep();
             SetStatus(_matNames[idx] + " selected");
@@ -463,12 +527,45 @@ namespace BetterFG.UI.Tabs
             _pngPreview.color = Color.clear;
         }
 
+        // its own skippable step (Next just moves on) so the question doesn't get crammed into an
+        // unrelated step - properties belong to a MATERIAL, not a texture slot, so this hands off
+        // the whole WIP entry to its own tab rather than gating on which texture row is selected
+        private void BuildPropsPromptStep(RectTransform root, float w, float bodyH)
+        {
+            float cy = bodyH * 0.5f - (LH + SH + BTN_H) * 0.5f;
+
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
+                "Want to tweak this skin's material properties too?", FS_SM, LABEL, TextAnchor.MiddleCenter);
+            cy += LH + SH;
+
+            UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, w, BTN_H),
+                "Tweak properties >", BTN_BLUE, WHITE, FS_SM, new Action(OpenProps));
+        }
+
+        private void OpenProps()
+        {
+            if (_matNames.Count == 0) { SetStatus("go back and pick a skin first"); return; }
+
+            var props = BetterFGTabRegistry.NewTab<SkinTextureMaterialPropsTab>();
+            props.EditIndex = EditIndex;
+            props.CostumeName = _costumeName;
+            props.Mats.AddRange(_mats);
+            props.MatNames.AddRange(_matNames);
+            foreach (var kv in _overridePaths) props.OverridePaths[kv.Key] = kv.Value;
+            foreach (var kv in _matProps) props.MatProps[kv.Key] = kv.Value;
+            props.MatIdx = _matIdx;
+            props.EntryName = _nameField != null ? _nameField.text : "";
+
+            BetterFGUIMan.Instance?.SwitchSlotTab(this, props);
+        }
+
         private void OnBrowsePng()
         {
             WinDialogs.PickPng("Select PNG Texture", path =>
             {
                 if (string.IsNullOrEmpty(path)) return;
                 _pngPath = path;
+                if (_matIdx >= 0 && _matIdx < _matNames.Count) _overridePaths[_matNames[_matIdx]] = path;
                 LoadPngPreview();
                 RefreshStep();
                 SetStatus(Path.GetFileName(path) + " ready");
@@ -479,18 +576,21 @@ namespace BetterFG.UI.Tabs
         {
             if (_pngPathLbl != null)
                 _pngPathLbl.text = string.IsNullOrEmpty(_pngPath) ? "no file picked" : Path.GetFileName(_pngPath);
-            if (string.IsNullOrEmpty(_pngPath) || !File.Exists(_pngPath)) return;
+            if (_pngPreview == null) return;
+            if (string.IsNullOrEmpty(_pngPath) || !File.Exists(_pngPath))
+            {
+                _pngPreview.texture = null;
+                _pngPreview.color = Color.clear;
+                return;
+            }
 
             try
             {
                 if (_pngTex == null) _pngTex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 _pngTex.LoadImage(File.ReadAllBytes(_pngPath));
                 _pngTex.Apply();
-                if (_pngPreview != null)
-                {
-                    _pngPreview.texture = _pngTex;
-                    _pngPreview.color = WHITE;
-                }
+                _pngPreview.texture = _pngTex;
+                _pngPreview.color = WHITE;
             }
             catch (Exception e) { SetStatus("couldn't read that png: " + e.Message); }
         }
@@ -512,8 +612,8 @@ namespace BetterFG.UI.Tabs
 
         protected override void RefreshSummary()
         {
-            string mat = _matIdx >= 0 && _matIdx < _matNames.Count ? _matNames[_matIdx] : "?";
-            _summaryLbl.text = $"skin: {_costumeName}\ntexture: {mat}\npng: {(string.IsNullOrEmpty(_pngPath) ? "?" : Path.GetFileName(_pngPath))}";
+            string slots = _overridePaths.Count == 0 ? "?" : string.Join(", ", _overridePaths.Keys);
+            _summaryLbl.text = $"skin: {_costumeName}\ntextures changed: {_overridePaths.Count}\n{slots}\nmaterial properties changed: {_matProps.Count}";
         }
 
         protected override bool Save()
@@ -532,20 +632,24 @@ namespace BetterFG.UI.Tabs
             var entry = editing ? entries[EditIndex] : new SkinTexEntry { enabled = true };
 
             entry.entryName = name;
-            entry.texPath = _pngPath;
-            entry.matIdx = _matIdx;
             entry.costumeName = _costumeName;
             entry.matNames.Clear();
             entry.matNames.AddRange(_matNames);
-            entry.mats.Clear();
-            entry.mats.AddRange(_mats);
+            entry.overrides.Clear();
+            foreach (var kv in _overridePaths)
+                entry.overrides.Add(new SkinTexOverride { texName = kv.Key, texPath = kv.Value });
+            entry.matProps.Clear();
+            entry.matProps.AddRange(_matProps.Values);
 
             if (!editing) entries.Add(entry);
 
             SkinApplicationService.SaveEntries(entries);
-            SkinApplicationService.ReapplyAllEnabled(entries, null);
-            Plugin.Log.LogInfo($"skin texture {(editing ? "updated" : "added")}: {name} -> {entry.costumeName}/{(_matIdx >= 0 && _matIdx < _matNames.Count ? _matNames[_matIdx] : "?")}");
+            Plugin.Log.LogInfo($"skin texture {(editing ? "updated" : "added")}: {name} -> {entry.costumeName} ({entry.overrides.Count} texture(s), {entry.matProps.Count} propertie(s))");
             return true;
         }
+
+        // Properties step live-previews sliders straight onto the bean before Save persists
+        // anything - whether the user saves or cancels, wipe back to whatever's actually on disk
+        protected override void OnLeave() => SkinApplicationService.ReapplyAllEnabledFromSettings();
     }
 }

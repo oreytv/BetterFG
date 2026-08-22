@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using BetterFG.Services;
+using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -59,6 +60,106 @@ namespace BetterFG.Customization.Menu
         public static string KeyBias(Screen s) => $"screen.{Id(s)}.bias";
         public static string KeySmooth(Screen s) => $"screen.{Id(s)}.smooth";
         public static string KeyPattern(Screen s) => $"screen.{Id(s)}.pattern.path";
+        public static string KeyPatternR(Screen s) => $"screen.{Id(s)}.pattern.r";
+        public static string KeyPatternG(Screen s) => $"screen.{Id(s)}.pattern.g";
+        public static string KeyPatternB(Screen s) => $"screen.{Id(s)}.pattern.b";
+        public static string KeyPatternA(Screen s) => $"screen.{Id(s)}.pattern.a";
+        public static Color PatternColor(Screen s) =>
+            new Color(Get(KeyPatternR(s), 1f), Get(KeyPatternG(s), 1f), Get(KeyPatternB(s), 1f), Get(KeyPatternA(s), 0.0588f));
+
+        // ── pattern library ─────────────────────────────────────────────────
+        // KeyPattern's value is one of: "" (Default — screen's own pattern, untouched), PatternNone
+        // (an explicit blank/transparent override), "builtin:<id>" (one of the bundled seasonal
+        // patterns, loaded from the embedded resource), or a raw file path (Browse/user-added).
+        public const string PatternNone = "none";
+        private const string BuiltinPrefix = "builtin:";
+        private const string BuiltinResourcePrefix = "BetterFG.assets.ui.uiscreen.patterns.";
+
+        public static readonly (string id, string label)[] BuiltinPatterns =
+        {
+            ("s1", "Season 1"), ("s2", "Season 2"), ("s3", "Season 3"),
+            ("s4", "Season 4"), ("s5", "Season 5"), ("s6", "Season 6"), ("s7", "Season 7"),
+            ("s8", "Season 8"), ("s9", "Season 9"), ("s10", "Season 10"),
+        };
+
+        public static string BuiltinKey(string id) => BuiltinPrefix + id;
+        public static Texture2D LoadBuiltinTexture(string id) =>
+            EmbeddedResourceandUnity.LoadTexture(BuiltinResourcePrefix + id + ".png");
+
+        // display name for whatever's stored under KeyPattern(s)
+        public static string PatternDisplayName(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "Default";
+            if (value == PatternNone) return "None";
+            if (value.StartsWith(BuiltinPrefix))
+            {
+                string id = value.Substring(BuiltinPrefix.Length);
+                foreach (var (bid, label) in BuiltinPatterns) if (bid == id) return label;
+                return id;
+            }
+            return System.IO.Path.GetFileName(value);
+        }
+
+        // resolves a KeyPattern value into a texture to push onto the Circles material. null means
+        // "leave whatever's there alone" — Default, or a builtin/file that failed to load.
+        public static Texture2D LoadPatternTexture(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+            if (value == PatternNone)
+            {
+                var blank = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+                blank.SetPixel(0, 0, new Color(0f, 0f, 0f, 0f));
+                blank.Apply();
+                return blank;
+            }
+            if (value.StartsWith(BuiltinPrefix)) return LoadBuiltinTexture(value.Substring(BuiltinPrefix.Length));
+            if (!System.IO.File.Exists(value)) return null;
+            try
+            {
+                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                tex.LoadImage(System.IO.File.ReadAllBytes(value));
+                tex.Apply();
+                return tex;
+            }
+            catch (Exception ex) { Plugin.Log.LogError("ScreenBg: pattern load failed: " + ex.Message); return null; }
+        }
+
+        // user-added custom patterns — a flat, shared library (not per-screen), so a pattern you add
+        // while looking at one screen shows up as a pickable tile for every other screen too.
+        private const string KEY_CUSTOM_PATTERN_COUNT = "screen.pattern.custom.count";
+        private static string CustomPatternKey(int i) => $"screen.pattern.custom.{i}.path";
+
+        public static List<string> LoadCustomPatterns()
+        {
+            var list = new List<string>();
+            int count = int.TryParse(SettingsService.Get(KEY_CUSTOM_PATTERN_COUNT, "0"), out int c) ? c : 0;
+            for (int i = 0; i < count; i++)
+            {
+                var p = SettingsService.Get(CustomPatternKey(i), "");
+                if (!string.IsNullOrEmpty(p)) list.Add(p);
+            }
+            return list;
+        }
+
+        public static void SaveCustomPatterns(List<string> paths)
+        {
+            SettingsService.Set(KEY_CUSTOM_PATTERN_COUNT, paths.Count.ToString());
+            for (int i = 0; i < paths.Count; i++) SettingsService.Set(CustomPatternKey(i), paths[i]);
+        }
+
+        public static void AddCustomPattern(string path)
+        {
+            var list = LoadCustomPatterns();
+            if (!list.Contains(path)) list.Add(path);
+            SaveCustomPatterns(list);
+        }
+
+        public static void RemoveCustomPattern(string path)
+        {
+            var list = LoadCustomPatterns();
+            list.Remove(path);
+            SaveCustomPatterns(list);
+        }
 
         private static float Get(string key, float def)
         {
@@ -95,6 +196,24 @@ namespace BetterFG.Customization.Menu
         private static readonly Dictionary<int, Sprite> _origBackdropSprite = new Dictionary<int, Sprite>();
         private static readonly Dictionary<int, Color> _origBackdropColor = new Dictionary<int, Color>();
         private static readonly Dictionary<int, Texture> _origPattern = new Dictionary<int, Texture>();
+        private static readonly Dictionary<int, Color> _origCirclesColor = new Dictionary<int, Color>();
+        // Image.material does NOT auto-instance like Renderer.material — writing straight to it mutates
+        // the shared Material asset every Circles instance (every screen) reads from. instance it once
+        // per Circles Image and reuse that instance for apply/revert.
+        private static readonly Dictionary<int, Material> _circlesMatInstance = new Dictionary<int, Material>();
+
+        private static Material EnsureCirclesMaterialInstance(Image cimg)
+        {
+            if (cimg == null || cimg.material == null) return null;
+            int id = cimg.GetInstanceID();
+            if (!_circlesMatInstance.TryGetValue(id, out var mat) || mat == null)
+            {
+                mat = new Material(cimg.material);
+                cimg.material = mat;
+                _circlesMatInstance[id] = mat;
+            }
+            return mat;
+        }
 
         // the SAME originals, but keyed by Screen instead of by (transient, per-instance) id — most of
         // these screens' containers only exist for the few seconds their loading screen is up, so the
@@ -105,6 +224,7 @@ namespace BetterFG.Customization.Menu
         private static readonly Dictionary<Screen, Sprite> _screenDefaultSprite = new Dictionary<Screen, Sprite>();
         private static readonly Dictionary<Screen, Color> _screenDefaultColor = new Dictionary<Screen, Color>();
         private static readonly Dictionary<Screen, Texture> _screenDefaultPattern = new Dictionary<Screen, Texture>();
+        private static readonly Dictionary<Screen, Color> _screenDefaultCirclesColor = new Dictionary<Screen, Color>();
 
         public static void CacheScreenDefault(Screen s, Transform container)
         {
@@ -123,6 +243,7 @@ namespace BetterFG.Customization.Menu
             {
                 int cid = cimg.GetInstanceID();
                 _screenDefaultPattern[s] = _origPattern.TryGetValue(cid, out var op) ? op : cimg.material.GetTexture("_Pattern");
+                _screenDefaultCirclesColor[s] = _origCirclesColor.TryGetValue(cid, out var occ) ? occ : cimg.color;
             }
         }
 
@@ -133,6 +254,9 @@ namespace BetterFG.Customization.Menu
             pattern = _screenDefaultPattern.TryGetValue(s, out var p) ? p : null;
             return _screenDefaultSprite.ContainsKey(s);
         }
+
+        public static bool TryGetScreenDefaultCirclesColor(Screen s, out Color color) =>
+            _screenDefaultCirclesColor.TryGetValue(s, out color);
 
         // these loading-screen canvases are NOT transient — they're pre-instantiated and inactive off
         // the same MainMenu scene as everything else, same story as ShowSelectorBg. Resources.FindObjectsOfTypeAll
@@ -222,22 +346,14 @@ namespace BetterFG.Customization.Menu
             var cimg = circles != null ? circles.GetComponent<Image>() : null;
             if (cimg != null && cimg.material != null)
             {
+                var mat = EnsureCirclesMaterialInstance(cimg);
                 int id = cimg.GetInstanceID();
-                if (!_origPattern.ContainsKey(id)) _origPattern[id] = cimg.material.GetTexture("_Pattern");
+                if (!_origPattern.ContainsKey(id)) _origPattern[id] = mat.GetTexture("_Pattern");
+                if (!_origCirclesColor.ContainsKey(id)) _origCirclesColor[id] = cimg.color;
 
-                string patternPath = SettingsService.Get(KeyPattern(s), "");
-                if (!string.IsNullOrEmpty(patternPath) && System.IO.File.Exists(patternPath))
-                {
-                    try
-                    {
-                        var data = System.IO.File.ReadAllBytes(patternPath);
-                        var ptex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                        ptex.LoadImage(data);
-                        ptex.Apply();
-                        cimg.material.SetTexture("_Pattern", ptex);
-                    }
-                    catch (Exception ex) { Plugin.Log.LogError("ScreenBg: pattern apply failed: " + ex.Message); }
-                }
+                var ptex = LoadPatternTexture(SettingsService.Get(KeyPattern(s), ""));
+                if (ptex != null) mat.SetTexture("_Pattern", ptex);
+                cimg.color = PatternColor(s);
             }
         }
 
@@ -260,7 +376,8 @@ namespace BetterFG.Customization.Menu
             if (cimg != null && cimg.material != null)
             {
                 int id = cimg.GetInstanceID();
-                if (_origPattern.TryGetValue(id, out var tex)) cimg.material.SetTexture("_Pattern", tex);
+                if (_origPattern.TryGetValue(id, out var tex)) EnsureCirclesMaterialInstance(cimg)?.SetTexture("_Pattern", tex);
+                if (_origCirclesColor.TryGetValue(id, out var col)) cimg.color = col;
             }
         }
 
