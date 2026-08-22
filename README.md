@@ -12,6 +12,7 @@
 # Info
 
 This repository holds the installer and source code for BettrFG, a Fall Guys BepInEx mod that aims to make the Fall Guys experience more fun using custom QoL features and UGC customization
+Note: As of now, the mod and virtually everything about it is only available in English.
 
 ### Discord server:
 http://dsc.gg/bettrfg
