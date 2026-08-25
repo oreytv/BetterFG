@@ -25,6 +25,8 @@ namespace BetterFG.Customization.Player
         // one fully-transparent material shared across all invisible renderers
         private static Material _invisibleMat;
 
+        public static Material PeekInvisibleMat() => _invisibleMat;
+
         public static Material GetInvisibleMat()
         {
             if (_invisibleMat != null) return _invisibleMat;

@@ -136,7 +136,7 @@ namespace BetterFG.Nametag
 
         // allowDeferred: run RepinCrown's next-frame coroutine. false for the preview clone — that coroutine
         // re-applies against the LIVE local tag, which would stomp the real nametag from a preview refresh.
-        public static void ApplyCrownTo(PlayerInfoDisplay display, CrownCfg cfg, bool allowDeferred = false)
+        public static void ApplyCrownTo(PlayerInfoDisplay display, CrownCfg cfg, bool allowDeferred = false, bool position = true)
         {
             // both display subtypes carry _crownRankBadgeViewModel — the 3D one in-game, the canvas one for the
             // config-tab preview clone. resolve from whichever this is.
@@ -150,6 +150,7 @@ namespace BetterFG.Nametag
 
             if (!DriveBadge(badge, cfg)) return;   // reverted (feature off)
             if (helper != null && !cfg.enabled) helper.CenterNameAndCrownRank();
+            if (!position) return;
 
             PositionCrown(display);
             if (allowDeferred) RepinCrown();

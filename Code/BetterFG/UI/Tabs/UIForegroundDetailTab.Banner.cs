@@ -8,11 +8,7 @@ namespace BetterFG.UI.Tabs
 {
     public partial class UIForegroundDetailTab
     {
-        private struct CachedImgColor { public Image img; public Color orig; public bool isHighlight; }
-        private struct CachedTmpColor { public TMPro.TMP_Text tmp; public Color origFill; public Color origOutline; public Color origUnderlay; public bool hasOutline; public bool hasUnderlay; }
-        private System.Collections.Generic.List<CachedImgColor> _previewImgCache = new System.Collections.Generic.List<CachedImgColor>();
-        private System.Collections.Generic.List<CachedTmpColor> _previewTmpCache = new System.Collections.Generic.List<CachedTmpColor>();
-        private GameObject _bannerPreviewGo;
+        private readonly BannerPreviewClone _previewClone = new BannerPreviewClone();
 
         private class BannerColourUI
         {
@@ -279,219 +275,18 @@ namespace BetterFG.UI.Tabs
         }
 
         // ── Live preview clone ────────────────────────────────────────────────
+        // the clone/position/recolour logic lives in BannerPreviewClone, shared with the UI tab's
+        // carousel preview; this just feeds it the currently-edited (unsaved) slider colours.
 
         private void RefreshBannerPreview()
         {
-            if (_bannerPreviewGo != null) { GameObject.Destroy(_bannerPreviewGo); _bannerPreviewGo = null; }
-            _previewImgCache.Clear();
-            _previewTmpCache.Clear();
-
             Transform viewport = GetBannerDef(What)?.viewport;
-            if (viewport == null) return;
-
-            GameObject source = FindBannerSource(What);
-            if (source == null) return;
-
-            _bannerPreviewGo = GameObject.Instantiate(source);
-            _bannerPreviewGo.name = "BannerPreview";
-
-            StartCoroutine(DisableBannerAnimatorsDelayed(_bannerPreviewGo).WrapToIl2Cpp());
-
-            foreach (var t in _bannerPreviewGo.GetComponentsInChildren<Transform>(true))
-                if (t != null && t.name == "Layout") t.gameObject.SetActive(false);
-
-            _bannerPreviewGo.transform.SetParent(viewport, false);
-            _bannerPreviewGo.transform.localPosition = new Vector3(205.4f, -44.6501f, 0f);
-            _bannerPreviewGo.transform.localScale = new Vector3(0.8236f, 0.8236f, 0.6f);
-            _bannerPreviewGo.SetActive(true);
-
-            foreach (var g in _bannerPreviewGo.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
-                if (g != null) g.raycastTarget = false;
-
-            if (What == UIForegroundKind.Winner)
-            {
-                foreach (var t in _bannerPreviewGo.GetComponentsInChildren<Transform>(true))
-                {
-                    if (t == null || t.parent == null || t.parent.name != "Container") continue;
-                    if (t.name == "background-starburst-top" || t.name == "UIParticleStars")
-                        t.gameObject.SetActive(false);
-                }
-            }
-            else if (What == UIForegroundKind.RoundOver)
-            {
-                foreach (var t in _bannerPreviewGo.GetComponentsInChildren<Transform>(true))
-                    if (t != null && t.name == "text-ROUND")
-                    {
-                        t.localPosition = new Vector3(-5f, 0.3327f, 0f);
-                        t.localScale = new Vector3(0.2f, 0.2f, 0.2f);
-                        break;
-                    }
-            }
-            else if (What == UIForegroundKind.EliminatedSquad)
-            {
-                ApplySquadPreviewLayout(_bannerPreviewGo);
-            }
-
-            foreach (var img in _bannerPreviewGo.GetComponentsInChildren<Image>(true))
-            {
-                if (img != null)
-                {
-                    bool hl = Customization.Menu.MenuCustomizationApplication.BannerColours.IsHighlight(img);
-                    _previewImgCache.Add(new CachedImgColor { img = img, orig = img.color, isHighlight = hl });
-                }
-            }
-
-            foreach (var binding in _bannerPreviewGo.GetComponentsInChildren<Mediatonic.Tools.MVVM.TMPTextBinding>(true))
-                if (binding != null) GameObject.Destroy(binding);
-
-            StartCoroutine(SetBannerTextNextFrame().WrapToIl2Cpp());
+            _previewClone.Refresh(this, What, viewport,
+                new Vector3(205.4f, -44.6501f, 0f), new Vector3(0.8236f, 0.8236f, 0.6f),
+                () => PreviewBannerColours(What));
         }
 
-        private System.Collections.IEnumerator DisableBannerAnimatorsDelayed(GameObject go)
-        {
-            yield return new WaitForSeconds(1.7f);
-            if (go == null) yield break;
-            foreach (var anim in go.GetComponentsInChildren<Animator>(true))
-                if (anim != null) anim.enabled = false;
-        }
-
-        private void ApplySquadPreviewLayout(GameObject go)
-        {
-            if (go == null) return;
-            foreach (var anim in go.GetComponentsInChildren<Animator>(true))
-                if (anim != null) anim.enabled = false;
-
-            foreach (var t in go.GetComponentsInChildren<Transform>(true))
-            {
-                if (t == null) continue;
-                if (t.parent != null && t.parent.name == "Container" && t.name == "Badge")
-                    t.gameObject.SetActive(false);
-                else if (t.name == "text-title" || t.name == "text-subtitle")
-                {
-                    var fitter = t.GetComponent<ContentSizeFitter>();
-                    if (fitter != null) GameObject.Destroy(fitter);
-                    var le = t.GetComponent<LayoutElement>();
-                    if (le != null) GameObject.Destroy(le);
-
-                    if (t.name == "text-title")
-                    {
-                        t.localPosition = new Vector3(-301.564f, -10.9704f, 0f);
-                        t.localScale = new Vector3(3f, 3f, 3f);
-                        var rt = t as RectTransform;
-                        if (rt != null) rt.sizeDelta = new Vector2(320f, -194.8501f);
-                    }
-                    else
-                    {
-                        t.localScale = new Vector3(3f, 3f, 3f);
-                        t.localPosition = new Vector3(63.6912f, -50.9455f, 0f);
-                        var rt = t as RectTransform;
-                        if (rt != null) rt.sizeDelta = new Vector2(520f, 0f);
-                    }
-                }
-            }
-        }
-
-        private System.Collections.IEnumerator SetBannerTextNextFrame()
-        {
-            yield return null;
-            if (_bannerPreviewGo == null) yield break;
-
-            foreach (var tmp in _bannerPreviewGo.GetComponentsInChildren<TMPro.TMP_Text>(true))
-            {
-                if (tmp == null) continue;
-                if (tmp.gameObject.name.StartsWith("text-"))
-                    tmp.SetText("BEAUTY");
-
-                tmp.ForceMeshUpdate();
-                tmp.enabled = false;
-                var entry = new CachedTmpColor { tmp = tmp, origFill = tmp.color };
-                if (tmp.fontSharedMaterial != null)
-                {
-                    var mat = tmp.fontMaterial;
-                    entry.hasOutline = mat.HasProperty(TMPro.ShaderUtilities.ID_OutlineColor);
-                    if (entry.hasOutline) entry.origOutline = mat.GetColor(TMPro.ShaderUtilities.ID_OutlineColor);
-                    entry.hasUnderlay = mat.HasProperty(TMPro.ShaderUtilities.ID_UnderlayColor);
-                    if (entry.hasUnderlay) entry.origUnderlay = mat.GetColor(TMPro.ShaderUtilities.ID_UnderlayColor);
-                }
-                _previewTmpCache.Add(entry);
-            }
-
-            yield return null;
-
-            for (int i = 0; i < _previewTmpCache.Count; i++)
-            {
-                var c = _previewTmpCache[i];
-                if (c.tmp != null) c.tmp.enabled = true;
-            }
-            UpdateBannerPreviewColours();
-        }
-
-        private void UpdateBannerPreviewColours()
-        {
-            if (_bannerPreviewGo == null) return;
-            var set = PreviewBannerColours(What);
-
-            UnityEngine.UI.Image winnerRoundOverWhiteImg = null;
-            bool winnerOverrideOn = false;
-            Color winnerOverrideColor = Color.white;
-            if (What == UIForegroundKind.Winner)
-            {
-                var def = GetBannerDef(UIForegroundKind.Winner);
-                if (def != null && def.enabled)
-                {
-                    var yellow = def.slots[0];
-                    if (yellow.ui.on)
-                    {
-                        winnerOverrideOn = true;
-                        winnerOverrideColor = new Color(yellow.ui.r, yellow.ui.g, yellow.ui.b);
-                    }
-                }
-                foreach (var t in _bannerPreviewGo.GetComponentsInChildren<Transform>(true))
-                {
-                    if (t == null || t.gameObject.name != "round-over-white") continue;
-                    winnerRoundOverWhiteImg = t.GetComponent<UnityEngine.UI.Image>();
-                    if (winnerRoundOverWhiteImg != null) break;
-                }
-            }
-
-            for (int i = 0; i < _previewImgCache.Count; i++)
-            {
-                var c = _previewImgCache[i];
-                if (c.img == null) continue;
-                if (winnerRoundOverWhiteImg != null && c.img == winnerRoundOverWhiteImg)
-                {
-                    c.img.color = winnerOverrideOn
-                        ? new Color(winnerOverrideColor.r, winnerOverrideColor.g, winnerOverrideColor.b, c.orig.a)
-                        : c.orig;
-                    continue;
-                }
-                if (c.isHighlight && set.highlightOn)
-                    c.img.color = new Color(set.highlight.r, set.highlight.g, set.highlight.b, c.orig.a);
-                else if (set.TryMatch(c.orig, out var t))
-                    c.img.color = new Color(t.r, t.g, t.b, c.orig.a);
-                else
-                    c.img.color = c.orig;
-            }
-
-            for (int i = 0; i < _previewTmpCache.Count; i++)
-            {
-                var c = _previewTmpCache[i];
-                if (c.tmp == null) continue;
-                c.tmp.color = set.TryMatch(c.origFill, out var tFill)
-                    ? new Color(tFill.r, tFill.g, tFill.b, c.origFill.a) : c.origFill;
-
-                if (c.tmp.fontSharedMaterial == null) continue;
-                var mat = c.tmp.fontMaterial;
-                if (c.hasOutline)
-                    mat.SetColor(TMPro.ShaderUtilities.ID_OutlineColor,
-                        set.TryMatch(c.origOutline, out var tOut)
-                            ? new Color(tOut.r, tOut.g, tOut.b, c.origOutline.a) : c.origOutline);
-                if (c.hasUnderlay)
-                    mat.SetColor(TMPro.ShaderUtilities.ID_UnderlayColor,
-                        set.TryMatch(c.origUnderlay, out var tUn)
-                            ? new Color(tUn.r, tUn.g, tUn.b, c.origUnderlay.a) : c.origUnderlay);
-            }
-        }
+        private void UpdateBannerPreviewColours() => _previewClone.UpdateColours();
 
         private Customization.Menu.MenuCustomizationApplication.BannerColours PreviewBannerColours(UIForegroundKind what)
         {
@@ -512,46 +307,6 @@ namespace BetterFG.UI.Tabs
                 highlightOn = hl != null && hl.on,
                 highlight = hl != null ? new Color(hl.r, hl.g, hl.b) : Color.white,
             };
-        }
-
-        private static bool IsBannerPreviewClone(UnityEngine.Object obj)
-        {
-            if (obj == null) return false;
-            var t = (obj as Component)?.transform;
-            while (t != null)
-            {
-                if (t.gameObject.name == "BannerPreview") return true;
-                t = t.parent;
-            }
-            return false;
-        }
-
-        private GameObject FindBannerSource(UIForegroundKind what)
-        {
-            switch (what)
-            {
-                case UIForegroundKind.Qualified:
-                    foreach (var vm in Resources.FindObjectsOfTypeAll<FGClient.UI.QualifiedScreenViewModel>())
-                        if (vm != null && vm.gameObject != null && !IsBannerPreviewClone(vm)) return vm.gameObject;
-                    break;
-                case UIForegroundKind.Eliminated:
-                    foreach (var vm in Resources.FindObjectsOfTypeAll<FGClient.EliminatedScreenViewModel>())
-                        if (vm != null && vm.gameObject != null && !IsBannerPreviewClone(vm)) return vm.gameObject;
-                    break;
-                case UIForegroundKind.EliminatedSquad:
-                    foreach (var vm in Resources.FindObjectsOfTypeAll<FGClient.EliminatedSquadScreenViewModel>())
-                        if (vm != null && vm.gameObject != null && !IsBannerPreviewClone(vm)) return vm.gameObject;
-                    break;
-                case UIForegroundKind.Winner:
-                    foreach (var vm in Resources.FindObjectsOfTypeAll<FGClient.UI.WinnerScreenViewModel>())
-                        if (vm != null && vm.gameObject != null && !IsBannerPreviewClone(vm)) return vm.gameObject;
-                    break;
-                case UIForegroundKind.RoundOver:
-                    foreach (var vm in Resources.FindObjectsOfTypeAll<FGClient.RoundEndedScreenViewModel>())
-                        if (vm != null && vm.gameObject != null && !IsBannerPreviewClone(vm)) return vm.gameObject;
-                    break;
-            }
-            return null;
         }
     }
 }

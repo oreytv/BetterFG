@@ -18,10 +18,13 @@
         // this is the rest of the line that follows it.
         public static string BuildWord = "build";
         public static string PresenceName = "BettrFG";
+        public static string BuildHashSuffix = "";
+
+        public static string DisplayBuildHash => BuildHash + BuildHashSuffix;
 
         public static string WatermarkLine2 => IsPublicRelease
-            ? $"{BuildWord} {Version} [{BuildHash}]"
-            : $"{BuildWord} {Version} [{BuildHash}], this build is not for public release";
+            ? $"{BuildWord} {Version} [{DisplayBuildHash}]"
+            : $"{BuildWord} {Version} [{DisplayBuildHash}], this build is not for public release";
 
         public static string WatermarkLine3 => IsPublicRelease ? "" : "Early access! woo!!!! boo!!! tooo!!";
     }

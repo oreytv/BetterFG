@@ -18,7 +18,6 @@ namespace BetterFG.Tweaks
         public static MatchmakingQueueCountTweak Instance { get; private set; }
 
         private static TMPro.TMP_Text _label;
-        private static bool _matchmaking;
         private static int _queuedPlayers;
 
         internal static int ConnectedPlayers { get; private set; }
@@ -31,7 +30,6 @@ namespace BetterFG.Tweaks
 
         internal static void OnMatchmakingStart()
         {
-            _matchmaking = true;
             _queuedPlayers = 0;
             ConnectedPlayers = 0;
             TotalPlayers = 0;
@@ -41,7 +39,6 @@ namespace BetterFG.Tweaks
 
         internal static void OnMatchmakingEnd()
         {
-            _matchmaking = false;
             ConnectedPlayers = 0;
             TotalPlayers = 0;
             DestroyLabel();

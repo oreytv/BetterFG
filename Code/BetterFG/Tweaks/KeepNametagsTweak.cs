@@ -340,6 +340,7 @@ namespace BetterFG.Tweaks
         public static void Postfix(CellBehaviour __instance)
         {
             KeepNametagsTweak.OnCellStateChanged(__instance);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ReassertOn(__instance);
             // the game re-sets the real crown rank on elimination, stomping our rank-text override. re-assert
             // ours a frame later. only the text — style/recolour aren't touched by this path.
             CellCrownRank.ReassertText(__instance);
@@ -353,6 +354,7 @@ namespace BetterFG.Tweaks
         public static void Postfix(CellBehaviour __instance)
         {
             KeepNametagsTweak.OnCellStateChanged(__instance);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ReassertOn(__instance);
             CellCrownRank.ReassertText(__instance);
         }
     }

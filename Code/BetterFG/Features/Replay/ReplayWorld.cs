@@ -58,6 +58,24 @@ namespace BetterFG.Features.Replay
         public Transform live;
     }
 
+    // a spawner needs two things in the one state channel: which of Generated/Picked/OnCooldown/Empty
+    // it is in, and which powerup the balloon is showing
+    internal static class ReplayPowerupPickup
+    {
+        public static int Pack(Levels.Powerups.COMMON_PowerupPickup pickup)
+        {
+            var powerup = pickup._selectedPowerup;
+            uint id = powerup is not null && powerup.m_CachedPtr != IntPtr.Zero ? powerup.ID : 0u;
+            return (int)pickup.PickupState | ((int)id << 8);
+        }
+
+        public static void Unpack(int packed, out int state, out uint id)
+        {
+            state = packed & 0xFF;
+            id = (uint)(packed >> 8);
+        }
+    }
+
     internal static class ReplayWorldPath
     {
         public static string BaseName(string name)
@@ -244,6 +262,8 @@ namespace BetterFG.Features.Replay
             public Levels.TextureUVImageRenderer uv;
             public Levels.Obstacles.COMMON_ConveyorBelt conv;
             public Levels.Obstacles.LevelEditorCommonConveyorBelt convLe;
+            public Levels.Powerups.COMMON_PowerupPickup pick;
+            public Levels.Obstacles.COMMON_RespawningTile tile;
             public int blastState;
             public bool holdPending;
             public float holdTime;
@@ -260,12 +280,15 @@ namespace BetterFG.Features.Replay
         static readonly HashSet<IntPtr> _aliveThisTick = new HashSet<IntPtr>();
         static readonly HashSet<int> _particleAt = new HashSet<int>();
         static readonly HashSet<int> _beanAt = new HashSet<int>();
+        static readonly HashSet<int> _hudAt = new HashSet<int>();
         static readonly Dictionary<int, LevelEditorPlaceableObject> _placeableAt = new Dictionary<int, LevelEditorPlaceableObject>();
         static readonly Dictionary<int, Animator> _animAt = new Dictionary<int, Animator>();
         static readonly Dictionary<int, Levels.Obstacles.COMMON_BlastBall> _blastAt = new Dictionary<int, Levels.Obstacles.COMMON_BlastBall>();
         static readonly Dictionary<int, LevelEditorDestructibleObjectResponder> _destAt = new Dictionary<int, LevelEditorDestructibleObjectResponder>();
         static readonly Dictionary<int, Levels.TextureUVImageRenderer> _uvAt = new Dictionary<int, Levels.TextureUVImageRenderer>();
         static readonly Dictionary<int, Behaviour> _convAt = new Dictionary<int, Behaviour>();
+        static readonly Dictionary<int, Levels.Powerups.COMMON_PowerupPickup> _pickAt = new Dictionary<int, Levels.Powerups.COMMON_PowerupPickup>();
+        static readonly Dictionary<int, Levels.Obstacles.COMMON_RespawningTile> _tileAt = new Dictionary<int, Levels.Obstacles.COMMON_RespawningTile>();
         static ReplayRecording _rec;
         static int _frames;
         static int _subtree;
@@ -343,12 +366,15 @@ namespace BetterFG.Features.Replay
         {
             _particleAt.Clear();
             _beanAt.Clear();
+            _hudAt.Clear();
             _placeableAt.Clear();
             _animAt.Clear();
             _blastAt.Clear();
             _destAt.Clear();
             _uvAt.Clear();
             _convAt.Clear();
+            _pickAt.Clear();
+            _tileAt.Clear();
         }
 
         static void Discover()
@@ -372,6 +398,8 @@ namespace BetterFG.Features.Replay
                         if (c != null) _particleAt.Add(c.transform.GetInstanceID());
                     foreach (var c in root.GetComponentsInChildren<FallGuysCharacterController>(true))
                         if (c != null) _beanAt.Add(c.transform.GetInstanceID());
+                    foreach (var c in root.GetComponentsInChildren<PlayerInfoHUDBase>(true))
+                        if (c != null) _hudAt.Add(c.transform.GetInstanceID());
                     foreach (var c in root.GetComponentsInChildren<Levels.Obstacles.COMMON_BlastBall>(true))
                         if (c != null) _blastAt[c.transform.GetInstanceID()] = c;
                     foreach (var c in root.GetComponentsInChildren<LevelEditorDestructibleObjectResponder>(true))
@@ -383,6 +411,10 @@ namespace BetterFG.Features.Replay
                         if (c != null) _convAt[c.transform.GetInstanceID()] = c;
                     foreach (var c in root.GetComponentsInChildren<Levels.Obstacles.LevelEditorCommonConveyorBelt>(true))
                         if (c != null) _convAt[c.transform.GetInstanceID()] = c;
+                    foreach (var c in root.GetComponentsInChildren<Levels.Powerups.COMMON_PowerupPickup>(true))
+                        if (c != null) _pickAt[c.transform.GetInstanceID()] = c;
+                    foreach (var c in root.GetComponentsInChildren<Levels.Obstacles.COMMON_RespawningTile>(true))
+                        if (c != null) _tileAt[c.transform.GetInstanceID()] = c;
 
                     var anims = root.GetComponentsInChildren<Animator>(true);
                     foreach (var c in anims) if (c != null) _animAt[c.transform.GetInstanceID()] = c;
@@ -471,11 +503,14 @@ namespace BetterFG.Features.Replay
             ClearIndex();
             foreach (var c in tf.GetComponentsInChildren<ParticleSystem>(true)) if (c != null) _particleAt.Add(c.transform.GetInstanceID());
             foreach (var c in tf.GetComponentsInChildren<FallGuysCharacterController>(true)) if (c != null) _beanAt.Add(c.transform.GetInstanceID());
+            foreach (var c in tf.GetComponentsInChildren<PlayerInfoHUDBase>(true)) if (c != null) _hudAt.Add(c.transform.GetInstanceID());
             foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.COMMON_BlastBall>(true)) if (c != null) _blastAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<LevelEditorDestructibleObjectResponder>(true)) if (c != null) _destAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<Levels.TextureUVImageRenderer>(true)) if (c != null) _uvAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.COMMON_ConveyorBelt>(true)) if (c != null) _convAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.LevelEditorCommonConveyorBelt>(true)) if (c != null) _convAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<Levels.Powerups.COMMON_PowerupPickup>(true)) if (c != null) _pickAt[c.transform.GetInstanceID()] = c;
+            foreach (var c in tf.GetComponentsInChildren<Levels.Obstacles.COMMON_RespawningTile>(true)) if (c != null) _tileAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<Animator>(true)) if (c != null) _animAt[c.transform.GetInstanceID()] = c;
             foreach (var c in tf.GetComponentsInChildren<LevelEditorPlaceableObject>(true)) if (c != null) _placeableAt[c.transform.GetInstanceID()] = c;
 
@@ -489,7 +524,7 @@ namespace BetterFG.Features.Replay
             int id = tf.GetInstanceID();
             if (!keepAll && !_keep.Contains(id)) return null;
             if (!_seen.Add(id)) return null;
-            if (_particleAt.Contains(id) || _beanAt.Contains(id)) return null;
+            if (_particleAt.Contains(id) || _beanAt.Contains(id) || _hudAt.Contains(id)) return null;
 
             if (_placeableAt.TryGetValue(id, out var placeable))
             {
@@ -522,7 +557,9 @@ namespace BetterFG.Features.Replay
             _destAt.TryGetValue(id, out var dest);
             _uvAt.TryGetValue(id, out var uv);
             _convAt.TryGetValue(id, out var conveyor);
-            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, conveyor, spawned, _subtree == 0, t);
+            _pickAt.TryGetValue(id, out var pickup);
+            _tileAt.TryGetValue(id, out var tile);
+            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, conveyor, pickup, tile, spawned, _subtree == 0, t);
             _subtree++;
 
             string sep = path.Length > 0 ? "/" : "";
@@ -539,7 +576,8 @@ namespace BetterFG.Features.Replay
         }
 
         static Node Add(ReplayObject data, Transform tf, Animator anim, Levels.Obstacles.COMMON_BlastBall blast,
-            LevelEditorDestructibleObjectResponder dest, Levels.TextureUVImageRenderer uv, Behaviour conveyor, bool world, bool seed, float t)
+            LevelEditorDestructibleObjectResponder dest, Levels.TextureUVImageRenderer uv, Behaviour conveyor,
+            Levels.Powerups.COMMON_PowerupPickup pickup, Levels.Obstacles.COMMON_RespawningTile tile, bool world, bool seed, float t)
         {
             var go = tf.gameObject;
             var node = new Node
@@ -566,10 +604,13 @@ namespace BetterFG.Features.Replay
                 node.conv = conveyor.TryCast<Levels.Obstacles.COMMON_ConveyorBelt>();
                 if (node.conv == null) node.convLe = conveyor.TryCast<Levels.Obstacles.LevelEditorCommonConveyorBelt>();
             }
+            else if (pickup != null) node.pick = pickup;
+            else if (tile != null) node.tile = tile;
 
             node.watchActive = world || seed || !node.active || anim != null
                 || node.blast is not null || node.dest is not null || node.uv is not null
-                || node.conv is not null || node.convLe is not null;
+                || node.conv is not null || node.convLe is not null || node.pick is not null
+                || node.tile is not null;
 
             if (ReadState(node, out node.blastState))
                 data.states.Add(new ReplayObjectState { t = t, state = node.blastState });
@@ -612,6 +653,8 @@ namespace BetterFG.Features.Replay
             if (node.uv is not null && node.uv.m_CachedPtr != IntPtr.Zero) { state = ReadUV(node.uv); return true; }
             if (node.conv is not null && node.conv.m_CachedPtr != IntPtr.Zero) { state = Mathf.RoundToInt(node.conv._visualPositionNormalised * SCROLL_Q); return true; }
             if (node.convLe is not null && node.convLe.m_CachedPtr != IntPtr.Zero) { state = Mathf.RoundToInt(node.convLe._currentScroll * SCROLL_Q); return true; }
+            if (node.pick is not null && node.pick.m_CachedPtr != IntPtr.Zero) { state = ReplayPowerupPickup.Pack(node.pick); return true; }
+            if (node.tile is not null && node.tile.m_CachedPtr != IntPtr.Zero) { state = (int)node.tile.TileState; return true; }
             return false;
         }
 
@@ -858,6 +901,8 @@ namespace BetterFG.Features.Replay
             public Levels.TextureUVImageRenderer uv;
             public Levels.Obstacles.COMMON_ConveyorBelt conv;
             public Levels.Obstacles.LevelEditorCommonConveyorBelt convLe;
+            public Levels.Powerups.COMMON_PowerupPickup pick;
+            public Levels.Obstacles.COMMON_RespawningTile tile;
             public bool world;
             public int cursor;
             public int stateCursor;
@@ -958,7 +1003,6 @@ namespace BetterFG.Features.Replay
                     ReplayWorldDrivers.ForEachSimulated(clone, SwitchOff);
                     foreach (var c in clone.GetComponentsInChildren<FG.Common.CarryObject>(true)) SwitchOff(c);
                     foreach (var c in clone.GetComponentsInChildren<Levels.Obstacles.COMMON_SelfRespawner>(true)) SwitchOff(c);
-                    foreach (var c in clone.GetComponentsInChildren<Levels.Obstacles.COMMON_BlastBall>(true)) SwitchOff(c);
                     clone.SetActive(true);
                     owners[obj.path] = tf;
                 }
@@ -996,6 +1040,8 @@ namespace BetterFG.Features.Replay
                     uv = obj.states.Count > 0 ? tf.GetComponent<Levels.TextureUVImageRenderer>() : null,
                     conv = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.COMMON_ConveyorBelt>() : null,
                     convLe = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.LevelEditorCommonConveyorBelt>() : null,
+                    pick = obj.states.Count > 0 ? tf.GetComponent<Levels.Powerups.COMMON_PowerupPickup>() : null,
+                    tile = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.COMMON_RespawningTile>() : null,
                     world = !string.IsNullOrEmpty(obj.prefab),
                     active = tf.gameObject.activeSelf,
                     spawned = spawned,
@@ -1105,6 +1151,8 @@ namespace BetterFG.Features.Replay
                     if (live.blast != null) DriveBlastBall(live, time);
                     else if (live.dest != null) DriveDestructible(live, time, live.tf.position);
                     else if (live.uv != null) DriveTileImage(live, time);
+                    else if (live.pick != null) DrivePowerupPickup(live, time);
+                    else if (live.tile != null) DriveRespawningTile(live, time);
                     else DriveConveyor(live, time);
                     continue;
                 }
@@ -1153,6 +1201,8 @@ namespace BetterFG.Features.Replay
                 if (live.blast != null) DriveBlastBall(live, time);
                 else if (live.dest != null) DriveDestructible(live, time, pos);
                 else if (live.uv != null) DriveTileImage(live, time);
+                else if (live.pick != null) DrivePowerupPickup(live, time);
+                else if (live.tile != null) DriveRespawningTile(live, time);
                 else DriveConveyor(live, time);
 
                 if (live.anim == null || a.stateHash == 0 || live.anim.runtimeAnimatorController == null) continue;
@@ -1181,10 +1231,17 @@ namespace BetterFG.Features.Replay
 
             int state = states[want].state;
 
+            // StartBlastSequence goes out over the network and dies quietly with no server, so the ball
+            // never reached Exploded and the explosion vfx never played. drive the states by hand instead
             try
             {
-                if (state == 1) live.blast.StartBlastSequence(false);
-                else if (state == 0 && !first) live.blast.ResetToPrimed();
+                switch (state)
+                {
+                    case 1: live.blast.AdvanceToActivated(Time.time); break;
+                    case 2: live.blast.AdvanceToReadyToExplode(); break;
+                    case 3: live.blast.AdvanceToExploded(); break;
+                    default: if (!first) live.blast.ResetToPrimed(); break;
+                }
             }
             catch (Exception ex)
             {
@@ -1192,6 +1249,75 @@ namespace BetterFG.Features.Replay
                 {
                     Plugin.Log.LogWarning($"blast ball keeps throwing on state {state} ({ex.Message}), leaving it alone now");
                     live.blast = null;
+                }
+            }
+        }
+
+        // the tile only moves its visuals child, which nothing marks as worth tracking, so sampled
+        // transforms never saw a hexagon drop. run the game's own despawn/respawn routines instead
+        void DriveRespawningTile(Live live, float time)
+        {
+            var states = live.data.states;
+
+            int want = -1;
+            for (int i = 0; i < states.Count; i++)
+            {
+                if (states[i].t > time) break;
+                want = i;
+            }
+
+            if (want == live.stateCursor || want < 0) return;
+            bool first = live.stateCursor < 0;
+            live.stateCursor = want;
+
+            int state = states[want].state;
+
+            try
+            {
+                if (state == 1) live.tile.HandleTileTriggerDespawning();
+                else if (state == 4) live.tile.OnTriggerRespawnRoutine();
+                else if (state == 0 && !first) live.tile.Reboot();
+            }
+            catch (Exception ex)
+            {
+                if (++live.stateFailures >= 4)
+                {
+                    Plugin.Log.LogWarning($"hextile keeps throwing on state {state} ({ex.Message}), leaving it alone now");
+                    live.tile = null;
+                }
+            }
+        }
+
+        void DrivePowerupPickup(Live live, float time)
+        {
+            var states = live.data.states;
+
+            int want = -1;
+            for (int i = 0; i < states.Count; i++)
+            {
+                if (states[i].t > time) break;
+                want = i;
+            }
+
+            if (want == live.stateCursor || want < 0) return;
+            live.stateCursor = want;
+
+            ReplayPowerupPickup.Unpack(states[want].state, out int state, out uint id);
+
+            try
+            {
+                // the pop sfx is already in the recording, so the visuals go up silently
+                if (state != 0) { live.pick.ClearVisuals(false); return; }
+
+                var powerup = live.pick.GetPowerupSOFromPool(id);
+                if (powerup != null) live.pick.SetVisualsForPowerup(powerup);
+            }
+            catch (Exception ex)
+            {
+                if (++live.stateFailures >= 4)
+                {
+                    Plugin.Log.LogWarning($"powerup spawner keeps throwing on state {state} ({ex.Message}), leaving it alone now");
+                    live.pick = null;
                 }
             }
         }
@@ -1461,6 +1587,85 @@ namespace BetterFG.Features.Replay
                 _cursor++;
                 if (ev.t > from && _controllers.TryGetValue(ev.playerId, out var vfx) && vfx != null)
                     vfx.HandleOnDive(new FG.Common.Character.VfxDiveEvent());
+            }
+        }
+    }
+
+    // the chicken and the invisibility shimmer are the two powerup looks nothing else in the replay
+    // carries: the chicken hangs off the bean's own rig and the shimmer is a shader swap, so neither
+    // shows up in the player frames or the world objects. bean ball rides the bean's animator state
+    // and the rhino is a net object, both already recorded
+    internal class ReplayPowerupPlayer
+    {
+        class Track
+        {
+            public uint playerId;
+            public GameObject chicken;
+            public Levels.Invisibeans.InvisibilityVisualsController invis;
+            public bool chickenOn;
+            public bool invisOn;
+        }
+
+        readonly ReplayRecording _rec;
+        readonly List<Track> _tracks = new List<Track>();
+
+        public ReplayPowerupPlayer(ReplayRecording rec)
+        {
+            _rec = rec;
+        }
+
+        public int AttachedCount => _tracks.Count;
+
+        public void Attach(uint playerId, GameObject bean)
+        {
+            if (_rec.powerupEvents.Count == 0) return;
+
+            var controller = bean.GetComponentInChildren<RubberChickenController>(true);
+            var track = new Track
+            {
+                playerId = playerId,
+                chicken = controller != null ? controller.RubberChickenObject : null,
+                invis = bean.GetComponentInChildren<Levels.Invisibeans.InvisibilityVisualsController>(true),
+            };
+            if (track.chicken == null && track.invis == null) return;
+
+            if (track.chicken != null) track.chicken.SetActive(false);
+            _tracks.Add(track);
+        }
+
+        public void Apply(float time)
+        {
+            var events = _rec.powerupEvents;
+            foreach (var track in _tracks)
+            {
+                bool chicken = false;
+                bool invis = false;
+                for (int i = 0; i < events.Count; i++)
+                {
+                    var e = events[i];
+                    if (e.playerId != track.playerId || e.t > time) continue;
+                    if (e.kind == (int)ReplayPowerupKind.RubberChicken) chicken = e.on;
+                    else invis = e.on;
+                }
+
+                if (chicken != track.chickenOn && track.chicken != null)
+                {
+                    track.chickenOn = chicken;
+                    track.chicken.SetActive(chicken);
+                }
+
+                if (invis == track.invisOn || track.invis == null) continue;
+                track.invisOn = invis;
+                try
+                {
+                    if (invis) track.invis.EnablePowerupVersion();
+                    else track.invis.DisablePowerupVersion();
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogWarning($"invisibility wouldn't {(invis ? "go on" : "come off")} for player {track.playerId}, dropping it: {ex.Message}");
+                    track.invis = null;
+                }
             }
         }
     }

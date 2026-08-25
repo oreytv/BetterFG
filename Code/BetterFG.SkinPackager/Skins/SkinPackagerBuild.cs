@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -131,7 +131,7 @@ namespace BetterFG.Editor
                         File.Copy(src, dst, overwrite: true);
 
                     WriteInfoJson();
-                    WriteCover();
+                    CoverImage.Write(_coverPath, _outputDir);
 
                     if (!string.IsNullOrEmpty(_loadedDir) && !string.Equals(_loadedDir, dest, StringComparison.OrdinalIgnoreCase) && Directory.Exists(_loadedDir))
                     {
@@ -140,7 +140,7 @@ namespace BetterFG.Editor
                     }
                     _loadedDir = dest;
 
-                    RunCatalogBat();
+                    CatalogBat.Run(_repoRoot);
                     WriteNewCatalog(_repoRoot);
 
                     _packed = true;
@@ -196,7 +196,7 @@ namespace BetterFG.Editor
                 File.Copy(built, Path.Combine(dest, BundleName), overwrite: true);
 
                 WriteInfoJson();
-                WriteCover();
+                CoverImage.Write(_coverPath, _outputDir);
 
                 if (!string.IsNullOrEmpty(_loadedDir) && !string.Equals(_loadedDir, dest, StringComparison.OrdinalIgnoreCase) && Directory.Exists(_loadedDir))
                 {
@@ -206,7 +206,7 @@ namespace BetterFG.Editor
                 _loadedDir = dest;
 
                 EditorUtility.DisplayProgressBar("Packing skin", "regenerating the catalog", 0.92f);
-                RunCatalogBat();
+                CatalogBat.Run(_repoRoot);
                 WriteNewCatalog(_repoRoot);
 
                 _packed = true;
@@ -231,22 +231,6 @@ namespace BetterFG.Editor
 
                 AssetDatabase.Refresh();
             }
-        }
-
-        private void RunCatalogBat()
-        {
-            string bat = Path.Combine(_repoRoot, "generate_catalog.bat");
-            if (!File.Exists(bat)) return;
-
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = bat,
-                WorkingDirectory = _repoRoot,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using (var p = System.Diagnostics.Process.Start(psi))
-                p.WaitForExit();
         }
 
         private static void WriteNewCatalog(string repoRoot)
@@ -311,55 +295,6 @@ namespace BetterFG.Editor
                 boneOffsets: bones);
         }
 
-        private void WriteCover()
-        {
-            if (string.IsNullOrEmpty(_coverPath) || !File.Exists(_coverPath)) return;
-
-            var src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!src.LoadImage(File.ReadAllBytes(_coverPath))) { DestroyImmediate(src); return; }
-
-            float srcAspect = (float)src.width / src.height;
-            float dstAspect = (float)COVER_W / COVER_H;
-
-            int cropX, cropY, cropW, cropH;
-            if (srcAspect > dstAspect)
-            {
-                cropH = src.height;
-                cropW = Mathf.RoundToInt(src.height * dstAspect);
-                cropX = (src.width - cropW) / 2;
-                cropY = 0;
-            }
-            else
-            {
-                cropW = src.width;
-                cropH = Mathf.RoundToInt(src.width / dstAspect);
-                cropX = 0;
-                cropY = (src.height - cropH) / 2;
-            }
-
-            Color[] cropped = src.GetPixels(cropX, cropY, cropW, cropH);
-            DestroyImmediate(src);
-
-            var tmp = new Texture2D(cropW, cropH, TextureFormat.RGB24, false);
-            tmp.SetPixels(cropped);
-            tmp.Apply();
-
-            var rt = RenderTexture.GetTemporary(COVER_W, COVER_H, 0, RenderTextureFormat.ARGB32);
-            rt.filterMode = FilterMode.Bilinear;
-            Graphics.Blit(tmp, rt);
-            DestroyImmediate(tmp);
-
-            var prev = RenderTexture.active;
-            RenderTexture.active = rt;
-            var final = new Texture2D(COVER_W, COVER_H, TextureFormat.RGB24, false);
-            final.ReadPixels(new Rect(0, 0, COVER_W, COVER_H), 0, 0);
-            final.Apply();
-            RenderTexture.active = prev;
-            RenderTexture.ReleaseTemporary(rt);
-
-            File.WriteAllBytes(Path.Combine(_outputDir, "cover.jpg"), final.EncodeToJPG(92));
-            DestroyImmediate(final);
-        }
 
         private GameObject ResolvePreviewObject()
         {

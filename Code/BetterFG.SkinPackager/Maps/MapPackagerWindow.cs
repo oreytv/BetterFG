@@ -1,4 +1,4 @@
-using BetterFG.Editor.Map;
+﻿using BetterFG.Editor.Map;
 using System;
 using System.IO;
 using UnityEditor;
@@ -220,27 +220,11 @@ namespace BetterFG.Editor
                 }
                 AssetDatabase.Refresh();
 
-                RunCatalogBat();
+                CatalogBat.Run(_repoRoot);
 
                 Ok($"Packed -> {repoOut}  (+ {PROJECT_OUTPUT_DIR})");
             }
             catch (Exception ex) { Err($"Pack failed: {ex.Message}"); }
-        }
-
-        private void RunCatalogBat()
-        {
-            string bat = Path.Combine(_repoRoot, "generate_catalog.bat");
-            if (!File.Exists(bat)) return;
-
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = bat,
-                WorkingDirectory = _repoRoot,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using (var p = System.Diagnostics.Process.Start(psi))
-                p.WaitForExit();
         }
 
         // find the round root by name in the scene, falling back to the first root object

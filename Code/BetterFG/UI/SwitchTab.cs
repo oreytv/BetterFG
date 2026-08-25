@@ -10,7 +10,7 @@ namespace BetterFG.UI
     // text (SwitchLabel) and the target (MakeSwitchTarget); everything else — creating the link,
     // placing it next to the title, showing it only while the tab is open, and doing the slot swap —
     // lives here once. empty SwitchLabel = no link (a plain textured tab).
-    public class SwitchTab : TexturedTab
+    public class SwitchTab : Tab
     {
         public SwitchTab(IntPtr ptr) : base(ptr) { }
 

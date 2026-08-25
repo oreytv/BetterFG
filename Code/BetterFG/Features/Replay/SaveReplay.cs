@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 20;
+        public const int FormatVersion = 21;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 
@@ -58,6 +58,19 @@ namespace BetterFG.Features.Replay
                 WriteTextures(bw, rec);
                 WriteSpeech(bw, rec);
                 WriteGhosts(bw, rec);
+                WritePowerups(bw, rec);
+            }
+        }
+
+        static void WritePowerups(BinaryWriter bw, ReplayRecording rec)
+        {
+            bw.Write(rec.powerupEvents.Count);
+            foreach (var e in rec.powerupEvents)
+            {
+                bw.Write(e.t);
+                bw.Write(e.playerId);
+                bw.Write(e.kind);
+                bw.Write(e.on);
             }
         }
 
@@ -357,6 +370,8 @@ namespace BetterFG.Features.Replay
                 sb.Append('{');
                 Float(sb, "time", v.time, true);
                 Bool(sb, "showPhrases", v.showPhrases);
+                Num(sb, "crowns", (int)v.crowns);
+                Str(sb, "crownOnlyPlayers", string.Join("|", v.crownOnlyPlayers));
                 Num(sb, "names", (int)v.names);
                 Str(sb, "nameOnlyPlayers", string.Join("|", v.nameOnlyPlayers));
                 Num(sb, "playersMode", (int)v.players);
@@ -416,6 +431,7 @@ namespace BetterFG.Features.Replay
                 Str(sb, "nickname", p.nickname);
                 Str(sb, "nameplate", p.nameplate);
                 Num(sb, "fameEarnedBadge", p.fameEarnedBadge);
+                Num(sb, "crownsEarned", p.crownsEarned);
                 Str(sb, "fameUpdatedAt", p.fameUpdatedAt.ToString("o"));
                 Float(sb, "bfgScale", p.bfgScale);
                 Float(sb, "outTime", p.outTime);
@@ -461,6 +477,7 @@ namespace BetterFG.Features.Replay
                     Str(sb, "source", skin.source);
                     Str(sb, "localPath", skin.localPath);
                     Str(sb, "repoUrl", skin.repoUrl);
+                    Num(sb, "hand", skin.hand);
                     sb.Append('}');
                 }
                 sb.Append(']');

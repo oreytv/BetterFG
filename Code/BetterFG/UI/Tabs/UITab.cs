@@ -5,18 +5,13 @@ using UnityEngine.UI;
 
 namespace BetterFG.UI.Tabs
 {
-    public class UITab : TexturedTab
+    public class UITab : Tab
     {
         public UITab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "User Interface";
         protected override string BgResource => "BetterFG.assets.ui.tab.ui.png";
 
-        internal static float PAD => UIScale.PAD;
-        internal static float VPAD => UIScale.VPAD;
-        internal static float SH => UIScale.SH;
-        internal static float BTN_H => UIScale.BTN_H;
-        internal static int FS_SM => UIScale.FS_SM;
         internal static float subTabH => BTN_H * 0.9f;
 
         internal static readonly Color WHITE = Color.white;
@@ -49,19 +44,69 @@ namespace BetterFG.UI.Tabs
             return y + 1f + SH;
         }
 
+        private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
+        private const float FG_PREVIEW_H = 120f;
+
+        private readonly BannerPreviewClone _fgPreview = new BannerPreviewClone();
+        private Transform _fgViewport;
+        private Text _fgCarouselLabel;
+        private Text _fgNoPreviewLabel;
+        private int _fgIndex;
+
         protected override void BuildContent(RectTransform contentRoot)
         {
             float w = TabWidth - PAD * 2f;
             float cy = BuildSectionBar(this, contentRoot, PAD, VPAD, w, "Foreground");
 
-            for (int i = 0; i < 6; i++)
-            {
-                var kind = (UIForegroundKind)i;
-                UGUIShip.CreateButton(contentRoot, new Rect(PAD, cy, w, BTN_H), UIForegroundDetailTab.Label(kind),
-                    BTN_DARK, WHITE, FS_SM, new Action(() => OpenForeground(kind)));
-                cy += BTN_H + SH;
-            }
+            // ── carousel header: ‹  Qualified banner  › ──
+            float arrow = subTabH;
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD, cy, arrow, BTN_H),
+                "<", BTN_DARK, WHITE, FS_SM, new Action(() => CycleForeground(-1)));
+            _fgCarouselLabel = UGUIShip.CreateLabel(contentRoot, new Rect(PAD + arrow, cy, w - arrow * 2f, BTN_H),
+                UIForegroundDetailTab.Label((UIForegroundKind)_fgIndex), FS_SM, WHITE, TextAnchor.MiddleCenter);
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - arrow, cy, arrow, BTN_H),
+                ">", BTN_DARK, WHITE, FS_SM, new Action(() => CycleForeground(1)));
+            cy += BTN_H + SH;
+
+            var (scrollRect, _) = UGUIShip.CreateScrollView(contentRoot, new Rect(0f, cy, TabWidth, FG_PREVIEW_H));
+            scrollRect.vertical = false;
+            _fgViewport = scrollRect.transform.Find("Viewport");
+
+            _fgNoPreviewLabel = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, cy, w, FG_PREVIEW_H),
+                "no live preview for custom UI colours", FS_SM, HINT, TextAnchor.MiddleCenter);
+            cy += FG_PREVIEW_H + SH;
+
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD, cy, w, BTN_H),
+                "Edit", BTN_DARK, WHITE, FS_SM, new Action(() => OpenForeground((UIForegroundKind)_fgIndex)));
+
+            RefreshForegroundPreview();
         }
+
+        void CycleForeground(int d)
+        {
+            _fgIndex = (_fgIndex + d + 6) % 6;
+            if (_fgCarouselLabel != null) _fgCarouselLabel.text = UIForegroundDetailTab.Label((UIForegroundKind)_fgIndex);
+            RefreshForegroundPreview();
+        }
+
+        void RefreshForegroundPreview()
+        {
+            var kind = (UIForegroundKind)_fgIndex;
+            _fgPreview.Refresh(this, kind, _fgViewport,
+                new Vector3(205.4f, -44.6501f, 0f), new Vector3(0.8236f, 0.8236f, 0.6f),
+                () => Customization.Menu.MenuCustomizationApplication.Instance.GetBannerColoursFromSettings(ToBannerScreen(kind)));
+            if (_fgNoPreviewLabel != null) _fgNoPreviewLabel.gameObject.SetActive(kind == UIForegroundKind.CustomUI);
+        }
+
+        static Customization.Menu.MenuCustomizationApplication.BannerScreen ToBannerScreen(UIForegroundKind k) => k switch
+        {
+            UIForegroundKind.Qualified => Customization.Menu.MenuCustomizationApplication.BannerScreen.Qualified,
+            UIForegroundKind.Eliminated => Customization.Menu.MenuCustomizationApplication.BannerScreen.Eliminated,
+            UIForegroundKind.EliminatedSquad => Customization.Menu.MenuCustomizationApplication.BannerScreen.Squad,
+            UIForegroundKind.Winner => Customization.Menu.MenuCustomizationApplication.BannerScreen.Winner,
+            UIForegroundKind.RoundOver => Customization.Menu.MenuCustomizationApplication.BannerScreen.RoundOver,
+            _ => Customization.Menu.MenuCustomizationApplication.BannerScreen.Qualified,
+        };
 
         void OpenForeground(UIForegroundKind kind)
         {

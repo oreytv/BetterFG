@@ -63,6 +63,7 @@ namespace BetterFG.Core
         }
 
         private static Material ghostMaterial;
+        public static Material PeekGhostMaterial() => ghostMaterial;
         public static Material GhostMaterial
         {
             get

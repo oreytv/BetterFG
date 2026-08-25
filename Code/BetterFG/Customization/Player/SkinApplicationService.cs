@@ -145,8 +145,6 @@ namespace BetterFG.Customization.Player
             var local = RemoteProfileStore.LocalLoadout();
             if (local == null) return;
 
-            var handOverrides = RemoteProfileStore.LocalHandOverrides();
-
             foreach (var entry in local.skins)
             {
                 if (string.IsNullOrEmpty(entry.file)) continue;
@@ -185,7 +183,7 @@ namespace BetterFG.Customization.Player
                 else if (!string.IsNullOrEmpty(entry.repoUrl))
                     skinInfo.sourceRepo = entry.repoUrl;
 
-                if (handOverrides.TryGetValue(entry.file, out int ov)) skinInfo.handOverride = ov;
+                skinInfo.handOverride = entry.hand;
                 RestoreOneSkin(skinInfo, loader, plinthApp);
             }
         }
@@ -241,7 +239,7 @@ namespace BetterFG.Customization.Player
             _restoreQueue.Add(skinInfo);
             loader.OnSkinLoaded += OnRestoreDownloaded;
 
-            string category = GetCategoryFolder(skinInfo.type);
+            string category = SkinTypeParser.CategoryFolder(skinInfo.type);
             string folder = !string.IsNullOrEmpty(skinInfo.repoFolder) ? skinInfo.repoFolder : $"{category}/{skinInfo.file}";
             string repoRaw = RepoRegistry.ResolveRaw(skinInfo.sourceRepo);
             string url = $"{repoRaw}/{folder}/{skinInfo.file}";
@@ -717,7 +715,7 @@ namespace BetterFG.Customization.Player
                 {
                     option = kvp.Value,
                     id = kvp.Key,
-                    name = GetGameCosmeticName(kvp.Value),
+                    name = GetGameName(kvp.Value, "cosmetic"),
                     applyStamp = applyStamp
                 };
                 activeGameCosmetics.Add(slot);
@@ -768,6 +766,90 @@ namespace BetterFG.Customization.Player
             return list;
         }
 
+        public List<GameCosmeticEntry> GetSavedGameCosmetics()
+        {
+            var saved = LoadSavedGameCosmetics();
+            var applied = GetAppliedGameCosmetics();
+            var appliedIds = new HashSet<string>();
+            foreach (var e in applied) appliedIds.Add(e.id);
+
+            var byId = new Dictionary<string, GameCosmeticEntry>();
+            foreach (var e in saved)
+            {
+                e.enabled = appliedIds.Contains(e.id);
+                byId[e.id] = e;
+            }
+            foreach (var e in applied) byId[e.id] = e;
+
+            var merged = new List<GameCosmeticEntry>(byId.Values);
+            SaveSavedGameCosmetics(merged);
+            return merged;
+        }
+
+        public void SetGameCosmeticEnabled(GameCosmeticEntry entry, bool enabled)
+        {
+            if (entry == null) return;
+            entry.enabled = enabled;
+
+            if (!enabled)
+            {
+                if (entry.kind == "colour") RemoveGameColour();
+                else if (entry.kind == "pattern") RemoveGamePattern();
+                else if (entry.kind == "faceplate") RemoveGameFaceplate();
+                else RemoveGameCosmetic(entry.id);
+            }
+            else
+            {
+                var option = entry.option ?? ResolveGameCosmeticOption(entry.kind, entry.id);
+                if (option == null) { Plugin.Log.LogWarning($"{entry.name} not in the catalog, can't turn it back on"); entry.enabled = false; return; }
+
+                if (entry.kind == "colour") ApplyGameColour(option.Cast<ColourOption>());
+                else if (entry.kind == "pattern") ApplyGamePattern(option.Cast<SkinPatternOption>());
+                else if (entry.kind == "faceplate") ApplyGameFaceplate(option.Cast<FaceplateOption>());
+                else
+                {
+                    var costume = option.Cast<CostumeOption>();
+                    var wantedIds = GetAppliedGameCosmeticIds();
+                    wantedIds.Add(entry.id);
+                    var combined = new List<CostumeOption>();
+                    foreach (var slot in activeGameCosmetics)
+                        if (slot?.option != null) combined.Add(slot.option);
+                    combined.Add(costume);
+                    ApplyGameCosmeticSelection(combined, wantedIds);
+                }
+            }
+
+            var saved = LoadSavedGameCosmetics();
+            bool found = false;
+            for (int i = 0; i < saved.Count; i++)
+            {
+                if (saved[i].id != entry.id) continue;
+                saved[i].enabled = enabled;
+                found = true;
+                break;
+            }
+            if (!found) saved.Add(entry);
+            SaveSavedGameCosmetics(saved);
+        }
+
+        public static UnityEngine.Object ResolveGameCosmeticOption(string kind, string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            if (kind == "colour") return ResolveColourOption(id, -1);
+            if (kind == "pattern") return GetPatternLookup().TryGetValue(id, out var p) ? p : null;
+            if (kind == "faceplate") return GetFaceplateLookup().TryGetValue(id, out var f) ? f : null;
+            return GetCostumeLookup().TryGetValue(id, out var c) ? c : null;
+        }
+
+        public void ForgetGameCosmetic(GameCosmeticEntry entry)
+        {
+            if (entry == null) return;
+            if (entry.enabled) SetGameCosmeticEnabled(entry, false);
+            var saved = LoadSavedGameCosmetics();
+            saved.RemoveAll(e => e.id == entry.id);
+            SaveSavedGameCosmetics(saved);
+        }
+
         public HashSet<string> GetAppliedGameCosmeticIds()
         {
             var ids = new HashSet<string>();
@@ -806,22 +888,22 @@ namespace BetterFG.Customization.Player
 
         public static string GetGameCosmeticOptionId(CostumeOption option)
         {
-            return "gamecosm:" + GetGameCosmeticId(option);
+            return "gamecosm:" + GetGameId(option);
         }
 
         public static string GetGameColourOptionId(ColourOption option)
         {
-            return "gamecolour:" + GetGameColourId(option);
+            return "gamecolour:" + GetGameId(option);
         }
 
         public static string GetGamePatternOptionId(SkinPatternOption option)
         {
-            return "gamepattern:" + GetGamePatternId(option);
+            return "gamepattern:" + GetGameId(option);
         }
 
         public static string GetGameFaceplateOptionId(FaceplateOption option)
         {
-            return "gamefaceplate:" + GetGameFaceplateId(option);
+            return "gamefaceplate:" + GetGameId((ItemDefinitionSO)option);
         }
 
         public string GetAppliedGameColourId() => activeColour.id ?? "";
@@ -833,7 +915,7 @@ namespace BetterFG.Customization.Player
             if (option == null) return;
             string id = GetGameColourOptionId(option);
             bool changed = !activeColour.On || activeColour.id != id;
-            activeColour.Set(option, id, GetGameColourName(option));
+            activeColour.Set(option, id, GetGameName(option, "colour"));
             SettingsService.Set("allcosmetics.colour", id);
             ApplyGameColourPatternToAllBeans();
             ReapplyAllEnabledFromSettings();
@@ -846,7 +928,7 @@ namespace BetterFG.Customization.Player
             string id = GetGamePatternOptionId(option);
             bool changed = !activePattern.On || activePattern.id != id;
             try { option.LoadBlocking(); } catch { }
-            activePattern.Set(option, id, GetGamePatternName(option));
+            activePattern.Set(option, id, GetGameName(option, "pattern"));
             SettingsService.Set("allcosmetics.pattern", id);
             ApplyGameColourPatternToAllBeans();
             ReapplyAllEnabledFromSettings();
@@ -858,7 +940,7 @@ namespace BetterFG.Customization.Player
             if (option == null) return;
             string id = GetGameFaceplateOptionId(option);
             bool changed = !activeFaceplate.On || activeFaceplate.id != id;
-            activeFaceplate.Set(option, id, GetGameFaceplateName(option));
+            activeFaceplate.Set(option, id, GetGameName((ItemDefinitionSO)option, "faceplate"));
             SettingsService.Set("allcosmetics.faceplate", id);
             ApplyGameColourPatternToAllBeans();
             if (changed) SpawnGameCosmeticPoof();
@@ -936,6 +1018,38 @@ namespace BetterFG.Customization.Player
                 foreach (var id in ids)
                     if (!string.IsNullOrEmpty(id) && !list.Contains(id)) list.Add(id);
             SettingsService.Set("allcosmetics.ids", string.Join("|", list));
+        }
+
+        public static List<GameCosmeticEntry> LoadSavedGameCosmetics()
+        {
+            var list = new List<GameCosmeticEntry>();
+            int count = int.TryParse(SettingsService.Get("allcosmetics.saved.count", "0"), out int c) ? c : 0;
+            for (int i = 0; i < count; i++)
+            {
+                string id = SettingsService.Get($"allcosmetics.saved.{i}.id", "");
+                if (string.IsNullOrEmpty(id)) continue;
+                list.Add(new GameCosmeticEntry
+                {
+                    id = id,
+                    name = SettingsService.Get($"allcosmetics.saved.{i}.name", id),
+                    kind = SettingsService.Get($"allcosmetics.saved.{i}.kind", "costume"),
+                    enabled = SettingsService.Get($"allcosmetics.saved.{i}.enabled", "1") == "1"
+                });
+            }
+            return list;
+        }
+
+        public static void SaveSavedGameCosmetics(List<GameCosmeticEntry> entries)
+        {
+            SettingsService.Set("allcosmetics.saved.count", entries.Count.ToString());
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var e = entries[i];
+                SettingsService.Set($"allcosmetics.saved.{i}.id", e.id);
+                SettingsService.Set($"allcosmetics.saved.{i}.name", e.name ?? e.id);
+                SettingsService.Set($"allcosmetics.saved.{i}.kind", e.kind ?? "costume");
+                SettingsService.Set($"allcosmetics.saved.{i}.enabled", e.enabled ? "1" : "0");
+            }
         }
 
         // Resources.FindObjectsOfTypeAll(<type>) is brutally expensive in il2cpp - it walks every
@@ -1105,13 +1219,13 @@ namespace BetterFG.Customization.Player
             }
 
             if (chosen.Count > 0) ApplyGameCosmeticSelection(chosen, wanted);
-            if (foundColour != null) activeColour.Set(foundColour, colourId, GetGameColourName(foundColour));
+            if (foundColour != null) activeColour.Set(foundColour, colourId, GetGameName(foundColour, "colour"));
             if (foundPattern != null)
             {
                 try { foundPattern.LoadBlocking(); } catch { }
-                activePattern.Set(foundPattern, patternId, GetGamePatternName(foundPattern));
+                activePattern.Set(foundPattern, patternId, GetGameName(foundPattern, "pattern"));
             }
-            if (foundFaceplate != null) activeFaceplate.Set(foundFaceplate, faceplateId, GetGameFaceplateName(foundFaceplate));
+            if (foundFaceplate != null) activeFaceplate.Set(foundFaceplate, faceplateId, GetGameName((ItemDefinitionSO)foundFaceplate, "faceplate"));
             ApplyGameColourPatternToAllBeans();
 
             gameCosmeticsRestoring = false;
@@ -1166,7 +1280,7 @@ namespace BetterFG.Customization.Player
                 string id = GetGameCosmeticOptionId(opt);
                 string key = MakeKey(bean, id);
                 if (appliedSkins.ContainsKey(key) || pendingKeys.Contains(key)) continue;
-                var slot = new GameCosmeticSlot { option = opt, id = id, name = GetGameCosmeticName(opt), remotePipeline = true };
+                var slot = new GameCosmeticSlot { option = opt, id = id, name = GetGameName(opt, "cosmetic"), remotePipeline = true };
                 pendingKeys.Add(key);
                 Plugin.Log.LogInfo($"Profiles: cosmetic '{slot.name}' -> {bean.name}");
                 yield return ApplyGameCosmeticToBeanCoroutine(slot, bean, ApplyReason.AutoReapply).WrapToIl2Cpp();
@@ -1278,24 +1392,7 @@ namespace BetterFG.Customization.Player
 
 
         // collect all renderers recursively (il2cpp safe), no LOD filtering
-        private static void CollectAllRenderers(GameObject root, Dictionary<Renderer, Material[]> results)
-        {
-            if (root == null) return;
-            CollectAllRenderersRecursive(root.transform, results);
-        }
 
-        private static void CollectAllRenderersRecursive(Transform t, Dictionary<Renderer, Material[]> results)
-        {
-            if (t == null) return;
-            var r = t.GetComponent<Renderer>();
-            if (r != null && !results.ContainsKey(r))
-                results[r] = r.sharedMaterials;
-            for (int i = 0; i < t.childCount; i++)
-            {
-                var child = t.GetChild(i);
-                if (child != null) CollectAllRenderersRecursive(child, results);
-            }
-        }
 
         private void PruneLoadedBundlesNotUsedByAppliedSkins()
         {
@@ -1689,20 +1786,9 @@ namespace BetterFG.Customization.Player
                 loader.ImportSkinFromFolder(System.IO.Path.GetDirectoryName(skinInfo.localPath));
             else
             {
-                string category = GetCategoryFolder(skinInfo.type);
+                string category = SkinTypeParser.CategoryFolder(skinInfo.type);
                 string folder = !string.IsNullOrEmpty(skinInfo.repoFolder) ? skinInfo.repoFolder : $"{category}/{skinInfo.file}";
                 loader.DownloadSkinWithInfo(skinInfo.file, $"{GetRepoRaw(skinInfo)}/{folder}/{skinInfo.file}", $"{GetRepoRaw(skinInfo)}/{folder}/info.json");
-            }
-        }
-
-        private static string GetCategoryFolder(string typeStr)
-        {
-            switch (SkinTypeParser.FromString(typeStr))
-            {
-                case SkinType.Costume: return "Costumes";
-                case SkinType.Accessory: return "Accessories";
-                case SkinType.Item: return "Items";
-                default: return "Costumes";
             }
         }
 
@@ -1782,18 +1868,6 @@ namespace BetterFG.Customization.Player
             return null;
         }
 
-        private static float GetRemotePreScale(GameObject bean, SkinInfo skinInfo)
-        {
-            if (skinInfo != null && skinInfo.skinScale > 0f)
-                return skinInfo.skinScale;
-
-            string playerKey = BeanNetworkUtil.TryGetPlayerKeyForBean(bean);
-            var profile = RemoteProfileStore.TryGet(playerKey);
-            if (profile != null && profile.playerScale > 0f)
-                return profile.playerScale;
-
-            return 1f;
-        }
     }
 
     public class ActiveSkinSlot
@@ -1820,5 +1894,6 @@ namespace BetterFG.Customization.Player
         public string name;
         public UnityEngine.Object option;
         public string kind;
+        public bool enabled = true;
     }
 }

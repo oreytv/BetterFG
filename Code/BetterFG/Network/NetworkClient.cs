@@ -51,6 +51,8 @@ namespace BetterFG.Network
         public string source;
         public string localPath;
         public string repoUrl; // raw base URL, e.g. https://raw.githubusercontent.com/oreyre9000/BetterFGPublicSkins/main
+        // items only: 0 whatever the skin authored, 1 left, 2 right, 3 both
+        public int hand;
     }
 
     public class PlayerRemoteProfile

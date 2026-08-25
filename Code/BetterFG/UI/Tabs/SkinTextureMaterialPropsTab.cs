@@ -27,20 +27,14 @@ namespace BetterFG.UI.Tabs
             return wizard;
         }
 
-        private static float PAD => UIScale.PAD;
-        private static float VPAD => UIScale.VPAD;
-        private static float LH => UIScale.LH;
-        private static float SH => UIScale.SH;
-        private static float BTN_H => UIScale.BTN_H;
-        private static int FS_SM => UIScale.FS_SM;
         private static float ROW_H => 24f * UIScale.S;
 
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
         private static readonly Color LABEL = new Color(1f, 1f, 1f, 0.72f);
         private static readonly Color WHITE = Color.white;
 
-        // handed over from the wizard before SwitchSlotTab; read once in BuildContent
         public int EditIndex = -1;
+        public string Category = SkinTexCategory.Upper;
         public string CostumeName = "";
         public readonly List<Material> Mats = new List<Material>();
         public readonly List<string> MatNames = new List<string>();
@@ -49,8 +43,6 @@ namespace BetterFG.UI.Tabs
         public int MatIdx = -1;
         public string EntryName = "";
 
-        // the row width actually visible inside a ScrollView built at TabWidth - PAD*2 wide -
-        // the viewport (and its scrollbar) eats SCROLLBAR_INSET off both sides
         private float RowW => TabWidth - PAD * 2f - UGUIShip.SCROLLBAR_INSET * 2f;
 
         private RectTransform _matDropdownArea;
@@ -61,13 +53,16 @@ namespace BetterFG.UI.Tabs
         private readonly List<Material> _distinctMats = new List<Material>();
         private readonly List<string> _distinctMatNames = new List<string>();
         private int _propMatIdx = -1;
+        private bool _isOptionField;
 
         protected override void BuildContent(RectTransform contentRoot)
         {
+            _isOptionField = SkinTexCategory.IsOptionField(Category);
+
             float w = TabWidth - PAD * 2f;
             float y = VPAD;
 
-            UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), "Material", FS_SM, LABEL);
+            UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), _isOptionField ? "Option" : "Material", FS_SM, LABEL);
             y += LH + SH;
 
             var areaGo = new GameObject("MatDropdownArea");
@@ -89,19 +84,27 @@ namespace BetterFG.UI.Tabs
 
             _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, statusH), "", FS_SM, HINT, TextAnchor.MiddleCenter);
 
-            _distinctMats.Clear();
-            _distinctMatNames.Clear();
-            for (int i = 0; i < Mats.Count; i++)
+            if (_isOptionField)
             {
-                string mn = SkinApplicationService.CleanMatName(Mats[i].name);
-                if (string.IsNullOrEmpty(mn) || _distinctMatNames.Contains(mn)) continue;
-                _distinctMats.Add(Mats[i]);
-                _distinctMatNames.Add(mn);
+                _distinctMats.Clear();
+                _distinctMatNames.Clear();
+                _distinctMatNames.Add(string.IsNullOrEmpty(CostumeName) ? Category : CostumeName);
+                _propMatIdx = 0;
             }
-
-            // convenience: default to whichever material owns the texture row selected on the wizard
-            _propMatIdx = MatIdx >= 0 && MatIdx < Mats.Count ? _distinctMats.IndexOf(Mats[MatIdx]) : -1;
-            if (_propMatIdx < 0) _propMatIdx = 0;
+            else
+            {
+                _distinctMats.Clear();
+                _distinctMatNames.Clear();
+                for (int i = 0; i < Mats.Count; i++)
+                {
+                    string mn = SkinApplicationService.CleanMatName(Mats[i].name);
+                    if (string.IsNullOrEmpty(mn) || _distinctMatNames.Contains(mn)) continue;
+                    _distinctMats.Add(Mats[i]);
+                    _distinctMatNames.Add(mn);
+                }
+                _propMatIdx = MatIdx >= 0 && MatIdx < Mats.Count ? _distinctMats.IndexOf(Mats[MatIdx]) : -1;
+                if (_propMatIdx < 0) _propMatIdx = 0;
+            }
 
             RebuildMatDropdown();
             RebuildPropRows();
@@ -127,6 +130,12 @@ namespace BetterFG.UI.Tabs
             for (int i = _propContent.childCount - 1; i >= 0; i--)
                 GameObject.Destroy(_propContent.GetChild(i).gameObject);
 
+            if (_isOptionField)
+            {
+                BuildOptionFieldRows();
+                return;
+            }
+
             if (_propMatIdx < 0 || _propMatIdx >= _distinctMats.Count)
             {
                 UGUIShip.CreateLabel(_propContent, new Rect(6f, 0f, RowW, ROW_H), "pick a material above", FS_SM, HINT);
@@ -141,18 +150,15 @@ namespace BetterFG.UI.Tabs
             {
                 any = true;
                 if (type == UnityEngine.Rendering.ShaderPropertyType.Color)
-                    BuildColorPropRow(mat, matName, propName);
+                    BuildColorPropRow(matName, propName, () => mat.GetColor(propName));
                 else if (type == UnityEngine.Rendering.ShaderPropertyType.Vector)
-                    BuildVectorPropRow(mat, matName, propName);
+                    BuildVectorPropRow(matName, propName, () => mat.GetVector(propName));
                 else
                 {
-                    bool isRange = type == UnityEngine.Rendering.ShaderPropertyType.Range;
                     bool isInt = type == UnityEngine.Rendering.ShaderPropertyType.Int;
-                    float min = isRange ? rangeMin : -1000f;
-                    float max = isRange ? rangeMax : 1000f;
                     string key = matName + "|" + propName;
                     float current = MatProps.TryGetValue(key, out var existing) ? existing.f : mat.GetFloat(propName);
-                    BuildFloatPropRow(matName, propName, current, min, max, !isInt);
+                    BuildFloatPropRow(matName, propName, current, !isInt);
                 }
             }
 
@@ -161,7 +167,29 @@ namespace BetterFG.UI.Tabs
                     "this material has no editable properties", FS_SM, HINT);
         }
 
-        private void BuildFloatPropRow(string matName, string propName, float current, float min, float max, bool isFloat)
+        private void BuildOptionFieldRows()
+        {
+            string matName = "@" + Category;
+            var opt = SkinApplicationService.FindOptionByName(Category, CostumeName);
+            if (opt == null)
+                UGUIShip.CreateLabel(_propContent, new Rect(6f, 0f, RowW, LH),
+                    CostumeName + " isn't loaded right now - its default values won't show, but overrides still save", FS_SM, HINT);
+
+            foreach (var (prop, kind) in SkinApplicationService.GetOptionFields(Category))
+            {
+                Color defC = Color.white; float defF = 0f;
+                if (opt != null) SkinApplicationService.TryReadOptionField(opt, prop, out _, out defC, out defF);
+                if (kind == "color") BuildColorPropRow(matName, prop, () => defC);
+                else
+                {
+                    string key = matName + "|" + prop;
+                    float current = MatProps.TryGetValue(key, out var existing) ? existing.f : defF;
+                    BuildFloatPropRow(matName, prop, current, true);
+                }
+            }
+        }
+
+        private void BuildFloatPropRow(string matName, string propName, float current, bool isFloat)
         {
             var rowGo = new GameObject("Prop_" + propName);
             rowGo.transform.SetParent(_propContent, false);
@@ -175,7 +203,7 @@ namespace BetterFG.UI.Tabs
             UGUIShip.CreateLabel(rowGo.transform, new Rect(0f, 0f, labelW, ROW_H), propName, FS_SM - 1, WHITE, TextAnchor.MiddleLeft);
 
             UGUIShip.CreateIncrement(rowGo.transform, new Rect(labelW + 4f, 0f, incW, ROW_H),
-                min, max, () => current, v =>
+                -1e6f, 1e6f, () => current, v =>
                 {
                     current = v;
                     string key = matName + "|" + propName;
@@ -185,26 +213,22 @@ namespace BetterFG.UI.Tabs
                 }, isFloat ? 0.1f : 1f, isFloat, wrap: false, fontSize: FS_SM - 1);
         }
 
-        // uses the same RGB-sliders + hex widget as the foreground/banner colour tabs, plus one
-        // more slider for alpha (MatPropOverride carries all four channels)
-        private void BuildColorPropRow(Material mat, string matName, string propName)
+        private void BuildColorPropRow(string matName, string propName, Func<Color> readInitial)
         {
             string key = matName + "|" + propName;
             Color cur = MatProps.TryGetValue(key, out var existing)
                 ? new Color(existing.x, existing.y, existing.z, existing.w)
-                : mat.GetColor(propName);
-            Color initial = cur;
+                : readInitial();
 
+            float rowH2 = ROW_H * 2f + 2f;
             var rowGo = new GameObject("Prop_" + propName);
             rowGo.transform.SetParent(_propContent, false);
-            var rowRt = rowGo.AddComponent<RectTransform>();
+            rowGo.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, rowH2);
             var le = rowGo.AddComponent<LayoutElement>();
+            le.preferredHeight = rowH2;
             le.flexibleWidth = 1f;
 
-            float w = RowW;
-            float cy = 0f;
-            UGUIShip.CreateLabel(rowGo.transform, new Rect(0f, cy, w, LH), propName, FS_SM - 1, WHITE, TextAnchor.MiddleLeft);
-            cy += LH + SH;
+            UGUIShip.CreateLabel(rowGo.transform, new Rect(0f, ROW_H, RowW, ROW_H), propName, FS_SM - 1, WHITE, TextAnchor.MiddleLeft);
 
             void Push()
             {
@@ -219,29 +243,30 @@ namespace BetterFG.UI.Tabs
                     w = cur.a
                 };
                 ApplyLivePreview();
-                SetStatus(propName + " updated");
             }
 
-            UGUIShip.CreateColorControls(rowGo.transform, 0f, ref cy, w,
-                () => cur.r, () => cur.g, () => cur.b,
-                v => cur.r = v, v => cur.g = v, v => cur.b = v, Push,
-                out _, out _, out _, initial);
+            float gap = 3f;
+            float compW = (RowW - gap * 3f) / 4f;
 
-            UGUIShip.CreateSlider(rowGo.transform, 0f, cy, w, "A", cur.a, LH, PAD, FS_SM,
-                v => { cur.a = v; Push(); },
-                new Color(0.8f, 0.8f, 0.8f), new Color(0.8f, 0.8f, 0.8f), true, initial.a);
-            cy += LH + SH;
+            void Comp(int idx, float x, string glyph)
+            {
+                UGUIShip.CreateIncrement(rowGo.transform, new Rect(x, 0f, compW, ROW_H),
+                    -1e6f, 1e6f, () => cur[idx], v => { cur[idx] = v; Push(); SetStatus(propName + " " + glyph + " = " + v); },
+                    0.05f, true, wrap: false, fontSize: FS_SM - 2);
+            }
 
-            rowRt.sizeDelta = new Vector2(0f, cy);
-            le.preferredHeight = cy;
+            Comp(0, 0f, "R");
+            Comp(1, compW + gap, "G");
+            Comp(2, (compW + gap) * 2f, "B");
+            Comp(3, (compW + gap) * 3f, "A");
         }
 
-        private void BuildVectorPropRow(Material mat, string matName, string propName)
+        private void BuildVectorPropRow(string matName, string propName, Func<Vector4> readInitial)
         {
             string key = matName + "|" + propName;
             Vector4 cur = MatProps.TryGetValue(key, out var existing)
                 ? new Vector4(existing.x, existing.y, existing.z, existing.w)
-                : mat.GetVector(propName);
+                : readInitial();
 
             float rowH2 = ROW_H * 2f + 2f;
             var rowGo = new GameObject("Prop_" + propName);
@@ -260,7 +285,7 @@ namespace BetterFG.UI.Tabs
             void Comp(int idx, float x)
             {
                 UGUIShip.CreateIncrement(rowGo.transform, new Rect(x, 0f, compW, ROW_H),
-                    -1000f, 1000f, () => cur[idx], v =>
+                    -1e6f, 1e6f, () => cur[idx], v =>
                     {
                         cur[idx] = v;
                         MatProps[key] = new MatPropOverride
@@ -284,11 +309,22 @@ namespace BetterFG.UI.Tabs
             Comp(3, (compW + gap) * 3f);
         }
 
-        // pushes every prop tweak made so far straight onto the live bean(s), so sliders show their
-        // effect immediately. reverted (or committed) once the wizard is actually saved/cancelled.
         private void ApplyLivePreview()
         {
             if (SkinApplicationService.Instance == null) return;
+            if (_isOptionField)
+            {
+                var entry = new SkinTexEntry
+                {
+                    entryName = EntryName,
+                    enabled = true,
+                    category = Category,
+                    costumeName = CostumeName
+                };
+                entry.matProps.AddRange(MatProps.Values);
+                SkinApplicationService.PreviewOptionOverride(entry);
+                return;
+            }
             var props = new List<MatPropOverride>(MatProps.Values);
             foreach (var bean in SkinApplicationService.GatherBeans())
                 SkinApplicationService.Instance.ApplyMatProps(bean, props);

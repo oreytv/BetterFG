@@ -719,6 +719,31 @@ namespace BetterFG.Customization.Menu
         // slot indices: 0=DarkBlue, 1=MedBlue, 2=LightBlue
         private static readonly string[] LobbyBgSlotNames = { "DarkBlue", "MedBlue", "LightBlue" };
 
+        public static Transform FindLobbyBgPreviewSource()
+        {
+            foreach (var go in Resources.FindObjectsOfTypeAll<GameObject>())
+                if (go != null && go.name == "Menu_Screen_Lobby(Clone)")
+                {
+                    var bg = go.transform.Find("BackgroundCanvas");
+                    if (bg != null) return bg;
+                }
+            return null;
+        }
+
+        public Color TrueLobbyBgColor(UnityEngine.UI.Image img) =>
+            img != null && _lobbyColorOriginals.TryGetValue(img.GetInstanceID(), out var c) ? c : (img != null ? img.color : Color.white);
+
+        public UnityEngine.Sprite TrueLobbyBgSprite(UnityEngine.UI.Image img) =>
+            img != null && _lobbyTexOriginals.TryGetValue(img.GetInstanceID(), out var s) ? s : (img != null ? img.sprite : null);
+
+        public static int LobbyBgSlotIndex(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return -1;
+            for (int i = 0; i < LobbyBgSlotNames.Length; i++)
+                if (name.Contains(LobbyBgSlotNames[i])) return i;
+            return -1;
+        }
+
         public Color[] ScanLobbyBgColors()
         {
             var lobbyRoot = GameObject.Find("Menu_Screen_Lobby(Clone)/BackgroundCanvas/Prefab_UI_Lobby");

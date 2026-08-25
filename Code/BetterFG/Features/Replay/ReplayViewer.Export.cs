@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -124,6 +124,7 @@ namespace BetterFG.Features.Replay
                 ApplyTime();
                 _world.Apply(_time);
                 _tail.Apply(_time);
+                _powerups.Apply(_time);
                 SyncUi();
                 yield return null;
             }
@@ -190,6 +191,7 @@ namespace BetterFG.Features.Replay
                 ApplyTime();
                 _world.Apply(_time);
                 _tail.Apply(_time);
+                _powerups.Apply(_time);
                 SyncUi();
 
                 yield return endOfFrame;

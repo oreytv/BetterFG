@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using BetterFG;
 using BetterFG.Core;
 using BetterFG.Services;
+using BetterFG.Utilities;
 using BetterFG.Customization.Player;
 using BetterFG.UI.Windows;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -22,6 +23,7 @@ namespace BetterFG.UI.Tabs
         public CustomizationTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "UGC Customization";
+        protected override string BgResource => "BetterFG.assets.ui.cskins.bg.png";
 
 
         // ── Empty state ───────────────────────────────────────────────────────
@@ -97,10 +99,6 @@ namespace BetterFG.UI.Tabs
 
 
         // ── Textures ──────────────────────────────────────────────────────────
-        private static Texture2D _hoverTex;
-        private static Texture2D _bgTex;
-        private GameObject _bgHoverGo;
-
         private static Texture2D LoadTex(string resource, ref Texture2D cache)
         {
             if (cache != null) return cache;
@@ -120,10 +118,6 @@ namespace BetterFG.UI.Tabs
             return cache;
         }
 
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
-        }
 
         // ── Colors ────────────────────────────────────────────────────────────
         private static readonly Color BTN_FETCH = new Color(0.25f, 0.45f, 0.25f, 1f);
@@ -143,17 +137,10 @@ namespace BetterFG.UI.Tabs
         private static readonly Color YELLOW = new Color(1f, 1f, 0f, 1f);
 
         // ── Layout ────────────────────────────────────────────────────────────
-        private static float PAD => UIScale.PAD;
-        private static float VPAD => UIScale.VPAD;
-        private static float LH => UIScale.LH;
-        private static float SH => UIScale.SH;
-        private static float BTN_H => UIScale.BTN_H;
         private static float ROW_H => UIScale.ROW_H;
         private static float COVER_W => UIScale.COVER_W;
         private static float COVER_H => UIScale.COVER_H;
         private static float SEL_W => UIScale.SEL_W;
-        private static int FS => UIScale.FS;
-        private static int FS_SM => UIScale.FS_SM;
 
         // ── UGUI refs ─────────────────────────────────────────────────────────
         private RectTransform _scrollContent;
@@ -249,11 +236,11 @@ namespace BetterFG.UI.Tabs
             try
             {
                 string json = File.ReadAllText(infoPath);
-                string name = GetJsonValueSimple(json, "name");
-                string file = GetJsonValueSimple(json, "file");
-                string type = GetJsonValueSimple(json, "type");
-                string author = GetJsonValueSimple(json, "author");
-                string group = GetJsonValueSimple(json, "group");
+                string name = JsonUtil.GetValue(json, "name");
+                string file = JsonUtil.GetValue(json, "file");
+                string type = JsonUtil.GetValue(json, "type");
+                string author = JsonUtil.GetValue(json, "author");
+                string group = JsonUtil.GetValue(json, "group");
                 if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(file)) return null;
                 string bundlePath = Path.Combine(folder, file);
                 if (!File.Exists(bundlePath)) return null;
@@ -266,18 +253,6 @@ namespace BetterFG.UI.Tabs
             catch { return null; }
         }
 
-        private static string GetJsonValueSimple(string json, string key)
-        {
-            string sk = $"\"{key}\":";
-            int i = json.IndexOf(sk);
-            if (i == -1) return "";
-            i += sk.Length;
-            while (i < json.Length && (json[i] == ' ' || json[i] == '\t')) i++;
-            if (i >= json.Length || json[i] != '"') return "";
-            i++;
-            int end = json.IndexOf('"', i);
-            return end == -1 ? "" : json.Substring(i, end - i);
-        }
 
         private void OnReposChanged()
         {
@@ -358,38 +333,6 @@ namespace BetterFG.UI.Tabs
         }
 
         // ── Build ─────────────────────────────────────────────────────────────
-
-        protected override void BuildBackground(RectTransform root)
-        {
-            var bgTex = LoadTex("BetterFG.assets.ui.cskins.bg.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0);
-            var raw = bgGo.AddComponent<RawImage>();
-            raw.texture = bgTex;
-            raw.raycastTarget = false;
-
-            var hoverTex = LoadTex("BetterFG.assets.ui.bg_hover.png", ref _hoverTex);
-            if (hoverTex != null)
-            {
-                var hoverGo = new GameObject("BG_Hover");
-                hoverGo.transform.SetParent(bgGo.transform, false);
-                var hoverRt = hoverGo.AddComponent<RectTransform>();
-                hoverRt.anchorMin = Vector2.zero;
-                hoverRt.anchorMax = Vector2.one;
-                hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-                hoverGo.AddComponent<RawImage>().texture = hoverTex;
-                hoverGo.SetActive(false);
-                _bgHoverGo = hoverGo;
-            }
-        }
 
         protected override void BuildContent(RectTransform contentRoot)
         {
@@ -1321,20 +1264,7 @@ namespace BetterFG.UI.Tabs
             SettingsService.Set(KEY_HAND_OVERRIDES, string.Join(",", parts));
         }
 
-        private void LoadHandOverrides()
-        {
-            _handOverrides.Clear();
-            string raw = SettingsService.Get(KEY_HAND_OVERRIDES, "");
-            if (string.IsNullOrEmpty(raw)) return;
-            foreach (string part in raw.Split(','))
-            {
-                int colon = part.LastIndexOf(':');
-                if (colon < 1) continue;
-                string file = part.Substring(0, colon);
-                if (int.TryParse(part.Substring(colon + 1), out int ov))
-                    _handOverrides[file] = ov;
-            }
-        }
+        private void LoadHandOverrides() => _handOverrides = BetterFG.Network.RemoteProfileStore.LocalHandOverrides();
 
         private void TryRestoreSelection()
         {
@@ -1732,7 +1662,7 @@ namespace BetterFG.UI.Tabs
 
             string repoRaw = RepoRegistry.ResolveRaw(next.sourceRepo);
 
-            string category = GetCategoryFolder(next.type);
+            string category = SkinTypeParser.CategoryFolder(next.type);
             string folder = !string.IsNullOrEmpty(next.repoFolder) ? next.repoFolder : $"{category}/{next.file}";
             string url = $"{repoRaw}/{folder}/{next.file}";
             string infoUrl = $"{repoRaw}/{folder}/info.json";
@@ -1768,19 +1698,6 @@ namespace BetterFG.UI.Tabs
             loaderService?.DownloadSkinWithInfo(next.file, url, infoUrl);
         }
 
-
-        private static string GetCategoryFolder(string typeStr)
-        {
-            switch (SkinTypeParser.FromString(typeStr))
-            {
-                case SkinType.Costume: return "Costumes";
-                case SkinType.Accessory: return "Accessories";
-                case SkinType.Item: return "Items";
-                case SkinType.Plinth: return "Plinths";
-                case SkinType.Emote: return "Emotes";
-                default: return "Costumes";
-            }
-        }
 
         private void OnRemoveAll()
         {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
@@ -36,6 +36,7 @@ namespace BetterFG.Utilities
             _defaults.Clear();
             _roundOnly.Clear();
             _live.Clear();
+            _requesters.Clear();
         }
 
         public static bool Claim(Type type)
@@ -59,7 +60,8 @@ namespace BetterFG.Utilities
             int held = 0, applied = 0;
             foreach (var kv in _byKey)
             {
-                bool on = Enabled(kv.Key) && (!_roundOnly.Contains(kv.Key) || _roundLive);
+                bool requested = _requesters.TryGetValue(kv.Key, out var who) && who.Count > 0;
+                bool on = (Enabled(kv.Key) || requested) && (!_roundOnly.Contains(kv.Key) || _roundLive);
                 if (!on) { held += kv.Value.Count; continue; }
                 foreach (var t in kv.Value) Install(t);
                 applied += kv.Value.Count;
@@ -90,6 +92,19 @@ namespace BetterFG.Utilities
                 }
             }
             if (moved > 0) Plugin.Log.LogInfo($"round-only patches {(on ? "in" : "out")}: {moved}");
+        }
+
+        private static readonly Dictionary<string, HashSet<string>> _requesters = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        public static void Request(string key, string requester, bool on)
+        {
+            if (!_requesters.TryGetValue(key, out var set))
+            {
+                set = new HashSet<string>(StringComparer.Ordinal);
+                _requesters[key] = set;
+            }
+            if (on) set.Add(requester); else set.Remove(requester);
+            SetActive(key, set.Count > 0);
         }
 
         public static void SetActive(string key, bool on)

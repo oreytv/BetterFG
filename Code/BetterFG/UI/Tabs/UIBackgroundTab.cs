@@ -95,6 +95,11 @@ namespace BetterFG.UI.Tabs
         private Image _lbSwatch0, _lbSwatch1, _lbSwatch2;
         private Button _lbEnabledBtn;
 
+        private GameObject _lbPreviewGo;
+        private readonly System.Collections.Generic.List<(Image img, int slot)> _lbPreviewSlots =
+            new System.Collections.Generic.List<(Image, int)>();
+        private readonly System.Collections.Generic.List<Color> _lbPreviewDefaults = new System.Collections.Generic.List<Color>();
+
         // screen overlay images (fallforce shared by fallforce + loading level)
         private static readonly System.Collections.Generic.Dictionary<string, Sprite> _screenSprites =
             new System.Collections.Generic.Dictionary<string, Sprite>();
@@ -257,26 +262,12 @@ namespace BetterFG.UI.Tabs
 
         private void BuildScreenSubtabCarousel(RectTransform parent, float x, float y, float w)
         {
-            bool hasPattern = _screenSel != ScreenBackgroundService.Screen.ShowSelector;
-            if (!hasPattern) _screenSubtab = 0;
-
-            if (!hasPattern)
-            {
-                UGUIShip.CreateLabel(parent, new Rect(x, y, w, BTN_H), ScreenSubtabs[0], FS_SM, WHITE, TextAnchor.MiddleCenter);
-                return;
-            }
-
-            float arrow = 22f;
-            UGUIShip.CreateButton(parent, new Rect(x, y, arrow, BTN_H), "‹", BTN_DARK, WHITE, FS_SM, new Action(() => CycleScreenSubtab(-1)));
-            UGUIShip.CreateLabel(parent, new Rect(x + arrow, y, w - arrow * 2f, BTN_H), ScreenSubtabs[_screenSubtab], FS_SM, WHITE, TextAnchor.MiddleCenter);
-            UGUIShip.CreateButton(parent, new Rect(x + w - arrow, y, arrow, BTN_H), "›", BTN_DARK, WHITE, FS_SM, new Action(() => CycleScreenSubtab(+1)));
-        }
-
-        private void CycleScreenSubtab(int d)
-        {
-            int len = _screenSel != ScreenBackgroundService.Screen.ShowSelector ? ScreenSubtabs.Length : 1;
-            _screenSubtab = (_screenSubtab + d + len) % len;
-            RebuildScreenBody();
+            bool showSelector = _screenSel == ScreenBackgroundService.Screen.ShowSelector;
+            var labels = (string[])ScreenSubtabs.Clone();
+            if (showSelector) labels[1] = "Circles";
+            UGUIShip.CreateCarousel(parent, new Rect(x, y, w, BTN_H), labels, _screenSubtab,
+                d => { _screenSubtab = (_screenSubtab + d + labels.Length) % labels.Length; RebuildScreenBody(); },
+                BTN_DARK, FS_SM);
         }
 
         private void BuildScreenBody(RectTransform parent, float x, float y, float w, float h)
@@ -340,25 +331,27 @@ namespace BetterFG.UI.Tabs
             }
             else
             {
-                // circles pattern — ShowSelector has a Circles image but no working pattern feature in-game,
-                // and forces _screenSubtab back to 0 above, so this branch never runs for it.
-                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PATTERN", FS_SM, HINT);
-                cy += LH + SH;
-                float patBtnW = BTN_H * 2.5f;
-                float patLblW = w - patBtnW - PAD;
-                _scPatternLabel = UGUIShip.CreateLabel(content, new Rect(x, cy, patLblW, BTN_H),
-                    ScreenBackgroundService.PatternDisplayName(_scPattern),
-                    FS_SM, HINT, TextAnchor.MiddleLeft);
-                UGUIShip.CreateButton(content, new Rect(x + patLblW + PAD, cy, patBtnW, BTN_H),
-                    "Browse", BTN_DARK, WHITE, FS_SM, new Action(() =>
-                    {
-                        var t = BetterFGTabRegistry.NewTab<UIPatternPickerTab>();
-                        t.Screen = _screenSel;
-                        BetterFGUIMan.Instance?.SwitchSlotTab(this, t);
-                    }));
-                cy += BTN_H + PAD;
+                bool hasPattern = _screenSel != ScreenBackgroundService.Screen.ShowSelector;
+                if (hasPattern)
+                {
+                    UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PATTERN", FS_SM, HINT);
+                    cy += LH + SH;
+                    float patBtnW = BTN_H * 2.5f;
+                    float patLblW = w - patBtnW - PAD;
+                    _scPatternLabel = UGUIShip.CreateLabel(content, new Rect(x, cy, patLblW, BTN_H),
+                        ScreenBackgroundService.PatternDisplayName(_scPattern),
+                        FS_SM, HINT, TextAnchor.MiddleLeft);
+                    UGUIShip.CreateButton(content, new Rect(x + patLblW + PAD, cy, patBtnW, BTN_H),
+                        "Browse", BTN_DARK, WHITE, FS_SM, new Action(() =>
+                        {
+                            var t = BetterFGTabRegistry.NewTab<UIPatternPickerTab>();
+                            t.Screen = _screenSel;
+                            BetterFGUIMan.Instance?.SwitchSlotTab(this, t);
+                        }));
+                    cy += BTN_H + PAD;
+                }
 
-                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PATTERN COLOR", FS_SM, HINT);
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), hasPattern ? "PATTERN COLOR" : "CIRCLES COLOR", FS_SM, HINT);
                 cy += LH + SH;
                 float patSwatchW = BTN_H, patSliderW = w - patSwatchW - PAD;
                 var swGo = new GameObject("PatternSwatch");
@@ -382,9 +375,6 @@ namespace BetterFG.UI.Tabs
             content.sizeDelta = new Vector2(0f, cy + PAD);
         }
 
-        // the container to clone the preview from. every screen except FallForce now has its own
-        // reliable, always-findable source (pre-instantiated and inactive off the menu scene — none of
-        // them need to actually be showing right now).
         private Transform ScreenPreviewSource(ScreenBackgroundService.Screen s, out bool ownGeometry)
         {
             Transform t;
@@ -398,12 +388,12 @@ namespace BetterFG.UI.Tabs
                 case ScreenBackgroundService.Screen.ShowSelector:
                     t = BetterFG.Patches.ShowSelectorBg.FindLiveMask();
                     break;
-                default: // FallForce
-                    t = null;
+                default:
+                    t = ScreenBackgroundService.FindPreviewSource(ScreenBackgroundService.Screen.LoadingLevel);
                     break;
             }
-            ownGeometry = t != null || s == ScreenBackgroundService.Screen.FallForce;
-            return t ?? MenuCustomizationApplication.FindBackgroundContainer()?.transform;
+            ownGeometry = t != null && s != ScreenBackgroundService.Screen.FallForce;
+            return t;
         }
 
         // clones the live Backdrop+Circles container once so the preview shows the real shader/pattern,
@@ -432,10 +422,7 @@ namespace BetterFG.UI.Tabs
 
             _scPreviewGo = GameObject.Instantiate(source.gameObject, holderRt, false);
             _scPreviewGo.name = "ScreenPreviewClone";
-            var cloneRt = _scPreviewGo.GetComponent<RectTransform>();
-            cloneRt.anchorMin = Vector2.zero;
-            cloneRt.anchorMax = Vector2.one;
-            cloneRt.offsetMin = cloneRt.offsetMax = Vector2.zero;
+            FitCloneToPreview(_scPreviewGo, source, w, SCREEN_PREVIEW_H);
 
             foreach (var anim in _scPreviewGo.GetComponentsInChildren<Animator>(true))
                 if (anim != null) anim.enabled = false;
@@ -459,19 +446,18 @@ namespace BetterFG.UI.Tabs
             // FallForce's Backdrop, like Circles, IS mutated live by ApplyGradientFromSettings — if a
             // custom gradient is already active this session, reading the clone's sprite straight off
             // would hand us back our OWN texture as the "default". route through the guarded capture
-            // instead, which remembers the real original from before any custom was applied.
             if (_screenSel == ScreenBackgroundService.Screen.FallForce && _scPreviewBackdrop != null)
             {
-                _scPreviewDefaultBackdrop = MenuCustomizationApplication.Instance?.EnsureOriginalBackdropSpriteCaptured();
+                _scPreviewDefaultBackdrop = MenuCustomizationApplication.Instance?.EnsureOriginalBackdropSpriteCaptured() ?? _scPreviewBackdrop.sprite;
                 _scPreviewDefaultBackdropColor = Color.white;
             }
-            // Circles' pattern, unlike Backdrop, IS mutated live by ApplyPatternFromSettings — if a
-            // custom pattern is already active this session, reading the clone's material straight
-            // off would hand us back our OWN texture as the "default". route through the guarded
-            // capture instead, which remembers the real original from before any custom was applied.
             _scPreviewDefaultPattern = MenuCustomizationApplication.Instance?.EnsureOriginalCirclesPatternCaptured();
             if (_screenSel == ScreenBackgroundService.Screen.FallForce)
+            {
                 _scPreviewDefaultCirclesColor = MenuCustomizationApplication.Instance?.EnsureOriginalCirclesColorCaptured() ?? Color.white;
+                if (_scPreviewDefaultPattern == null && _scPreviewCirclesMat != null)
+                    _scPreviewDefaultPattern = _scPreviewCirclesMat.GetTexture("_Pattern");
+            }
             else if (ScreenBackgroundService.TryGetScreenDefaultCirclesColor(_screenSel, out var defCol))
                 _scPreviewDefaultCirclesColor = defCol;
             else if (_scPreviewCircles != null)
@@ -482,6 +468,22 @@ namespace BetterFG.UI.Tabs
                 FS_SM, HINT, TextAnchor.MiddleCenter);
 
             RefreshScreenPreview();
+        }
+
+        private static void FitCloneToPreview(GameObject clone, Transform source, float w, float h)
+        {
+            var cloneRt = clone != null ? clone.GetComponent<RectTransform>() : null;
+            if (cloneRt == null) return;
+            var srcRt = source != null ? source.GetComponent<RectTransform>() : null;
+            Vector2 natSize = srcRt != null ? srcRt.sizeDelta : Vector2.zero;
+            if (natSize.x <= 1f || natSize.y <= 1f) natSize = new Vector2(1920f, 1080f);
+            float fit = Mathf.Min(w / natSize.x, h / natSize.y);
+            cloneRt.localRotation = Quaternion.identity;
+            cloneRt.anchorMin = cloneRt.anchorMax = new Vector2(0.5f, 0.5f);
+            cloneRt.pivot = new Vector2(0.5f, 0.5f);
+            cloneRt.sizeDelta = natSize;
+            cloneRt.anchoredPosition = Vector2.zero;
+            cloneRt.localScale = new Vector3(fit, fit, 1f);
         }
 
         private void RefreshScreenPreview()
@@ -525,9 +527,7 @@ namespace BetterFG.UI.Tabs
             if (_scPreviewHintLabel != null)
                 _scPreviewHintLabel.gameObject.SetActive(!_scEnabled && !knownDefault);
 
-            // ShowSelector has a Circles image but no working pattern feature in-game — never touch it.
-            if (_scPreviewCircles != null && _scPreviewCircles.material != null &&
-                _screenSel != ScreenBackgroundService.Screen.ShowSelector)
+            if (_scPreviewCircles != null && _scPreviewCircles.material != null)
             {
                 // circles are a shared seasonal decoration, not per-screen themed art like Backdrop is —
                 // fall back to FallForce's (always known) pattern rather than null when a screen's own
@@ -667,6 +667,7 @@ namespace BetterFG.UI.Tabs
             if (_lbSwatch0 != null) _lbSwatch0.color = new Color(_lbSlot0R, _lbSlot0G, _lbSlot0B);
             if (_lbSwatch1 != null) _lbSwatch1.color = new Color(_lbSlot1R, _lbSlot1G, _lbSlot1B);
             if (_lbSwatch2 != null) _lbSwatch2.color = new Color(_lbSlot2R, _lbSlot2G, _lbSlot2B);
+            RefreshFallingPreview();
         }
 
         private void BuildFallingBody(RectTransform parent, float x, float y, float w, float h)
@@ -674,7 +675,8 @@ namespace BetterFG.UI.Tabs
             var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y, TabWidth, h));
             w = TabWidth - UGUIShip.SCROLLBAR_INSET * 2f - PAD * 2f;
 
-            float cy = PAD;
+            BuildFallingPreview(scrollRect.transform.Find("Viewport"), x, w);
+            float cy = SCREEN_PREVIEW_H + PAD;
 
             _lbEnabledBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
                 _lbEnabled ? "Custom colours: ON" : "Custom colours: OFF", _lbEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
@@ -687,6 +689,7 @@ namespace BetterFG.UI.Tabs
                     var img = _lbEnabledBtn?.GetComponent<Image>();
                     if (img != null) img.color = _lbEnabled ? BTN_ON : BTN_DARK;
                     ApplyFallingLive();
+                    RefreshFallingPreview();
                 }));
             cy += BTN_H + SH;
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -808,6 +811,82 @@ namespace BetterFG.UI.Tabs
             RebuildScreenBody();
         }
 
+        private void BuildFallingPreview(Transform viewport, float x, float w)
+        {
+            if (_lbPreviewGo != null) GameObject.Destroy(_lbPreviewGo);
+            _lbPreviewGo = null;
+            _lbPreviewSlots.Clear();
+            _lbPreviewDefaults.Clear();
+            if (viewport == null) return;
+
+            var source = MenuCustomizationApplication.FindLobbyBgPreviewSource();
+            if (source == null) return;
+
+            var holderGo = new GameObject("FallingPreviewHolder");
+            holderGo.transform.SetParent(viewport, false);
+            var holderRt = holderGo.AddComponent<RectTransform>();
+            UGUIShip.SetPixelRect(holderRt, new Rect(x, 0f, w, SCREEN_PREVIEW_H));
+            holderGo.AddComponent<RectMask2D>();
+
+            _lbPreviewGo = GameObject.Instantiate(source.gameObject, holderRt, false);
+            _lbPreviewGo.name = "FallingPreviewClone";
+            _lbPreviewGo.SetActive(true);
+
+            foreach (var canvas in _lbPreviewGo.GetComponentsInChildren<Canvas>(true))
+                if (canvas != null) Destroy(canvas);
+            var scaler = _lbPreviewGo.GetComponent<CanvasScaler>();
+            if (scaler != null) Destroy(scaler);
+            var raycaster = _lbPreviewGo.GetComponent<GraphicRaycaster>();
+            if (raycaster != null) Destroy(raycaster);
+
+            FitCloneToPreview(_lbPreviewGo, source, w, SCREEN_PREVIEW_H);
+
+            foreach (var g in _lbPreviewGo.GetComponentsInChildren<Graphic>(true))
+                if (g != null) g.raycastTarget = false;
+
+            var app = MenuCustomizationApplication.Instance;
+            var srcImages = source.GetComponentsInChildren<Image>(true);
+            var cloneImages = _lbPreviewGo.GetComponentsInChildren<Image>(true);
+            int n = Mathf.Min(srcImages.Length, cloneImages.Length);
+            for (int i = 0; i < n; i++)
+            {
+                var srcImg = srcImages[i];
+                var cloneImg = cloneImages[i];
+                if (cloneImg == null || srcImg == null) continue;
+                int slot = MenuCustomizationApplication.LobbyBgSlotIndex(cloneImg.gameObject.name);
+                var trueColor = app != null ? app.TrueLobbyBgColor(srcImg) : srcImg.color;
+                var trueSprite = app != null ? app.TrueLobbyBgSprite(srcImg) : srcImg.sprite;
+                cloneImg.sprite = trueSprite;
+                cloneImg.color = trueColor;
+                if (slot >= 0)
+                {
+                    _lbPreviewSlots.Add((cloneImg, slot));
+                    _lbPreviewDefaults.Add(trueColor);
+                }
+            }
+
+            RefreshFallingPreview();
+        }
+
+        private void RefreshFallingPreview()
+        {
+            for (int i = 0; i < _lbPreviewSlots.Count && i < _lbPreviewDefaults.Count; i++)
+            {
+                var (img, slot) = _lbPreviewSlots[i];
+                if (img == null) continue;
+                var def = _lbPreviewDefaults[i];
+                if (_lbEnabled)
+                {
+                    Color c = slot == 0 ? new Color(_lbSlot0R, _lbSlot0G, _lbSlot0B)
+                            : slot == 1 ? new Color(_lbSlot1R, _lbSlot1G, _lbSlot1B)
+                            : new Color(_lbSlot2R, _lbSlot2G, _lbSlot2B);
+                    if (def.a < 0.05f) img.color = def;
+                    else img.color = new Color(c.r, c.g, c.b, def.a);
+                }
+                else img.color = def;
+            }
+        }
+
         // ── Creative (level browser) body ─────────────────────────────────────
         // four named colour slots on Generic_UI_CreativeBackground_Prefab_Canvas. see
         // MenuCustomizationApplication.CreativeSlot.
@@ -902,12 +981,7 @@ namespace BetterFG.UI.Tabs
             var raycaster = _crPreviewGo.GetComponent<GraphicRaycaster>();
             if (raycaster != null) Destroy(raycaster);
 
-            var cloneRt = _crPreviewGo.GetComponent<RectTransform>();
-            cloneRt.localScale = Vector3.one;
-            cloneRt.localRotation = Quaternion.identity;
-            cloneRt.anchorMin = Vector2.zero;
-            cloneRt.anchorMax = Vector2.one;
-            cloneRt.offsetMin = cloneRt.offsetMax = Vector2.zero;
+            FitCloneToPreview(_crPreviewGo, source, w, SCREEN_PREVIEW_H);
 
             foreach (var g in _crPreviewGo.GetComponentsInChildren<Graphic>(true))
                 if (g != null) g.raycastTarget = false;

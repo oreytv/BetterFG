@@ -60,6 +60,7 @@ namespace BetterFG.UI.Tabs
         }
 
         public override string TabTitle => "Social";
+        protected override string BgResource => "BetterFG.assets.ui.emoticonsphrases.bg.png";
 
         // ── Sub-tab state ─────────────────────────────────────────────────────
         private enum SubTab { Phrases, Emoticons, Emotes }
@@ -129,13 +130,6 @@ namespace BetterFG.UI.Tabs
             }
             catch { return null; }
         }
-        private static float PAD => UIScale.PAD;
-        private static float VPAD => UIScale.VPAD;
-        private static float LH => UIScale.LH;
-        private static float SH => UIScale.SH;
-        private static float BTN_H => UIScale.BTN_H;
-        private static int FS => UIScale.FS;
-        private static int FS_SM => UIScale.FS_SM;
 
         private static float SUBTAB_H => BTN_H * 0.9f;
         private static float ROW_H => 82f * UIScale.S; // shorter rows
@@ -143,10 +137,7 @@ namespace BetterFG.UI.Tabs
         private static float RBTN_H => BTN_H * 0.8f;
 
         // ── Textures ──────────────────────────────────────────────────────────
-        private static Texture2D _bgTex;
-        private static Texture2D _bgHoverTex;
         private static Texture2D _wheelTex;
-        private GameObject _bgHoverGo;
 
         // wheel visual that floats above the tab — hidden by default, fades in over 2s on open
         private CanvasGroup _wheelCg;
@@ -228,32 +219,7 @@ namespace BetterFG.UI.Tabs
 
         protected override void BuildBackground(RectTransform root)
         {
-            var bgTex = LoadEmbedded("BetterFG.assets.ui.emoticonsphrases.bg.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0f);
-            bgGo.AddComponent<RawImage>().texture = bgTex;
-
-            var hoverTex = LoadEmbedded("BetterFG.assets.ui.bg_hover.png", ref _bgHoverTex);
-            if (hoverTex != null)
-            {
-                var hoverGo = new GameObject("BG_Hover");
-                hoverGo.transform.SetParent(bgGo.transform, false);
-                var hoverRt = hoverGo.AddComponent<RectTransform>();
-                hoverRt.anchorMin = Vector2.zero;
-                hoverRt.anchorMax = Vector2.one;
-                hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-                hoverGo.AddComponent<RawImage>().texture = hoverTex;
-                hoverGo.SetActive(false);
-                _bgHoverGo = hoverGo;
-            }
+            base.BuildBackground(root);
 
             // wheel visual floating above the tab. hidden by default (alpha 0 via CanvasGroup),
             // fades in over 2s when the tab opens and back out on close (driven in Update).
@@ -429,10 +395,6 @@ namespace BetterFG.UI.Tabs
             }
         }
 
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
-        }
 
         // ── Content ───────────────────────────────────────────────────────────
 

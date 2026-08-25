@@ -63,12 +63,15 @@
 
 	<!-- Fall Guys locks BetterFG.dll while running, which makes CopyDll fail with retries. Hard-kill the
 	     game before we compile so the plugin file is free. Best-effort: taskkill returns non-zero if the
-	     process isn't running, so ignore the exit code. -->
-	<Target Name="KillFallGuysBeforeBuild" BeforeTargets="BeforeBuild" Condition="'$(SkipCopyDll)' != 'true' And '$(KillAndRestartGame)' != 'false'">
-	  <Exec Command="taskkill /F /IM FallGuys_client_game.exe /T" ContinueOnError="true" />
-	  <Exec Command="taskkill /F /IM FallGuys_client.exe /T" ContinueOnError="true" />
-	  <Exec Command="powershell -NoProfile -Command &quot;$sw=[Diagnostics.Stopwatch]::StartNew(); while(($sw.Elapsed.TotalSeconds -lt 15) -and ((Get-Process FallGuys_client_game -ErrorAction SilentlyContinue) -or (Get-Process FallGuys_client -ErrorAction SilentlyContinue))) { Start-Sleep -Milliseconds 200 }&quot;" ContinueOnError="true" />
-	  <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\BetterFG.Installer\close_installer.ps1&quot;" ContinueOnError="true" />
+	     process isn't running, so ignore the exit code.
+	     KillAndRestartGame is checked per-task, NOT on the target: MSBuild evaluates a target's
+	     Condition BEFORE the BeforeTargets that precede it, so a target-level check here reads the
+	     value from before the prompt ran and "Compile only" kills the game anyway. -->
+	<Target Name="KillFallGuysBeforeBuild" BeforeTargets="BeforeBuild" Condition="'$(SkipCopyDll)' != 'true'">
+	  <Exec Command="taskkill /F /IM FallGuys_client_game.exe /T" ContinueOnError="true" Condition="'$(KillAndRestartGame)' != 'false'" />
+	  <Exec Command="taskkill /F /IM FallGuys_client.exe /T" ContinueOnError="true" Condition="'$(KillAndRestartGame)' != 'false'" />
+	  <Exec Command="powershell -NoProfile -Command &quot;$sw=[Diagnostics.Stopwatch]::StartNew(); while(($sw.Elapsed.TotalSeconds -lt 15) -and ((Get-Process FallGuys_client_game -ErrorAction SilentlyContinue) -or (Get-Process FallGuys_client -ErrorAction SilentlyContinue))) { Start-Sleep -Milliseconds 200 }&quot;" ContinueOnError="true" Condition="'$(KillAndRestartGame)' != 'false'" />
+	  <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\BetterFG.Installer\close_installer.ps1&quot;" ContinueOnError="true" Condition="'$(KillAndRestartGame)' != 'false'" />
 	</Target>
 
 	<!-- Inside VS only: pop a little checkbox dialog before the build so you can pick which copy steps
@@ -159,21 +162,7 @@
   <Import Project="build\Comp.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Comp.targets')" />
   <Import Project="build\PlatformTag.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\PlatformTag.targets')" />
   <Import Project="build\Obfuscation.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Obfuscation.targets')" />
-
-  <!-- Profiles is a config-gated feature. Epic doesn't like it shipping in normal Release, so it's
-       only compiled in when PROFILES is defined: Debug (so dev builds keep it) + Release_Profiles.
-       Plain Release (and the console variants) leave it out entirely - source files are excluded
-       from compilation below and every call site is wrapped in #if PROFILES. -->
-  <PropertyGroup Condition="('$(Configuration)' == 'Debug' Or '$(Configuration)' == 'Release_Profiles') And Exists('$(MSBuildProjectDirectory)\Customization\Profiles\ProfileService.cs')">
-    <DefineConstants>$(DefineConstants);PROFILES</DefineConstants>
-  </PropertyGroup>
-
-  <!-- when PROFILES isn't defined, don't even compile the feature's source files -->
-  <ItemGroup Condition="!$(DefineConstants.Contains('PROFILES'))">
-    <Compile Remove="Customization\Profiles\ProfileService.cs" />
-    <Compile Remove="Customization\Profiles\LobbyProfileService.cs" />
-    <Compile Remove="UI\Windows\ProfilesWindow.cs" />
-  </ItemGroup>
+  <Import Project="build\Profiles.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Profiles.targets')" />
 
   <PropertyGroup Condition="'$(Configuration)' == 'EarlyAcesss'">
     <DefineConstants>$(DefineConstants);EARLYACESSS</DefineConstants>

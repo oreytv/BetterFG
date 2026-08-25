@@ -313,7 +313,7 @@ namespace BetterFG.Customization.Player
                     string json = File.ReadAllText(infoPath);
                     skinInfo = ParseSkinInfo(json);
                     if (skinInfo == null || string.IsNullOrEmpty(skinInfo.file)) { readError = "Invalid info.json"; return; }
-                    skinInfo.boneOffsets = ParseBoneOffsets(json);
+                    skinInfo.boneOffsets = SkinCatalogService.ParseBoneOffsets(json);
 
                     string bundlePath = Path.Combine(folderPath, skinInfo.file);
                     if (!File.Exists(bundlePath)) { readError = $"Bundle '{skinInfo.file}' not found"; return; }
@@ -382,47 +382,12 @@ namespace BetterFG.Customization.Player
         {
             var skin = ParseSkinInfo(json);
             if (skin == null) return null;
-            skin.boneOffsets = ParseBoneOffsets(json);
+            skin.boneOffsets = SkinCatalogService.ParseBoneOffsets(json);
             skin.infoFetched = true;
             SkinCatalogService.FillItemInfoFromJson(skin, json);
             return skin;
         }
 
-        private static List<BoneOffsetEntry> ParseBoneOffsets(string json)
-        {
-            var offsets = new List<BoneOffsetEntry>();
-            int boIdx = json.IndexOf("\"boneOffsets\"", StringComparison.OrdinalIgnoreCase);
-            if (boIdx == -1) return offsets;
-            int arrStart = json.IndexOf('[', boIdx);
-            if (arrStart == -1) return offsets;
-            int depth = 0, arrEnd = -1;
-            for (int i = arrStart; i < json.Length; i++)
-            {
-                if (json[i] == '[') depth++;
-                else if (json[i] == ']') { depth--; if (depth == 0) { arrEnd = i; break; } }
-            }
-            if (arrEnd == -1) return offsets;
-            string arr = json.Substring(arrStart + 1, arrEnd - arrStart - 1);
-            int idx = 0;
-            while (idx < arr.Length)
-            {
-                int os = arr.IndexOf('{', idx); if (os == -1) break;
-                int oe = -1; int d = 0;
-                for (int i = os; i < arr.Length; i++)
-                {
-                    if (arr[i] == '{') d++;
-                    else if (arr[i] == '}') { d--; if (d == 0) { oe = i; break; } }
-                }
-                if (oe == -1) break;
-                string obj = arr.Substring(os, oe - os + 1);
-                string bone = JsonUtil.GetValue(obj, "bone");
-                float x = JsonUtil.GetFloat(obj, "x"), y = JsonUtil.GetFloat(obj, "y"), z = JsonUtil.GetFloat(obj, "z");
-                if (!string.IsNullOrEmpty(bone))
-                    offsets.Add(new BoneOffsetEntry { bone = bone, localPosition = new Vector3(x, y, z) });
-                idx = oe + 1;
-            }
-            return offsets;
-        }
 
         private SkinInfo ParseSkinInfo(string json)
         {

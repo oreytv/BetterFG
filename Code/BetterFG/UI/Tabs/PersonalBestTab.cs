@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Linq;
-using System.Reflection;
 using System.Collections.Generic;
 using BetterFG.Features.QualificationTime;
 using BetterFG.Services;
@@ -19,19 +18,11 @@ namespace BetterFG.UI.Tabs
         public PersonalBestTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Personal Bests";
+        protected override string BgResource => "BetterFG.assets.ui.tab.pb.png";
 
-        static float PAD => UIScale.PAD;
-        static float SH => UIScale.SH;
-        static float BTN_H => UIScale.BTN_H;
-        static int FS => UIScale.FS;
-        static int FS_SM => UIScale.FS_SM;
 
         const float ROW_H = 48f;
         const float HEADER_H = 20f;
-
-        static Texture2D _bgTex;
-        static Texture2D _hoverTex;
-        GameObject _bgHoverGo;
 
         // load the row icons once and reuse them across every row
         const string SP = "BetterFG.assets.ui.feature.qualificationtime.";
@@ -53,9 +44,9 @@ namespace BetterFG.UI.Tabs
         Text _statusLbl;
         string _query = "";
 
-        // solos/duos/squads sub-tab. each shows only the entries that have a time for that show.
+        // solos/duos/squads/time attack sub-tab. each shows only the entries that have a time for it.
         PbType _subType = PbType.Solos;
-        Button _btnSolos, _btnDuos, _btnSquads;
+        Button _btnSolos, _btnDuos, _btnSquads, _btnTimeAttack;
         static readonly Color SUBTAB_SEL = new Color(0.25f, 0.5f, 0.25f, 1f);
         static readonly Color SUBTAB_OFF = new Color(0.2f, 0.2f, 0.2f, 1f);
 
@@ -77,11 +68,11 @@ namespace BetterFG.UI.Tabs
         // PB lists can get big and every row used to load a splash thumbnail up front — that's the
         // perf hazard. now we keep lightweight DATA for every pb and only build GameObjects for the
         // current page, so live objects/textures stay bounded no matter how many pbs you have.
-        class RowData { public string name; public string rawId; public string haystack; public bool hasGhost; public bool isUgc; public bool isFav; public string date; public string solosDate, duosDate, squadsDate; public float? solos, duos, squads;
-            public float? TimeFor(PbType t) => t == PbType.Solos ? solos : t == PbType.Duos ? duos : squads;
+        class RowData { public string name; public string rawId; public string haystack; public bool hasGhost; public bool isUgc; public bool isFav; public string date; public string solosDate, duosDate, squadsDate, timeattackDate; public float? solos, duos, squads, timeattack;
+            public float? TimeFor(PbType t) => t == PbType.Solos ? solos : t == PbType.Duos ? duos : t == PbType.Squads ? squads : timeattack;
             public string DateFor(PbType t)
             {
-                string d = t == PbType.Solos ? solosDate : t == PbType.Duos ? duosDate : squadsDate;
+                string d = t == PbType.Solos ? solosDate : t == PbType.Duos ? duosDate : t == PbType.Squads ? squadsDate : timeattackDate;
                 return string.IsNullOrEmpty(d) ? date : d;
             } }
         readonly List<RowData> _data = new List<RowData>();   // all pbs
@@ -104,62 +95,6 @@ namespace BetterFG.UI.Tabs
                     System.Globalization.DateTimeStyles.None, out dt))
                 return dt.ToString("g", System.Globalization.CultureInfo.CurrentCulture);
             return raw;
-        }
-
-        static Texture2D LoadTex(string resource, ref Texture2D cache)
-        {
-            if (cache != null) return cache;
-            try
-            {
-                var asm = Assembly.GetExecutingAssembly();
-                using var stream = asm.GetManifestResourceStream(resource);
-                if (stream == null) return null;
-                var bytes = new byte[stream.Length];
-                stream.Read(bytes, 0, bytes.Length);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                tex.LoadImage(bytes);
-                tex.wrapMode = TextureWrapMode.Clamp;
-                cache = tex;
-            }
-            catch (Exception ex) { Plugin.Log.LogError("BetterFG: Tex load failed: " + ex.Message); }
-            return cache;
-        }
-
-        protected override void BuildBackground(RectTransform root)
-        {
-            var bgTex = LoadTex("BetterFG.assets.ui.tab.pb.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0);
-            var raw = bgGo.AddComponent<RawImage>();
-            raw.texture = bgTex;
-            raw.raycastTarget = false;
-
-            var hoverTex = LoadTex("BetterFG.assets.ui.bg_hover.png", ref _hoverTex);
-            if (hoverTex != null)
-            {
-                var hoverGo = new GameObject("BG_Hover");
-                hoverGo.transform.SetParent(bgGo.transform, false);
-                var hoverRt = hoverGo.AddComponent<RectTransform>();
-                hoverRt.anchorMin = Vector2.zero;
-                hoverRt.anchorMax = Vector2.one;
-                hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-                hoverGo.AddComponent<RawImage>().texture = hoverTex;
-                hoverGo.SetActive(false);
-                _bgHoverGo = hoverGo;
-            }
-        }
-
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
         }
 
         protected override void BuildContent(RectTransform contentRoot)
@@ -247,22 +182,27 @@ namespace BetterFG.UI.Tabs
 
             y += HEADER_H + SH;
 
-            // solos / duos / squads sub-tab bar
+            // solos / duos / squads / time attack sub-tab bar
             float subH = BTN_H * 0.9f;
-            float thirdW = (w - PAD) / 3f;
-            _btnSolos = UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, thirdW, subH), "Solos",
+            float quarterW = (w - PAD * 1.5f) / 4f;
+            float subStep = quarterW + PAD * 0.5f;
+            _btnSolos = UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, quarterW, subH), "Solos",
                 _subType == PbType.Solos ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
                 new Action(() => SetSubType(PbType.Solos)));
-            _btnDuos = UGUIShip.CreateButton(contentRoot, new Rect(PAD + thirdW + PAD * 0.5f, y, thirdW, subH), "Duos",
+            _btnDuos = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep, y, quarterW, subH), "Duos",
                 _subType == PbType.Duos ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
                 new Action(() => SetSubType(PbType.Duos)));
-            _btnSquads = UGUIShip.CreateButton(contentRoot, new Rect(PAD + (thirdW + PAD * 0.5f) * 2f, y, thirdW, subH), "Squads",
+            _btnSquads = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep * 2f, y, quarterW, subH), "Squads",
                 _subType == PbType.Squads ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
                 new Action(() => SetSubType(PbType.Squads)));
+            _btnTimeAttack = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep * 3f, y, quarterW, subH), "Time Attack",
+                _subType == PbType.TimeAttack ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
+                new Action(() => SetSubType(PbType.TimeAttack)));
 
             AddButtonOverlay(_btnSolos, "BetterFG.assets.ui.pb.solosbutton.png");
             AddButtonOverlay(_btnDuos, "BetterFG.assets.ui.pb.duosbutton.png");
             AddButtonOverlay(_btnSquads, "BetterFG.assets.ui.pb.squadsbutton.png");
+            AddButtonOverlay(_btnTimeAttack, "BetterFG.assets.ui.pb.timeattackbutton.png");
             y += subH + SH;
 
             UGUIShip.CreateDivider(contentRoot, PAD, y, w);
@@ -333,6 +273,7 @@ namespace BetterFG.UI.Tabs
             UGUIShip.SetButtonSelected(_btnSolos, type == PbType.Solos, SUBTAB_SEL);
             UGUIShip.SetButtonSelected(_btnDuos, type == PbType.Duos, SUBTAB_SEL);
             UGUIShip.SetButtonSelected(_btnSquads, type == PbType.Squads, SUBTAB_SEL);
+            UGUIShip.SetButtonSelected(_btnTimeAttack, type == PbType.TimeAttack, SUBTAB_SEL);
             ApplySearch();
         }
 
@@ -359,9 +300,11 @@ namespace BetterFG.UI.Tabs
                     solosDate = e.solosDate,
                     duosDate = e.duosDate,
                     squadsDate = e.squadsDate,
+                    timeattackDate = e.timeattackDate,
                     solos = e.solos,
                     duos = e.duos,
-                    squads = e.squads
+                    squads = e.squads,
+                    timeattack = e.timeattack
                 });
             }
             ApplySearch();

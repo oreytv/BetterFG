@@ -89,33 +89,15 @@ namespace BetterFG.Features.Replay
             {
                 PreviousLevelLoader = fcm.LevelLoader;
                 TouchedFraggle = true;
+                fcm.LevelLoader = loader;
                 if (!string.IsNullOrEmpty(Background)) fcm.BackgroundSceneToLoad = Background;
             }
 
             yield return _host.StartCoroutine(_loadScene(FraggleCommonManager.BootstrapSceneName, false).WrapToIl2Cpp());
             yield return _host.StartCoroutine(_loadScene(FraggleCommonManager.CommonSceneName, false).WrapToIl2Cpp());
 
-            GameObject sceneBg = null;
-            LevelEditorThemeLighting sceneLighting = null;
             if (!string.IsNullOrEmpty(Background))
-            {
                 yield return _host.StartCoroutine(_loadScene(Background, true).WrapToIl2Cpp());
-
-                var bgScene = SceneManager.GetSceneByName(Background);
-                if (bgScene.IsValid() && bgScene.isLoaded)
-                {
-                    foreach (var root in bgScene.GetRootGameObjects())
-                    {
-                        var found = root.GetComponentInChildren<LevelEditorThemeLighting>(true);
-                        if (found == null) continue;
-                        sceneBg = root;
-                        sceneLighting = found;
-                        break;
-                    }
-                }
-            }
-
-            if (fcm != null) fcm.LevelLoader = loader;
 
             if (theme != null)
             {
@@ -159,22 +141,42 @@ namespace BetterFG.Features.Replay
             else
                 Plugin.Log.LogInfo($"creative level {_rec.shareCode} v{_rec.levelVersion} rebuilt on {Background} - {placed} placeables");
 
-            yield return null;
-            yield return null;
-            yield return _host.StartCoroutine(ApplyThemeLook(loader, theme, skyboxId, sceneBg, sceneLighting).WrapToIl2Cpp());
+            yield return _host.StartCoroutine(ApplyThemeLook(loader, theme, skyboxId).WrapToIl2Cpp());
         }
 
-        IEnumerator ApplyThemeLook(LevelLoader loader, ThemeData theme, string skyboxId, GameObject sceneBg, LevelEditorThemeLighting sceneLighting)
+        IEnumerator ApplyThemeLook(LevelLoader loader, ThemeData theme, string skyboxId)
         {
             if (theme != null) ThemeManager.SetLevelTheme(theme);
 
+            yield return new WaitForSecondsRealtime(1f);
+
+            var sceneBg = ThemeManager._sceneBackgroundAndLighting;
+            LevelEditorThemeLighting sceneLighting = null;
+            if (sceneBg != null && sceneBg.m_CachedPtr != IntPtr.Zero)
+                sceneLighting = sceneBg.GetComponentInChildren<LevelEditorThemeLighting>(true);
+
+            if (sceneLighting == null)
+            {
+                var bgScene = SceneManager.GetSceneByName(Background ?? "");
+                if (bgScene.IsValid() && bgScene.isLoaded)
+                {
+                    foreach (var root in bgScene.GetRootGameObjects())
+                    {
+                        sceneLighting = root.GetComponentInChildren<LevelEditorThemeLighting>(true);
+                        if (sceneLighting != null) { sceneBg = root; break; }
+                    }
+                }
+            }
+
             if (sceneLighting != null)
             {
-                Plugin.Log.LogInfo($"{sceneBg.name} came in with the background scene already, no need to build a second one");
+                Plugin.Log.LogInfo($"{sceneBg.name} turned up on its own, not building a second background");
                 ThemeManager._sceneBackgroundAndLighting = sceneBg;
                 yield return _host.StartCoroutine(ApplyLighting(sceneLighting).WrapToIl2Cpp());
                 yield break;
             }
+
+            Plugin.Log.LogInfo("no background from the game a second in, putting one up ourselves");
 
             var defs = loader.GetGameMode()?.SkyboxDefinitions;
             if (defs == null || defs.Definitions == null || defs.Definitions.Length == 0)

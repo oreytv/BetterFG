@@ -13,15 +13,10 @@ namespace BetterFG.UI.Tabs
     {
         public PlinthsTab(IntPtr ptr) : base(ptr) { }
 
-        protected static float PAD => UIScale.PAD;
-        protected static float SH => UIScale.SH;
-        protected static float BTN_H => UIScale.BTN_H;
         protected static float ROW_H => UIScale.ROW_H;
         protected static float COVER_W => UIScale.COVER_W;
         protected static float COVER_H => UIScale.COVER_H;
         protected static float SEL_W => UIScale.SEL_W;
-        protected static int FS => UIScale.FS;
-        protected static int FS_SM => UIScale.FS_SM;
 
         protected static readonly Color WHITE = Color.white;
         protected static readonly Color HINT = new Color(1f, 1f, 1f, 0.45f);

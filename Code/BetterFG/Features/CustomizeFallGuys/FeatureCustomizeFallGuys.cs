@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -65,7 +65,7 @@ namespace BetterFG.Features.CustomizeFallGuys
             _inRound = on;
             // leaving a round with beans culled would strand them hidden
             if (!on)
-                for (int i = 0; i < _count; i++) _eyes[i].hiddenSet = false;
+                for (int i = 0; i < _count; i++) { _eyes[i].hiddenSet = false; _eyes[i].invisHidden = false; _eyes[i].cullSet = false; }
         }
 
         internal static bool On;
@@ -87,6 +87,7 @@ namespace BetterFG.Features.CustomizeFallGuys
             _scale = feature.GetRange("eyescale");
             _yscale = feature.GetRange("eyeyscale");
             On = feature.enabled;
+            Utilities.PatchGate.Request(Customization.Player.InvisibilitySyncComponent.GateKey, "eyes", On);
             _eyeMat = On ? feature.GetChoice("eyemat") : "none";
             _work = On && (_blink || _look || _squint
                 || _eyeMat != "none"
@@ -113,8 +114,11 @@ namespace BetterFG.Features.CustomizeFallGuys
             public SkinnedMeshRenderer eyeRenderer;
             public bool hiddenSet;
             public bool hiddenValue;
-            public bool rangeSet;
-            public bool outOfRange;
+            public bool cullSet;
+            public bool culled;
+            public bool invisHidden;
+            public SkinnedMeshRenderer body;
+            public Material wantMat;
             public InvisibilityVisualsController invis;
             public GameObject root;
             // each bean's own rig can be a different scale (PlayerScaleService, differently-built
@@ -210,6 +214,54 @@ namespace BetterFG.Features.CustomizeFallGuys
             _pending.Add(bean);
         }
 
+        public static void ApplyLater(GameObject bean, float delay, bool isLocalPlayer = true)
+        {
+            if (bean == null || !_work) return;
+            if (_localOnly && !isLocalPlayer) return;
+            var driver = FallGuyEyeDriver.Instance;
+            if (driver == null) { Apply(bean, isLocalPlayer); return; }
+            driver.StartCoroutine(ApplyAfter(bean, delay, isLocalPlayer).WrapToIl2Cpp());
+        }
+
+        static IEnumerator ApplyAfter(GameObject bean, float delay, bool isLocalPlayer)
+        {
+            yield return new WaitForSeconds(delay);
+            Apply(bean, isLocalPlayer);
+        }
+
+        internal static void OnInvisibilityVisuals(Levels.Invisibeans.InvisibilityVisualsController controller, bool hidden)
+        {
+            if (!_work) return;
+            for (int i = 0; i < _count; i++)
+            {
+                var invis = _eyes[i].invis;
+                if (invis is null || invis.m_CachedPtr != controller.m_CachedPtr) continue;
+                if (_eyes[i].invisHidden == hidden) return;
+                _eyes[i].invisHidden = hidden;
+                if (hidden) return;
+                Apply(_eyes[i].root);
+                ApplyLater(_eyes[i].root, 0.5f);
+                return;
+            }
+        }
+
+        public static void ReassertOn(CellBehaviour cell)
+        {
+            var fg = cell != null ? cell._fallGuy : null;
+            if (fg != null) ReassertOn(fg.gameObject);
+        }
+
+        public static void ReassertOn(GameObject bean)
+        {
+            if (!_work || _eyeMat == "none" || bean == null) return;
+            for (int i = 0; i < _count; i++)
+            {
+                if (_eyes[i].root != bean) continue;
+                EyeGeometry.Reassert(_eyes[i].eyeRenderer, _eyes[i].body, _eyes[i].wantMat);
+                return;
+            }
+        }
+
         public static void OnFaceplateChanged(GameObject bean, FaceplateOption option)
         {
             if (!_work || _eyeMat == "none" || bean == null || option == null) return;
@@ -217,6 +269,9 @@ namespace BetterFG.Features.CustomizeFallGuys
             {
                 if (_eyes[i].root != bean) continue;
                 EyeGeometry.SetTint(_eyes[i].eyeRenderer, option.eyesColour);
+                _eyes[i].wantMat = _eyes[i].eyeRenderer.sharedMaterial;
+                var fgch = bean.GetComponent<FallguyCustomisationHandler>();
+                BlankStockEyes(fgch == null ? null : fgch._matInstance, option.eyesColour);
                 return;
             }
         }
@@ -243,6 +298,8 @@ namespace BetterFG.Features.CustomizeFallGuys
                 EyeGeometry.Detach(_eyes[i].eyeGo);
                 _eyes[i].eyeGo = null;
                 _eyes[i].eyeRenderer = null;
+                _eyes[i].body = null;
+                _eyes[i].wantMat = null;
                 _eyes[i].invis = null;
                 _eyes[i].root = null;
                 _eyes[i].l = null;
@@ -250,10 +307,12 @@ namespace BetterFG.Features.CustomizeFallGuys
             }
             _count = 0;
             _pending.Clear();
+            RestoreStockEyes();
         }
 
-        static GameObject AttachEyes(GameObject bean)
+        static GameObject AttachEyes(GameObject bean, out SkinnedMeshRenderer body)
         {
+            body = null;
             if (_eyeMat == "none") return null;
 
             var shared = AssetManager.GetMaterial("bettrfg_mat_eyes_" + _eyeMat);
@@ -264,23 +323,57 @@ namespace BetterFG.Features.CustomizeFallGuys
             }
 
             var tint = Color.white;
-            var cpm = FallGuysLib.Players.PlayerUtils.GetClientPlayerManager();
-            var byId = cpm?._playerIdIndex;
-            if (byId != null)
+            var fgch = bean.GetComponent<FallguyCustomisationHandler>();
+            var mat = fgch == null ? null : fgch._matInstance;
+            if (mat != null)
             {
-                foreach (var kv in byId)
-                {
-                    var npdc = kv.Value;
-                    if (npdc == null || npdc.fgcc == null || npdc.fgcc.gameObject != bean) continue;
-                    var opt = cpm.GetPlayerCustomisationSelection(kv.Key)?.FaceplateOption;
-                    if (opt != null) tint = opt.eyesColour;
-                    return EyeGeometry.Attach(bean, shared, tint);
-                }
+                int eyes = FallguyCustomisationHandler.ShaderEyesColor;
+                if (mat.HasProperty(eyes)) tint = StockEyes(mat, eyes);
             }
 
-            var menuOpt = UnityEngine.Object.FindObjectOfType<MainMenuManager>()?._playerProfile?.CustomisationSelections?.FaceplateOption;
-            if (menuOpt != null) tint = menuOpt.eyesColour;
-            return EyeGeometry.Attach(bean, shared, tint);
+            var attached = EyeGeometry.Attach(bean, shared, tint, out body);
+            if (attached != null) BlankStockEyes(mat, tint);
+            return attached;
+        }
+
+        static readonly List<Material> _stockMats = new List<Material>();
+        static readonly List<Color> _stockEyes = new List<Color>();
+
+        static Color StockEyes(Material mat, int eyes)
+        {
+            for (int i = 0; i < _stockMats.Count; i++)
+                if (_stockMats[i] != null && _stockMats[i].m_CachedPtr == mat.m_CachedPtr) return _stockEyes[i];
+            return mat.GetColor(eyes);
+        }
+
+        static void BlankStockEyes(Material mat, Color stock)
+        {
+            if (mat == null) return;
+            int eyes = FallguyCustomisationHandler.ShaderEyesColor;
+            int face = FallguyCustomisationHandler.ShaderFaceColor;
+            if (!mat.HasProperty(eyes) || !mat.HasProperty(face)) return;
+
+            for (int i = 0; i < _stockMats.Count; i++)
+                if (_stockMats[i] != null && _stockMats[i].m_CachedPtr == mat.m_CachedPtr)
+                {
+                    _stockEyes[i] = stock;
+                    mat.SetColor(eyes, mat.GetColor(face));
+                    return;
+                }
+
+            _stockMats.Add(mat);
+            _stockEyes.Add(stock);
+            mat.SetColor(eyes, mat.GetColor(face));
+            Plugin.Log.LogInfo($"sank the painted eye into the face colour on {mat.name}, was {stock}");
+        }
+
+        static void RestoreStockEyes()
+        {
+            int eyes = FallguyCustomisationHandler.ShaderEyesColor;
+            for (int i = 0; i < _stockMats.Count; i++)
+                if (_stockMats[i] != null) _stockMats[i].SetColor(eyes, _stockEyes[i]);
+            _stockMats.Clear();
+            _stockEyes.Clear();
         }
 
         static void Track(GameObject root)
@@ -294,9 +387,16 @@ namespace BetterFG.Features.CustomizeFallGuys
             for (int i = 0; i < _count; i++)
             {
                 if (_eyes[i].l.m_CachedPtr != eyeL.m_CachedPtr) continue;
-                if (_eyeMat == "none" || _eyes[i].eyeGo != null) return;
-                _eyes[i].eyeGo = AttachEyes(root);
-                _eyes[i].eyeRenderer = _eyes[i].eyeGo != null ? _eyes[i].eyeGo.GetComponent<SkinnedMeshRenderer>() : null;
+                if (_eyeMat == "none") return;
+                var fresh = AttachEyes(root, out var freshBody);
+                if (fresh == null) return;
+                EyeGeometry.Detach(_eyes[i].eyeGo);
+                _eyes[i].eyeGo = fresh;
+                _eyes[i].eyeRenderer = fresh.GetComponent<SkinnedMeshRenderer>();
+                _eyes[i].wantMat = _eyes[i].eyeRenderer != null ? _eyes[i].eyeRenderer.sharedMaterial : null;
+                _eyes[i].body = freshBody;
+                _eyes[i].hiddenSet = false;
+                _eyes[i].cullSet = false;
                 return;
             }
 
@@ -316,8 +416,13 @@ namespace BetterFG.Features.CustomizeFallGuys
             }
 
             if (_count == _eyes.Length) Array.Resize(ref _eyes, _count * 2);
-            _eyes[_count].eyeGo = AttachEyes(root);
+            _eyes[_count].eyeGo = AttachEyes(root, out var newBody);
             _eyes[_count].eyeRenderer = _eyes[_count].eyeGo != null ? _eyes[_count].eyeGo.GetComponent<SkinnedMeshRenderer>() : null;
+            _eyes[_count].wantMat = _eyes[_count].eyeRenderer != null ? _eyes[_count].eyeRenderer.sharedMaterial : null;
+            _eyes[_count].body = newBody;
+            _eyes[_count].hiddenSet = false;
+            _eyes[_count].cullSet = false;
+            _eyes[_count].invisHidden = false;
             _eyes[_count].invis = root.GetComponentInChildren<InvisibilityVisualsController>();
             _eyes[_count].root = root;
             _eyes[_count].l = eyeL;
@@ -436,24 +541,27 @@ namespace BetterFG.Features.CustomizeFallGuys
                 bool hasRenderer = eyeRenderer is not null && eyeRenderer.m_CachedPtr != IntPtr.Zero;
                 if (hasRenderer)
                 {
-                    var invis = _eyes[i].invis;
-                    bool hidden = invis is not null && invis.m_CachedPtr != IntPtr.Zero
-                        && invis._ready && invis._visibilityRatio < 0.5f;
+                    bool hidden = _eyes[i].invisHidden;
 
                     // the range test only has to keep up with a bean walking towards the camera, so it
                     // runs on one bean in eight per frame (staggered, so the work is spread evenly) and
                     // reuses the last answer in between. get_position boxes its return through il2cpp;
                     // the paired getter writes straight into our locals.
-                    if (!hidden && haveCam)
+                    if (!hidden)
                     {
-                        if (((i + frameStagger) & 7) == 0 || !_eyes[i].rangeSet)
+                        if (((i + frameStagger) & 7) == 0 || !_eyes[i].cullSet)
                         {
-                            l.GetPositionAndRotation(out var eyePos, out _);
-                            float dx = eyePos.x - camPos.x, dy = eyePos.y - camPos.y, dz = eyePos.z - camPos.z;
-                            _eyes[i].outOfRange = dx * dx + dy * dy + dz * dz > EyeDrawDistanceSqr;
-                            _eyes[i].rangeSet = true;
+                            bool cull = BaseHidden(_eyes[i].body);
+                            if (!cull && haveCam)
+                            {
+                                l.GetPositionAndRotation(out var eyePos, out _);
+                                float dx = eyePos.x - camPos.x, dy = eyePos.y - camPos.y, dz = eyePos.z - camPos.z;
+                                cull = dx * dx + dy * dy + dz * dz > EyeDrawDistanceSqr;
+                            }
+                            _eyes[i].culled = cull;
+                            _eyes[i].cullSet = true;
                         }
-                        hidden = _eyes[i].outOfRange;
+                        hidden = _eyes[i].culled;
                     }
                     // re-writing .enabled every frame was a renderer setter per bean for a value that
                     // only moves when a powerup does
@@ -503,6 +611,16 @@ namespace BetterFG.Features.CustomizeFallGuys
                 l.localScale = new Vector3(sl.x * _scale, yl, sl.z * _scale);
                 r.localScale = new Vector3(sr.x * _scale, yr, sr.z * _scale);
             }
+        }
+
+        static bool BaseHidden(SkinnedMeshRenderer body)
+        {
+            if (body is null || body.m_CachedPtr == IntPtr.Zero) return false;
+            if (!body.gameObject.activeInHierarchy || !body.enabled) return true;
+            var invis = Customization.Player.CostumePollerComponent.PeekInvisibleMat();
+            if (invis is null) return false;
+            var mat = body.sharedMaterial;
+            return mat is not null && mat.m_CachedPtr == invis.m_CachedPtr;
         }
 
         static float StepLook(ref Eyes e, float dt)

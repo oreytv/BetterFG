@@ -195,12 +195,14 @@ namespace BetterFG.Features.Replay
             {
                 time = k.time,
                 showPhrases = k.showPhrases,
+                crowns = k.crowns,
                 names = k.names,
                 players = k.players,
                 showGhosts = k.showGhosts,
             };
             copy.nameOnlyPlayers.AddRange(k.nameOnlyPlayers);
             copy.onlyPlayers.AddRange(k.onlyPlayers);
+            copy.crownOnlyPlayers.AddRange(k.crownOnlyPlayers);
             return copy;
         }
 

@@ -40,7 +40,7 @@ namespace BetterFG
             AppDomain.CurrentDomain.AssemblyResolve += ResolveNAudio;
 
             Log = base.Log;
-            Log.LogInfo($"{BettrFGMeta.DisplayName} {BetterFGInfo.Version} [{BetterFGInfo.BuildHash}] loaded");
+            Log.LogInfo($"{BettrFGMeta.DisplayName} {BetterFGInfo.Version} [{BetterFGInfo.DisplayBuildHash}] loaded");
 
             SettingsService.Init();
             BugReportService.Init();
@@ -58,8 +58,8 @@ namespace BetterFG
             // Gateway/auth has been causing crashes in some environments. Disable creating
             // the `BetterFG_Gateway` here and initialize the mod directly so core features
             // and UI are available even without remote auth.
-            InitGameObjects(0);
             InitCompBuild();
+            InitGameObjects(0);
             BetterFGStartupWindow.Show();
             BetterFGUpdateWindow.Show();
             var wheel = SideWheelManager.Create();
@@ -147,7 +147,6 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.Replay.ReplayViewer>();
 
             // tabs
-            ClassInjector.RegisterTypeInIl2Cpp<TexturedTab>();
             ClassInjector.RegisterTypeInIl2Cpp<SwitchTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UISubTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UGCTab>();
@@ -168,6 +167,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<SkinTextureWizardTab>();
             ClassInjector.RegisterTypeInIl2Cpp<SkinTextureMaterialPropsTab>();
             ClassInjector.RegisterTypeInIl2Cpp<AllCosmeticsTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<AllCosmeticsWizardTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CreativeTab>();
             ClassInjector.RegisterTypeInIl2Cpp<CustomCreativeTextureTab>();
             ClassInjector.RegisterTypeInIl2Cpp<PersonalBestTab>();
@@ -331,6 +331,7 @@ namespace BetterFG
             BetterFGTabRegistry.RegisterPartialTab<CustomCreativeTextureTab>();
             BetterFGTabRegistry.RegisterPartialTab<SkinTextureWizardTab>();
             BetterFGTabRegistry.RegisterPartialTab<SkinTextureMaterialPropsTab>();
+            BetterFGTabRegistry.RegisterPartialTab<AllCosmeticsWizardTab>();
             BetterFGTabRegistry.RegisterPartialTab<UIFontWizardTab>();
             BetterFGTabRegistry.RegisterPartialTab<MenuBackgroundImageWizardTab>();
 

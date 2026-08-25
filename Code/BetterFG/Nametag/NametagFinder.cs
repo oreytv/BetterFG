@@ -51,11 +51,17 @@ namespace BetterFG.Nametag
             return null;
         }
 
+        // client update added a "Parent" wrapper under _nameTagParent — confirmed live, the sprite now
+        // sits at .../PlayerInfoHUD/Parent/LocalPlayerNameTagSprite(Clone), one level deeper than before.
+        private const string EXTRA_WRAPPER = "Parent";
+
         private static Transform LocalTagUnder(Transform parent)
         {
             foreach (var name in NAMETAG_NAMES)
             {
                 var t = parent.Find(name);
+                if (t != null) return t;
+                t = parent.Find(EXTRA_WRAPPER + "/" + name);
                 if (t != null) return t;
             }
             return null;

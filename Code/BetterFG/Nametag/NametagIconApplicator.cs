@@ -101,7 +101,7 @@ namespace BetterFG.Nametag
 
         private static void SyncIconGate() => _iconVersion++;
 
-        public static void ClearIconRegistry() { _icon3d.Clear(); _iconUI.Clear(); _iconPtrs.Clear(); SyncIconGate(); }
+        public static void ClearIconRegistry() { _icon3d.Clear(); _iconUI.Clear(); _iconPtrs.Clear(); _placement.Clear(); SyncIconGate(); }
 
         // ── per-frame icon alpha ──────────────────────────────────────────────
         //
@@ -644,6 +644,51 @@ namespace BetterFG.Nametag
             }
         }
 
+        // fall feed's own PlayerSlot stopped carrying a usable key post-update (empty PlayerKey,
+        // and StaticDisplayName crashes the process to even read — see FallfeedPatch.cs). For
+        // qualify/eliminate messages, FallfeedPatch.cs gets the real key straight from
+        // FeatureTimePlacement's own progress-message queue instead (order-matched, no scanning
+        // needed) — a qualify notification shows up the instant the game despawns that player's
+        // bean, too late for any HUD-row scan to find them anyway (confirmed live, even while
+        // spectating: the row is already gone). This scan is the fallback for message types with no
+        // queue (phrase, tail-stolen, disconnect), where the target's bean is usually still live.
+        private static readonly Dictionary<string, string> _recentKeyByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        public static string ResolveKeyByDisplayName(string displayName)
+        {
+            if (string.IsNullOrEmpty(displayName)) return "";
+            if (_recentKeyByName.TryGetValue(displayName, out var cached) && !string.IsNullOrEmpty(cached))
+                return cached;
+
+            try
+            {
+                var huds = UnityEngine.Object.FindObjectsOfType<PlayerInfoHUDBase>(true);
+                if (huds == null) return "";
+
+                for (int h = 0; h < huds.Length; h++)
+                {
+                    var spawned = huds[h]?._spawnedInfoObjects;
+                    if (spawned == null) continue;
+
+                    for (int i = 0; i < spawned.Count; i++)
+                    {
+                        var row = spawned[i];
+                        var tmp = TryGetNameText(row?.playerInfo);
+                        if (tmp == null) continue;
+                        if (!StripRichText(tmp.text ?? "").Trim().Equals(displayName, StringComparison.OrdinalIgnoreCase)) continue;
+                        string key = PlayerKeyForFgcc(row.fgcc);
+                        if (!string.IsNullOrEmpty(key)) _recentKeyByName[displayName] = key;
+                        return key;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("NametagIcon: resolvekey " + ex.Message);
+            }
+            return "";
+        }
+
         private static string PlayerKeyForFgcc(FallGuysCharacterController fgcc)
         {
             if (fgcc == null) return "";
@@ -1112,6 +1157,7 @@ namespace BetterFG.Nametag
             SyncIconGate();
 
             MaybeAttachGifAnimator(iconGo, sr, null, info.iconMode, info.iconPath);
+            RememberPlacement(nameAndCrown, tmp3d, wrapperT, iconGo.transform, iconWorldW, isCustom, offX, offY);
 
             var host = BeanMonitorService.Instance;
             if (host != null)
@@ -1822,12 +1868,48 @@ namespace BetterFG.Nametag
             if (tmp != null) { _icon3d[tmp.GetInstanceID()] = sr; _iconPtrs.Add(tmp.m_CachedPtr); SyncIconGate(); }
 
             MaybeAttachGifAnimator(iconGo, sr, null);
+            RememberPlacement(nameAndCrown, tmp, wrapperGo.transform, iconGo.transform, iconWorldW, isCustom, offX, finalOffY);
 
             var host = BeanMonitorService.Instance;
             if (host != null)
                 host.StartCoroutine(
                     RepositionNextFrame(tmp, wrapperGo.transform, iconGo.transform, iconWorldW, crownWorldW, isCustom, offX, finalOffY, nameAndCrown)
                     .WrapToIl2Cpp());
+        }
+
+        private struct IconPlacement
+        {
+            public TMPro.TextMeshPro tmp;
+            public Transform wrapper, icon;
+            public float iconW, offX, offY;
+            public bool custom;
+        }
+
+        private static readonly Dictionary<int, IconPlacement> _placement = new Dictionary<int, IconPlacement>();
+
+        private static void RememberPlacement(Transform nameAndCrown, TMPro.TextMeshPro tmp, Transform wrapper,
+            Transform iconT, float iconWorldW, bool isCustom, float offX, float finalOffY)
+        {
+            if (nameAndCrown == null) return;
+            _placement[nameAndCrown.GetInstanceID()] = new IconPlacement
+            {
+                tmp = tmp, wrapper = wrapper, icon = iconT,
+                iconW = iconWorldW, custom = isCustom, offX = offX, offY = finalOffY,
+            };
+        }
+
+        // re-runs the whole name+icon+crown placement with today's widths, so a crown that came or went
+        // after the icon was attached doesn't leave the group off-centre
+        public static bool Relayout(Transform nameAndCrown)
+        {
+            if (nameAndCrown == null || !_placement.TryGetValue(nameAndCrown.GetInstanceID(), out var p)) return false;
+            if (p.wrapper == null || p.icon == null)
+            {
+                _placement.Remove(nameAndCrown.GetInstanceID());
+                return false;
+            }
+            PlaceIconGroup(p.tmp, p.wrapper, p.icon, p.iconW, 0f, p.custom, p.offX, p.offY, nameAndCrown);
+            return true;
         }
 
         private static IEnumerator RepositionNextFrame(
@@ -1837,7 +1919,14 @@ namespace BetterFG.Nametag
         {
             yield return null;
             try { _ = wrapper.name; _ = iconT.name; } catch { yield break; }
+            PlaceIconGroup(tmp, wrapper, iconT, iconWorldW, crownWorldW, isCustom, offX, finalOffY, nameAndCrown);
+        }
 
+        private static void PlaceIconGroup(
+            TMPro.TextMeshPro tmp, Transform wrapper, Transform iconT,
+            float iconWorldW, float crownWorldW, bool isCustom, float offX, float finalOffY,
+            Transform nameAndCrown)
+        {
             float resolvedCrownW = crownWorldW > 0f ? crownWorldW : GetCrownWorldWidth(nameAndCrown);
             float textWorldW = 0f;
             try { textWorldW = tmp != null ? tmp.preferredWidth : 0f; } catch { }
@@ -1885,7 +1974,13 @@ namespace BetterFG.Nametag
                 {
                     var crown = nameAndCrown.GetComponentInChildren<CrownRankBadgeViewModel>(true)?.transform;
                     if (crown != null)
+                    {
+                        var le = crown.GetComponent<LayoutElement>();
+                        if (le != null) le.ignoreLayout = true;
+                        var ccsf = crown.GetComponent<ContentSizeFitter>();
+                        if (ccsf != null) ccsf.enabled = false;
                         crown.localPosition = new Vector3(crownX, crown.localPosition.y, crown.localPosition.z);
+                    }
                 }
             }
             catch (Exception ex) { Plugin.Log.LogWarning($"NametagIcon: reposition aborted: {ex.Message}"); }
@@ -1895,9 +1990,13 @@ namespace BetterFG.Nametag
         // icon + crown laid left-to-right, group centred on the parent origin). this is the accurate one —
         // it accounts for the icon width, so crown-only or crown+icon both land right. pins the crown out of
         // the layout so the game's respawn re-layout can't drag it back to the middle. safe to call any time.
-        public static void RepositionLocalCrown()
+        public static void RepositionLocalCrown() => RepositionCrownUnder(NametagFinder.FindNameAndCrownParent());
+
+        public static bool HasIcon(Transform nameAndCrown) =>
+            nameAndCrown != null && nameAndCrown.Find(FLAG_OBJECT_NAME) != null;
+
+        public static void RepositionCrownUnder(Transform nameAndCrown)
         {
-            var nameAndCrown = NametagFinder.FindNameAndCrownParent();
             if (nameAndCrown == null) return;
             var crown = nameAndCrown.GetComponentInChildren<CrownRankBadgeViewModel>(true)?.transform;
             if (crown == null) return;

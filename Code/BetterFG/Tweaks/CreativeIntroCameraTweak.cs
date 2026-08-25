@@ -19,7 +19,6 @@ namespace BetterFG.Tweaks
         public override string TweakId => "creative_intro_camera";
         public override string TweakLabel => "Creative Intro Cameras";
         public override bool DefaultEnabled => true;
-        public override string TweakTooltip => "Creative levels ship without an intro flythrough, so this makes one. Once a third of the players are in, the loading screen drops away, the level name banner plays, and the camera flies the route the players will actually run: the level's collision gets scanned into a grid, a path is walked from the start line to the finish through it, and the camera follows that at a steady speed, riding high enough to clear whatever it's passing over. Points rounds get a tour of the bubbles and score zones instead. It finishes by sweeping back to circle the start line so the last thing you see is the beans.";
 
         public static CreativeIntroCameraTweak Instance { get; private set; }
         void Awake() => Instance = this;

@@ -558,7 +558,7 @@ namespace BetterFG.Editor
             }
 
             _menuCard = -1;
-            RunCatalogBat();
+            CatalogBat.Run(_repoRoot);
             WriteNewCatalog(_repoRoot);
             RefreshGroups();
             RefreshCards();

@@ -66,6 +66,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Shared\AssetBundleBuilder.cs" />
+    <Compile Include="Shared\CatalogBat.cs" />
+    <Compile Include="Shared\CoverImage.cs" />
     <Compile Include="Skins\SkinPackagerWindow.cs" />
     <Compile Include="Skins\SkinPackagerBuild.cs" Condition="Exists('$(MSBuildProjectDirectory)\Skins\SkinPackagerBuild.cs')" />
     <Compile Include="Skins\SkinPreview.cs" Condition="Exists('$(MSBuildProjectDirectory)\Skins\SkinPreview.cs')" />
@@ -77,7 +79,8 @@
     <Compile Include="Maps\MapInfoJson.cs" />
     <Compile Include="Maps\BetterFGMapAsset.cs" />
     <Compile Include="Maps\BetterFGMapAssetEditor.cs" />
-    <Compile Include="Reference\ReferenceSpawner.cs" />
+    <Compile Include="Reference\ReferenceSpawner.cs" />
+    <Compile Include="Reference\BaseRigAsset.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -88,6 +91,9 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Reference\Files\animationbean.unitypackage" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Reference\Files\baserig.blend" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Skins\group_skins.bat">

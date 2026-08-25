@@ -38,7 +38,8 @@ namespace BetterFG.Features.TimePlacement
         onOpen: () => OnToggled(),
         onClosed: () => OnToggled(),
         onSettingChanged: (id, val) => OnToggled(),
-        onChoiceChanged: (id, val) => OnPortraitsReady(),
+        onChoiceChanged: (id, val) => { if (id == "rowbg") ApplyStyle(); else OnPortraitsReady(); },
+        onRangeChanged: (id, val) => ApplyStyle(),
         choices: new List<FeatureChoice>
         {
             new FeatureChoice
@@ -67,6 +68,19 @@ namespace BetterFG.Features.TimePlacement
                 defaultId = "no",
                 hint = "In squad rounds, show one row per player instead of combined squad scores.",
             },
+            new FeatureChoice
+            {
+                id = "rowbg",
+                label = "Row background",
+                optionIds = new List<string> { "black", "white" },
+                optionLabels = new List<string> { "Black", "White" },
+                defaultId = "black",
+                hint = "Black rows are fully opaque; white rows are 20% opacity.",
+            },
+        },
+        ranges: new List<FeatureRange>
+        {
+            new FeatureRange { id = "rowspacing", label = "Row spacing", min = -10f, max = 20f, step = 1f, defaultValue = 0f, hint = "Extra pixels between rows on top of the game's default." },
         });
 
         // "always" | "survival" | "never" — how the leaderboard treats eliminated players.
@@ -165,7 +179,6 @@ namespace BetterFG.Features.TimePlacement
                 return Mathf.Clamp(n, MaxRowsMin, MaxRowsMax);
             }
         }
-        const float RowHeight = 34f;                     // fixed vertical spacing between rows
 
         // top-left anchored position of the panel, in canvas reference units (no scaleFactor
         // division — the CanvasScaler handles screen scaling). negative X pokes the panel's left
@@ -182,7 +195,7 @@ namespace BetterFG.Features.TimePlacement
         static GameObject _cachedTemplate;               // persistent copy of a real entry, kept forever so
                                                          // rounds we enter mid-spectate can still build the list
         static bool _entriesCaptured;                    // entries grabbed lazily after round start
-        static bool _updating = true;                    // false = paused via the in-menu toggle; polls/refresh no-op
+        static bool _updating = true;                    // false = paused via the in-menu toggle; refresh no-ops
         // _entryPool[place] = the row in each panel for that place (parallel across panels)
         static readonly List<List<GameObject>> _entryPool = new List<List<GameObject>>();
         static int _nextPlace;                           // 1-based, increments as people finish
@@ -194,24 +207,30 @@ namespace BetterFG.Features.TimePlacement
         // column on the qualify-highlight roster.
         static readonly Dictionary<string, float> _qualTimes = new Dictionary<string, float>();
         // playerKey -> the moment they died, from the server's own timeSurvived on the progress
-        // message. the client-side "their fgcc is gone" test only tells us they're out by the next
-        // poll tick, in arbitrary order — this is the authored time, so deaths rank properly.
+        // message. the client-side "their fgcc is gone" test only tells us they're out a repaint
+        // later, in arbitrary order — this is the authored time, so deaths rank properly.
         static readonly Dictionary<string, float> _deathTimes = new Dictionary<string, float>();
         // keys the server flagged isDisconnected — they left rather than being knocked out.
         static readonly HashSet<string> _disconnectedKeys = new HashSet<string>();
         // keys who hit the level's skip button (Explore) — they chose to bail, not died/dc'd.
         static readonly HashSet<string> _skippedKeys = new HashSet<string>();
+        // fall feed's own PlayerSlot carries no usable key post-update, but its qualify/eliminate
+        // notification for a given player fires right after (same order as) the matching progress
+        // message here — so queue keys in that same order instead of trying to re-derive identity
+        // from a name. See FallfeedPatch.cs.
+        static readonly Queue<string> _recentQualifyKeys = new Queue<string>();
+        static readonly Queue<string> _recentEliminateKeys = new Queue<string>();
+
+        public static bool TryDequeueQualifyKey(out string key) => TryDequeue(_recentQualifyKeys, out key);
+        public static bool TryDequeueEliminateKey(out string key) => TryDequeue(_recentEliminateKeys, out key);
+        static bool TryDequeue(Queue<string> q, out string key)
+        {
+            key = q.Count > 0 ? q.Dequeue() : null;
+            return !string.IsNullOrEmpty(key);
+        }
+        static int _lastTaCutoff = -1;                   // last logged time attack qualification cut
         static int _soloSig;                             // running hash of the current solo leaderboard
         static int _lastSoloSig;                         // last logged signature, to dedupe the spam
-        // score-change patches only flip this; the poll drains it once per frame. a hunt round fires
-        // 20-30 score events in a single frame and each used to trigger a full ForceMeshUpdate repaint
-        // (48 mesh rebuilds) synchronously inside the patch — that burst is the visible stutter. one
-        // coalesced repaint per frame kills it while staying frame-fresh.
-        // bumped every Reset. the poll coroutines capture the generation they were spawned for and
-        // exit when it changes — `while (_panels.Count > 0)` alone leaks them, because Reset+SpawnList
-        // clears and refills _panels inside one frame while the old coroutines are asleep in their
-        // 0.5s wait, so they wake to a non-empty list and run forever. 3 leaked polls per round = the
-        // game getting laggier every round played.
 
         // ── lifecycle ─────────────────────────────────────────────────────────
 
@@ -235,7 +254,10 @@ namespace BetterFG.Features.TimePlacement
             _deathTimes.Clear();
             _disconnectedKeys.Clear();
             _skippedKeys.Clear();
+            _recentQualifyKeys.Clear();
+            _recentEliminateKeys.Clear();
             _nextPlace = 0;
+            _lastTaCutoff = -1;
             _soloSig = 0;
             _lastSoloSig = 0;
             _perRoundSoloOverride = null;
@@ -349,6 +371,13 @@ namespace BetterFG.Features.TimePlacement
                         panelRt.anchoredPosition = Vector2.zero;
                 }
 
+                var vlg = panelT.GetComponent<VerticalLayoutGroup>();
+                if (vlg != null)
+                {
+                    if (float.IsNaN(_baseRowSpacing)) _baseRowSpacing = vlg.spacing;
+                    vlg.spacing = _baseRowSpacing + feature.GetRange("rowspacing");
+                }
+
                 _containers.Add(clone);
                 _panels.Add(panelT.gameObject);
             }
@@ -401,6 +430,7 @@ namespace BetterFG.Features.TimePlacement
             }
             if (disabled > 0)
                 Plugin.Log.LogInfo($"TimePlacement: disabled {disabled} game CanvasSquadScoresList object(s)");
+
         }
 
         static bool TryDisableGameList(GameObject go)
@@ -432,11 +462,7 @@ namespace BetterFG.Features.TimePlacement
         // VM OnEnable that re-shows its list doesn't always land on the same frame as the postfix.
         static IEnumerator SuppressGameListsForFrames()
         {
-            for (int i = 0; i < 12; i++)
-            {
-                yield return null;
-                SuppressGameLists();
-            }
+            for (int i = 0; i < 12; i++) { yield return null; SuppressGameLists(); }
         }
 
         // grab/clone the entry GameObjects in every panel up to MaxRows. parallel across panels:
@@ -624,7 +650,9 @@ namespace BetterFG.Features.TimePlacement
             for (int i = 0; i < entryGo.transform.childCount; i++)
                 entryGo.transform.GetChild(i).gameObject.SetActive(false);
 
-            // transparent row background image behind the labels.
+            var rowRt = entryGo.GetComponent<RectTransform>();
+            rowRt.sizeDelta = new Vector2(rowRt.sizeDelta.x, rowRt.sizeDelta.y - rowRt.rect.height * 0.15f);
+
             var bgSprite = RowBgSprite();
             if (bgSprite != null)
             {
@@ -640,6 +668,7 @@ namespace BetterFG.Features.TimePlacement
                 bgImg.sprite = bgSprite;
                 bgImg.type = Image.Type.Simple;
                 bgImg.raycastTarget = false;
+                bgImg.color = RowBgColor();
                 bgGo.transform.SetSiblingIndex(0);   // behind the labels we add next
                 bgGo.SetActive(true);
             }
@@ -666,13 +695,39 @@ namespace BetterFG.Features.TimePlacement
         static Sprite _rowBgSprite;
         static Sprite RowBgSprite()
         {
-            // Unity-aware null check: catches a sprite that got destroyed on a scene change so we
-            // reload it for the next round instead of handing out a dead reference (= no image).
-            // (the loader marks it HideAndDontSave, so this normally only loads once.)
             if (_rowBgSprite != null) return _rowBgSprite;
             try { _rowBgSprite = EmbeddedResourceandUnity.LoadSprite("BetterFG.assets.ui.feature.timeplacement.rowbackground.png", 100f); }
             catch (Exception ex) { Plugin.Log.LogWarning("TimePlacement: row bg load failed: " + ex.Message); }
             return _rowBgSprite;
+        }
+
+        static Color RowBgColor() =>
+            feature.GetChoice("rowbg") == "white"
+                ? new Color(1f, 1f, 1f, 0.25f)
+                : new Color(0f, 0f, 0f, 1f);
+
+        static float _baseRowSpacing = float.NaN;
+
+        static void ApplyStyle()
+        {
+            if (_panels.Count == 0) return;
+            var col = RowBgColor();
+            float extra = feature.GetRange("rowspacing");
+            foreach (var panel in _panels)
+            {
+                if (panel == null) continue;
+                var vlg = panel.GetComponent<VerticalLayoutGroup>();
+                if (vlg != null && !float.IsNaN(_baseRowSpacing)) vlg.spacing = _baseRowSpacing + extra;
+            }
+            foreach (var slot in _entryPool)
+                foreach (var row in slot)
+                {
+                    if (row == null) continue;
+                    var bgT = row.transform.Find("BFG_RowBG");
+                    if (bgT == null) continue;
+                    var img = bgT.GetComponent<Image>();
+                    if (img != null) img.color = col;
+                }
         }
 
         static void MakeLabel(Transform row, TextMeshProUGUI src, string name, float x, TextAlignmentOptions align)
@@ -707,7 +762,7 @@ namespace BetterFG.Features.TimePlacement
         }
 
         // server says this player is out. this is THE death signal, so repaint on it rather than
-        // letting the poll notice the missing fgcc a tick later.
+        // waiting for a later repaint to notice the missing fgcc.
         public static void OnPlayerEliminated(uint remotePlayerId)
         {
             if (!_updating || !Enabled || _panels.Count == 0) return;
@@ -736,6 +791,7 @@ namespace BetterFG.Features.TimePlacement
         {
             if (progressMessage == null) return;
             string pkey = PlayerKeyById(progressMessage.playerId);
+
             float clock = GlobalGameStateClient.Instance?.GameStateView != null
                 ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed : 0f;
             if (progressMessage.isSkipping)
@@ -746,6 +802,7 @@ namespace BetterFG.Features.TimePlacement
                 {
                     _skippedKeys.Add(pkey);
                     if (!_deathTimes.ContainsKey(pkey)) _deathTimes[pkey] = clock;
+                    _recentEliminateKeys.Enqueue(pkey);
                 }
                 OnPlayerEliminated(progressMessage.playerId);
                 return;
@@ -756,8 +813,11 @@ namespace BetterFG.Features.TimePlacement
                 // gameplay clock ONCE here at the moment the player qualifies — keeps ms precision
                 // (the server's qualifyTime is whole-second only), and everything else reads this one
                 // stored value so the leaderboard and fall-feed stamp can never disagree.
-                if (!string.IsNullOrEmpty(pkey) && !_qualTimes.ContainsKey(pkey))
-                    _qualTimes[pkey] = clock;
+                if (!string.IsNullOrEmpty(pkey))
+                {
+                    if (!_qualTimes.ContainsKey(pkey)) _qualTimes[pkey] = clock;
+                    _recentQualifyKeys.Enqueue(pkey);
+                }
                 OnPlayerFinished(progressMessage.playerId);
             }
             else
@@ -765,11 +825,15 @@ namespace BetterFG.Features.TimePlacement
                 // death time, server-authored. timeSurvived is the server's whole-second count, so
                 // it decides the second; our clock only supplies the sub-second detail, and only
                 // when the two already agree on which second it was (batched/late messages don't).
-                if (!string.IsNullOrEmpty(pkey) && !_deathTimes.ContainsKey(pkey))
+                if (!string.IsNullOrEmpty(pkey))
                 {
-                    int survived = progressMessage.timeSurvived;
-                    _deathTimes[pkey] = survived > 0 && Mathf.FloorToInt(clock) != survived ? survived : clock;
-                    if (progressMessage.isDisconnected) _disconnectedKeys.Add(pkey);
+                    if (!_deathTimes.ContainsKey(pkey))
+                    {
+                        int survived = progressMessage.timeSurvived;
+                        _deathTimes[pkey] = survived > 0 && Mathf.FloorToInt(clock) != survived ? survived : clock;
+                        if (progressMessage.isDisconnected) _disconnectedKeys.Add(pkey);
+                    }
+                    _recentEliminateKeys.Enqueue(pkey);
                 }
                 OnPlayerEliminated(progressMessage.playerId);
             }
@@ -797,7 +861,7 @@ namespace BetterFG.Features.TimePlacement
             // completedLevel, so hand it to the squad path rather than drawing finish order over it.
             if (HasSquadData()) { QueueRepaint(); return; }
             // scoring rounds (hunt/bubble/score-target, non-squad) show live points from the solo
-            // score manager — the poll owns the list, so don't draw finish order over it.
+            // score manager — the score-change repaint owns the list, so don't draw finish order over it.
             if (IsScoringRound()) return;
             // only RACES have a real finish order. survival/final-fall/etc fire a batch of
             // "succeeded" progress with identical times when the round resolves — don't paint that
@@ -930,8 +994,8 @@ namespace BetterFG.Features.TimePlacement
 
         // ── squad-scores mode ─────────────────────────────────────────────────
 
-        // repaint every row from the game's live squad scores. driven by a poll while squad mode
-        // is on, since these update continuously during the round.
+        // repaint every row from the game's live squad scores. driven by the score-change patches
+        // through QueueRepaint.
         static void RefreshSquadScores()
         {
             if (!_updating || !Enabled) return;
@@ -1375,6 +1439,7 @@ namespace BetterFG.Features.TimePlacement
             yield return null;
             _repaintQueued = false;
             if (!_updating || !Enabled || _panels.Count == 0) yield break;
+            if (IsTimeAttackRound()) { RefreshTimeAttack(); yield break; }
             if (QualStatusActive()) { RefreshQualStatus(); yield break; }
             if (IsScoringRound()) { RefreshSoloScores(); yield break; }
             RefreshSquadScores();
@@ -1702,10 +1767,12 @@ namespace BetterFG.Features.TimePlacement
         // when on, PB ghost beans (giant remotePlayerID) are NOT filtered out of the leaderboard.
         static bool IsGhost(uint remotePlayerID) => BetterFG.Utilities.BeanNetworkUtil.IsFakeBean(remotePlayerID);
 
+        static bool IsTimeAttackRound() => QualificationTime.PBStore.IsTimeAttackRound();
+
         // owns the list in non-squad, non-scoring rounds (races / survivals) where there's no live
         // score — there it shows finish times. scoring rounds keep their live score leaderboard
         // (RefreshSoloScores) but get the qual colouring applied to names. squad rounds keep squads.
-        static bool QualStatusActive() => QualStatusOn && !HasSquadData() && !IsScoringRound();
+        static bool QualStatusActive() => QualStatusOn && !HasSquadData() && !IsScoringRound() && !IsTimeAttackRound();
 
         // playerKey -> status (0 = qualified, 1 = playing, 2 = eliminated) from _players, ghosts
         // skipped. used to tint the live score leaderboard's names in scoring rounds.
@@ -1725,6 +1792,85 @@ namespace BetterFG.Features.TimePlacement
             return map;
         }
 
+
+        static void RefreshTimeAttack()
+        {
+            if (!_updating || !Enabled) return;
+            if (!_entriesCaptured) CaptureEntries();
+            if (!_entriesCaptured) return;
+
+            var tsm = Cgm()?._timeAttackScoreManager;
+            var tam = tsm?._timeAttackManager;
+            var players = tam?.PlayerScores;
+            if (players == null || players.Count == 0) { for (int i = 0; i < MaxRows; i++) HideRow(i); return; }
+
+            // everyone above the cut qualifies, everyone below is on the way out — this is the same
+            // number the game hangs its own qualification line off.
+            int cutoff = tsm._lastQualifyPosition;
+
+            string myKey = LocalPlayerKey();
+            var highlight = string.IsNullOrEmpty(myKey) ? null : new HashSet<string> { myKey };
+
+            var rows = new List<(uint rid, string key, float? time)>();
+            foreach (var ps in players.Values)
+            {
+                if (ps == null) continue;
+                uint rid = ps._remoteId;
+                if (IsGhost(rid)) continue;
+                string pkey = PlayerKeyById(rid);
+                if (string.IsNullOrEmpty(pkey)) continue;
+                float? t = null;
+                try
+                {
+                    var arr = ps.GetLapTimes;
+                    if (arr != null && arr.Length > 0)
+                    {
+                        float best = float.MaxValue;
+                        for (int k = 0; k < arr.Length; k++) if (arr[k] > 0f && arr[k] < best) best = arr[k];
+                        if (best < float.MaxValue) t = best;
+                    }
+                }
+                catch { }
+                if (!t.HasValue) continue;
+                rows.Add((rid, pkey, t));
+            }
+
+            rows.Sort((a, b) =>
+            {
+                bool at = a.time.HasValue, bt = b.time.HasValue;
+                if (at != bt) return at ? -1 : 1;
+                if (at && bt && a.time.Value != b.time.Value) return a.time.Value.CompareTo(b.time.Value);
+                return a.rid.CompareTo(b.rid);
+            });
+
+            if (cutoff != _lastTaCutoff)
+            {
+                _lastTaCutoff = cutoff;
+                Plugin.Log.LogInfo($"time attack cut line sits at {cutoff}, {rows.Count} players with a time");
+            }
+
+            int row = 0;
+            for (int i = 0; i < rows.Count && row < MaxRows; i++)
+            {
+                var e = rows[i];
+                int place = row + 1;
+                string col = cutoff > 0 && place > cutoff ? "#FF5555" : "#FFFF00";
+                string posText = $"<b><color={col}>{place}{Suffix(place)}</color></b>";
+                string ptsText;
+                if (e.time.HasValue)
+                {
+                    TimeSpan ts = TimeSpan.FromSeconds(e.time.Value);
+                    string timeStr = string.Format("{0:D2}:{1:D2}:{2:D3}", ts.Minutes, ts.Seconds, ts.Milliseconds);
+                    ptsText = $"<size=110%><color={col}>{timeStr}</color></size>";
+                }
+                else ptsText = $"<size=90%><color={col}>...</color></size>";
+
+                string name = ResolveDisplayName(e.key, highlight);
+                SetRow(row, posText, $"<size=90%>{name}</size>", ptsText, 80f, new List<string> { e.key });
+                row++;
+            }
+            for (int i = row; i < MaxRows; i++) HideRow(i);
+        }
 
         // qualify-highlight leaderboard: qualified players ranked by finish time (yellow, with time),
         // then eliminated players (red, no time). still-racing players get no row so the list starts
@@ -2008,6 +2154,29 @@ namespace BetterFG.Features.TimePlacement
     {
         [HarmonyPostfix]
         public static void Postfix() => FeatureTimePlacement.QueueRepaint();
+    }
+
+    [HarmonyPatch(typeof(TimeAttackLeaderboardViewModel), "OnEnable")]
+    internal static class Patch_TimePlacement_HideTALeaderboard
+    {
+        [HarmonyPostfix]
+        public static void Postfix(TimeAttackLeaderboardViewModel __instance)
+        {
+            if (!FeatureTimePlacement.feature.enabled || __instance == null || __instance.gameObject == null) return;
+            if (__instance.GetComponentInParent<GameplayTimeAttackEndOfRunViewModel>(true) != null) return;
+            __instance.gameObject.SetActive(false);
+        }
+    }
+
+    [HarmonyPatch(typeof(TimeAttackScoreManager), nameof(TimeAttackScoreManager.RegisterTime))]
+    internal static class Patch_TimePlacement_TAScoreRegister
+    {
+        [HarmonyPostfix]
+        public static void Postfix(uint remoteId, TimeAttackLapState lapState, ushort lapIndex)
+        {
+            FeatureTimePlacement.QueueRepaint();
+            BetterFG.Features.QualificationTime.FeatureQualificationTime.OnTimeAttackTimeRegistered(remoteId, lapState, lapIndex);
+        }
     }
 
     // when a banner (Qualified / Eliminated / Winner / OutForNow / RoundEnded) opens, reparent its

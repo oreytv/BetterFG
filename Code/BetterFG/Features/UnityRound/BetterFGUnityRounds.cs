@@ -44,8 +44,6 @@ namespace BetterFG.Features.UnityRound
         private static Material _pendingSkybox;
         private static string _pendingTextureJson;
         private static string _pendingTextureBaseUrl;
-        private static byte[] _pendingMusicBank;
-        private static byte[] _pendingMusicStringsBank;
         private static string _roundLoadKey;
         private static bool _roundLoadBusy;
         private static int _roundLoadTicket;
@@ -136,8 +134,6 @@ namespace BetterFG.Features.UnityRound
             _pendingSkybox = null;
             _pendingTextureJson = null;
             _pendingTextureBaseUrl = null;
-            _pendingMusicBank = null;
-            _pendingMusicStringsBank = null;
             _sceneReadyForCustomRound = false;
             ObstacleTextureLoader.RevertAll();
             ObstacleTextureLoader.ClearRuntime();

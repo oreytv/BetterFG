@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -320,6 +320,19 @@ namespace BetterFG.Features.Replay
                 });
         }
 
+        static void ReadPowerups(BinaryReader br, ReplayRecording rec)
+        {
+            int events = br.ReadInt32();
+            for (int i = 0; i < events; i++)
+                rec.powerupEvents.Add(new ReplayPowerupEvent
+                {
+                    t = br.ReadSingle(),
+                    playerId = br.ReadUInt32(),
+                    kind = br.ReadInt32(),
+                    on = br.ReadBoolean(),
+                });
+        }
+
         static void ReadLevel(BinaryReader br, ReplayRecording rec)
         {
             int packedLength = br.ReadInt32();
@@ -507,6 +520,7 @@ namespace BetterFG.Features.Replay
                             if (container.version >= 7) ReadTextures(br, container, container.version);
                             if (container.version >= 8) ReadSpeech(br, container);
                             if (container.version >= 16) ReadGhosts(br, container);
+                            if (container.version >= 21) ReadPowerups(br, container);
 
                             FixupMissingOutTimes(container);
                             container.sourcePath = path;
@@ -601,6 +615,7 @@ namespace BetterFG.Features.Replay
                 {
                     time = RoundUpFrame(JsonUtil.GetFloat(entry, "time")),
                     showPhrases = JsonUtil.GetBool(entry, "showPhrases"),
+                    crowns = (ReplayVisibilityMode)JsonUtil.GetInt(entry, "crowns"),
                     names = (ReplayVisibilityMode)JsonUtil.GetInt(entry, "names"),
                     players = (ReplayVisibilityMode)JsonUtil.GetInt(entry, "playersMode", JsonUtil.GetInt(entry, "players")),
                     showGhosts = JsonUtil.GetBool(entry, "showGhosts", true),
@@ -609,6 +624,8 @@ namespace BetterFG.Features.Replay
                     if (uint.TryParse(id, out uint pid)) vis.nameOnlyPlayers.Add(pid);
                 foreach (string id in JsonUtil.GetValue(entry, "onlyPlayers").Split('|'))
                     if (uint.TryParse(id, out uint pid)) vis.onlyPlayers.Add(pid);
+                foreach (string id in JsonUtil.GetValue(entry, "crownOnlyPlayers").Split('|'))
+                    if (uint.TryParse(id, out uint pid)) vis.crownOnlyPlayers.Add(pid);
                 rec.visibilityKeyframes.Add(vis);
             }
 
@@ -657,6 +674,7 @@ namespace BetterFG.Features.Replay
                     nickname = JsonUtil.GetValue(entry, "nickname"),
                     nameplate = JsonUtil.GetValue(entry, "nameplate"),
                     fameEarnedBadge = JsonUtil.GetInt(entry, "fameEarnedBadge"),
+                    crownsEarned = JsonUtil.GetInt(entry, "crownsEarned"),
                     fameUpdatedAt = DateTime.TryParse(JsonUtil.GetValue(entry, "fameUpdatedAt"),
                         System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var fameAt) ? fameAt : default,
                     bfgScale = JsonUtil.GetFloat(entry, "bfgScale"),
@@ -703,6 +721,7 @@ namespace BetterFG.Features.Replay
                         source = JsonUtil.GetValue(skin, "source"),
                         localPath = JsonUtil.GetValue(skin, "localPath"),
                         repoUrl = JsonUtil.GetValue(skin, "repoUrl"),
+                        hand = JsonUtil.GetInt(skin, "hand"),
                     });
 
                 foreach (var tex in JsonUtil.GetArray(entry, "bfgTextures"))

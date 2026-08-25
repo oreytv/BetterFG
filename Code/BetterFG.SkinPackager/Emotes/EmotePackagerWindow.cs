@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using UnityEditor;
@@ -17,8 +17,6 @@ namespace BetterFG.Editor
         private const string PREF_LAST_CATALOG_DIR = "BettrFG.EmotePackager.LastCatalogDir";
         private const string PREF_LAST_COVER_DIR = "BettrFG.EmotePackager.LastCoverDir";
         private const string PREF_LAST_AUDIO_DIR = "BettrFG.EmotePackager.LastAudioDir";
-        private const int COVER_W = 956;
-        private const int COVER_H = 763;
         private const long AUDIO_MAX_BYTES = 4L * 1024 * 1024; // 4mb
 
         private AnimationClip _clip;
@@ -258,9 +256,9 @@ namespace BetterFG.Editor
                 }
 
                 WriteInfoJson(dest, bundleName, audioFile);
-                WriteCover(dest);
+                CoverImage.Write(_coverPath, dest);
 
-                RunCatalogBat();
+                CatalogBat.Run(_repoRoot);
                 if (audioTooBig) Err($"Packed -> {dest}\nThe audio will not load because of its size. Please keep it under 4mb.");
                 else Ok($"Packed -> {dest}");
             }
@@ -289,56 +287,6 @@ namespace BetterFG.Editor
 
         private static string EscJ(string s) => s?.Replace("\\", "\\\\").Replace("\"", "\\\"") ?? "";
 
-        private void WriteCover(string dest)
-        {
-            if (string.IsNullOrEmpty(_coverPath) || !File.Exists(_coverPath)) return;
-
-            byte[] srcBytes = File.ReadAllBytes(_coverPath);
-            var src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!src.LoadImage(srcBytes)) { DestroyImmediate(src); return; }
-
-            float srcAspect = (float)src.width / src.height;
-            float dstAspect = (float)COVER_W / COVER_H;
-
-            int cropX, cropY, cropW, cropH;
-            if (srcAspect > dstAspect)
-            {
-                cropH = src.height;
-                cropW = Mathf.RoundToInt(src.height * dstAspect);
-                cropX = (src.width - cropW) / 2;
-                cropY = 0;
-            }
-            else
-            {
-                cropW = src.width;
-                cropH = Mathf.RoundToInt(src.width / dstAspect);
-                cropX = 0;
-                cropY = (src.height - cropH) / 2;
-            }
-
-            Color[] cropped = src.GetPixels(cropX, cropY, cropW, cropH);
-            DestroyImmediate(src);
-
-            var tmp = new Texture2D(cropW, cropH, TextureFormat.RGB24, false);
-            tmp.SetPixels(cropped);
-            tmp.Apply();
-
-            var rt = RenderTexture.GetTemporary(COVER_W, COVER_H, 0, RenderTextureFormat.ARGB32);
-            rt.filterMode = FilterMode.Bilinear;
-            Graphics.Blit(tmp, rt);
-            DestroyImmediate(tmp);
-
-            var prev = RenderTexture.active;
-            RenderTexture.active = rt;
-            var final = new Texture2D(COVER_W, COVER_H, TextureFormat.RGB24, false);
-            final.ReadPixels(new Rect(0, 0, COVER_W, COVER_H), 0, 0);
-            final.Apply();
-            RenderTexture.active = prev;
-            RenderTexture.ReleaseTemporary(rt);
-
-            File.WriteAllBytes(Path.Combine(dest, "cover.jpg"), final.EncodeToJPG(92));
-            DestroyImmediate(final);
-        }
 
         private void LoadCoverPreview(string path)
         {
@@ -347,22 +295,6 @@ namespace BetterFG.Editor
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (tex.LoadImage(bytes)) _coverPreview = tex;
             else DestroyImmediate(tex);
-        }
-
-        private void RunCatalogBat()
-        {
-            string bat = Path.Combine(_repoRoot, "generate_catalog.bat");
-            if (!File.Exists(bat)) return;
-
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = bat,
-                WorkingDirectory = _repoRoot,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using (var p = System.Diagnostics.Process.Start(psi))
-                p.WaitForExit();
         }
 
         private void Ok(string msg) { _statusMsg = msg; _statusType = EditorMessageType.Info; Repaint(); }

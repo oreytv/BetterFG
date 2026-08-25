@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -55,6 +55,7 @@ namespace BetterFG.Features.Replay
         public string nickname = "";
         public string nameplate = "";
         public int fameEarnedBadge;
+        public int crownsEarned;
         public DateTime fameUpdatedAt;
         public float bfgScale;
         public string bfgCosmetics = "";
@@ -110,6 +111,16 @@ namespace BetterFG.Features.Replay
         public float t;
         public uint playerId;
         public bool enabled;
+    }
+
+    public enum ReplayPowerupKind { RubberChicken, Invisibility }
+
+    public struct ReplayPowerupEvent
+    {
+        public float t;
+        public uint playerId;
+        public int kind;
+        public bool on;
     }
 
     public struct ReplayAudioParam
@@ -327,6 +338,8 @@ namespace BetterFG.Features.Replay
     {
         public float time;
         public bool showPhrases = true;
+        public ReplayVisibilityMode crowns = ReplayVisibilityMode.All;
+        public readonly List<uint> crownOnlyPlayers = new List<uint>();
         public ReplayVisibilityMode names = ReplayVisibilityMode.All;
         public readonly List<uint> nameOnlyPlayers = new List<uint>();
         public ReplayVisibilityMode players = ReplayVisibilityMode.All;
@@ -393,6 +406,7 @@ namespace BetterFG.Features.Replay
         public readonly List<ReplayStarchartEvent> starchartEvents = new List<ReplayStarchartEvent>();
         public readonly List<ReplayVfxEvent> diveSlideVfxEvents = new List<ReplayVfxEvent>();
         public readonly List<ReplayTailEvent> tailEvents = new List<ReplayTailEvent>();
+        public readonly List<ReplayPowerupEvent> powerupEvents = new List<ReplayPowerupEvent>();
         public string tailPrefab = "";
         public string tailBoneName = "";
         public Vector3 tailLocalPos;
@@ -447,6 +461,10 @@ namespace BetterFG.Features.Replay
             public Transform upperBody;
             public Transform armLeft;
             public Transform armRight;
+            public GameObject chicken;
+            public Levels.Invisibeans.InvisibilityVisualsController invis;
+            public bool chickenOn;
+            public bool invisOn;
         }
 
         static ReplayRecording _live;
@@ -468,6 +486,8 @@ namespace BetterFG.Features.Replay
         static readonly Dictionary<IntPtr, int> _pairKeys = new Dictionary<IntPtr, int>();
         static readonly Dictionary<IntPtr, int[]> _paramSets = new Dictionary<IntPtr, int[]>();
         static readonly Dictionary<IntPtr, int> _openSounds = new Dictionary<IntPtr, int>();
+        static readonly HashSet<string> _audioManagerKeys = new HashSet<string>();
+        static readonly Dictionary<string, float> _strayAudioAt = new Dictionary<string, float>();
 
         public static ReplayRecording Live => _live;
 
@@ -546,6 +566,8 @@ namespace BetterFG.Features.Replay
             _pairKeys.Clear();
             _paramSets.Clear();
             _openSounds.Clear();
+            _audioManagerKeys.Clear();
+            _strayAudioAt.Clear();
             _lastDiveSlideTimes.Clear();
             ReplaySlideEvent.Reset();
             _gameCam = null;
@@ -655,6 +677,10 @@ namespace BetterFG.Features.Replay
                         _beanOwners[beanPtr] = kvp.Key;
                         if (found != null) _animBeans[found.m_CachedPtr] = fgcc;
 
+                        var chickenCtl = fgcc.GetComponentInChildren<RubberChickenController>(true);
+                        tracked.chicken = chickenCtl != null ? chickenCtl.RubberChickenObject : null;
+                        tracked.invis = fgcc.GetComponentInChildren<Levels.Invisibeans.InvisibilityVisualsController>(true);
+
                         var accessory = fgcc.GetComponentInChildren<Levels.Tag.TailTagAccessory>(true);
                         if (accessory != null) CaptureTailState(accessory, accessory.AccessoryEnabled);
                     }
@@ -676,6 +702,21 @@ namespace BetterFG.Features.Replay
                         tracked.upperBody.GetLocalPositionAndRotation(out _, out upper);
                         if (tracked.armLeft is not null) tracked.armLeft.GetLocalPositionAndRotation(out _, out armL);
                         if (tracked.armRight is not null) tracked.armRight.GetLocalPositionAndRotation(out _, out armR);
+                    }
+
+                    // EnableRubberChickenObject/EnablePowerupVersion both got hooked and neither ever fired
+                    // — il2cpp inlines them into their callers. reading the result is immune to that
+                    if (tracked.chicken is not null && tracked.chicken.m_CachedPtr != IntPtr.Zero
+                        && tracked.chicken.activeSelf != tracked.chickenOn)
+                    {
+                        tracked.chickenOn = !tracked.chickenOn;
+                        _live.powerupEvents.Add(new ReplayPowerupEvent { t = t, playerId = kvp.Key, kind = (int)ReplayPowerupKind.RubberChicken, on = tracked.chickenOn });
+                    }
+                    if (tracked.invis is not null && tracked.invis.m_CachedPtr != IntPtr.Zero
+                        && tracked.invis.IsPowerupMode != tracked.invisOn)
+                    {
+                        tracked.invisOn = !tracked.invisOn;
+                        _live.powerupEvents.Add(new ReplayPowerupEvent { t = t, playerId = kvp.Key, kind = (int)ReplayPowerupKind.Invisibility, on = tracked.invisOn });
                     }
 
                     tracked.tf.GetPositionAndRotation(out var pos, out var rot);
@@ -965,6 +1006,7 @@ namespace BetterFG.Features.Replay
                 string name = pair.audioEvent3D;
                 if (string.IsNullOrEmpty(name)) name = pair.audioEvent2D;
                 key = string.IsNullOrEmpty(name) ? -1 : Intern(_live.audioKeys, _keyIds, name);
+                if (key >= 0) _audioManagerKeys.Add(name);
                 _pairKeys[handle] = key;
             }
             if (key < 0) return;
@@ -976,13 +1018,30 @@ namespace BetterFG.Features.Replay
         {
             if (_live == null || string.IsNullOrEmpty(key)) return;
             if (key.StartsWith("UI_Gen_", StringComparison.Ordinal)) return;
+            _audioManagerKeys.Add(key);
             RecordAudio(Intern(_live.audioKeys, _keyIds, key), controller, pos, null);
+        }
+
+        // a sound fmod started that no AudioManager hook claimed. keys AudioManager does play are left
+        // alone so nothing lands twice, and a key is taken at most once every 50ms so a looping emitter
+        // restarting can't fill the file
+        public static void CaptureStrayAudio(string key, Vector3 pos)
+        {
+            if (_live == null || string.IsNullOrEmpty(key)) return;
+            if (_audioManagerKeys.Contains(key) || key.StartsWith("UI_Gen_", StringComparison.Ordinal)) return;
+
+            float now = GameplayTime;
+            if (_strayAudioAt.TryGetValue(key, out float when) && now - when < 0.05f) return;
+            _strayAudioAt[key] = now;
+
+            RecordAudio(Intern(_live.audioKeys, _keyIds, key), null, pos, null);
         }
 
         public static void CaptureHeldAudio(EventInstanceReference reference, string key, Vector3 pos)
         {
             if (_live == null || reference == null || string.IsNullOrEmpty(key)) return;
             if (key.StartsWith("UI_Gen_", StringComparison.Ordinal)) return;
+            _audioManagerKeys.Add(key);
 
             int index = RecordAudio(Intern(_live.audioKeys, _keyIds, key), null, pos, null);
             if (index >= 0) _openSounds[reference.Pointer] = index;
@@ -1158,6 +1217,7 @@ namespace BetterFG.Features.Replay
             p.nameplate = ItemId(sel.NameplateOption);
             p.nickname = ItemId(sel.NicknameOption);
             p.fameEarnedBadge = sel.FameEarnedBadge;
+            p.crownsEarned = sel.CrownsEarned;
             p.fameUpdatedAt = new DateTime(sel.FameUpdatedAt.Ticks);
         }
 

@@ -17,8 +17,6 @@ namespace BetterFG.Tweaks
         public static InstantLandingIndicatorTweak Instance { get; private set; }
         void Awake() => Instance = this;
 
-        private bool _cached;
-        private float _origFadeIn, _origFadeOut, _origSpeed;
 
         // fires via the BfgTweak round-start fan-out once this is re-registered in TweakRegistry
         public override void OnRoundStart()

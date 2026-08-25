@@ -718,7 +718,54 @@ namespace BetterFG.Features.QualificationTime
         static GameObject _qualPopupGo;
         public static bool QualPopupOpen => _qualPopupGo != null;
 
-        static void ResetRaceRoundCache() => _isRaceRoundCache = null;
+        static bool? _isTimeAttackCache;
+        static TimeAttackPlayerStats _taLocalStats;
+
+        static void ResetRaceRoundCache()
+        {
+            _isRaceRoundCache = null;
+            _isTimeAttackCache = null;
+            _taLocalStats = null;
+            _taPbLabel = null;
+            _taLiveGhostFrames = null;
+        }
+
+        static bool IsTimeAttackRound()
+        {
+            if (_isTimeAttackCache.HasValue) return _isTimeAttackCache.Value;
+            ClientGameManager cgm;
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            // GameRules lands a frame or two after the loading screen, so an early ask gets no answer
+            // and no cache entry — the next caller resolves it for real.
+            if (gsv != null && gsv.GetLiveClientGameManager(out cgm) && cgm?.GameRules != null)
+                return (_isTimeAttackCache = cgm.GameRules.IsTimeAttackGameMode).Value;
+            return false;
+        }
+
+        // the ghost's timebase. a normal round is measured off the round clock, which only ever goes
+        // up. a time attack run is measured off the CURRENT LAP, which resets to zero every attempt —
+        // and that reset is exactly what re-arms the recorder and replays the ghost, no event needed.
+        // -1 means no lap is running (you haven't crossed the start line, or you just reset).
+        internal static float GhostClock()
+        {
+            if (!IsTimeAttackRound())
+                return GlobalGameStateClient.Instance?.GameStateView?.GameplayTimeElapsed ?? 0f;
+
+            // cached for the round and dropped by ResetRaceRoundCache, so it can't outlive its round
+            if (_taLocalStats == null)
+            {
+                ClientGameManager cgm;
+                var gsv = GlobalGameStateClient.Instance?.GameStateView;
+                if (gsv == null || !gsv.GetLiveClientGameManager(out cgm) || cgm == null) return -1f;
+                var tsm = cgm._timeAttackScoreManager;
+                _taLocalStats = tsm?._timeAttackManager?.GetPlayerStats(tsm.LocalPlayer);
+                if (_taLocalStats == null) return -1f;
+            }
+
+            var lap = _taLocalStats.GetCurrentLap;
+            if (lap == null || lap.LapState != TimeAttackLapState.InProgress) return -1f;
+            return lap.CurrentLapTime;
+        }
 
         static bool HasRaceArchetype()
         {
@@ -831,14 +878,104 @@ namespace BetterFG.Features.QualificationTime
 
         static IEnumerator SpawnLiveTimerDeferred()
         {
-            if (!On("timer"))
-            {
-                DestroyLiveTimer();
-                yield break;
-            }
             // one frame so cgm.GameRules is populated after CleanupLoadingScreens lands.
             yield return null;
+
+            // time attack already draws a lap timer top-middle, so a second clock top-right is just
+            // noise. we only hang the PB underneath the game's box.
+            if (IsTimeAttackRound())
+            {
+                DestroyLiveTimer();
+                if (On("play"))
+                    yield return BetterFGUIMan.Instance.StartCoroutine(SpawnTimeAttackPbLabel().WrapToIl2Cpp());
+                yield break;
+            }
+
+            if (!On("timer")) { DestroyLiveTimer(); yield break; }
             if (IsRaceRound()) SpawnLiveTimer();
+        }
+
+        const string TaPbLabelName = "BettrFG_TimeAttackPbLabel";
+        static TextMeshProUGUI _taPbLabel;
+
+        static IEnumerator SpawnTimeAttackPbLabel()
+        {
+            // the TA hud is built with PlayingState, which isn't up yet when the loading screen clears
+            Transform box = null;
+            float waited = 0f;
+            while (waited < 15f)
+            {
+                box = GameObject.Find("UICanvas_Client_V2(Clone)")?.transform.Find(
+                    "Default/InGameUiManager(Clone)/GameStates/PlayingState/GameplayTimeAttackViewModel/TopMiddleContainer/PB_UI_TimeAttack_LapTimer/TimeAttackContainer/TimeAttackBox");
+                if (box != null) break;
+                yield return new WaitForSeconds(0.1f);
+                waited += 0.1f;
+            }
+            if (box == null) { Plugin.Log.LogWarning("time attack lap timer never turned up, so no PB under it"); yield break; }
+            if (box.Find(TaPbLabelName) != null) yield break;
+
+            // clone the box's own text so the PB inherits the TA hud's font and material
+            var src = box.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (src == null) { Plugin.Log.LogWarning("nothing to clone inside TimeAttackBox, no PB label"); yield break; }
+
+            var go = UnityEngine.Object.Instantiate(src.gameObject, box);
+            go.name = TaPbLabelName;
+            foreach (var b in go.GetComponents<Mediatonic.Tools.MVVM.TMPTextBinding>())
+                UnityEngine.Object.DestroyImmediate(b);
+            foreach (var b in go.GetComponents<ActiveBinding>())
+                UnityEngine.Object.DestroyImmediate(b);
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0f);
+            rt.anchorMax = new Vector2(0.5f, 0f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, -4f);
+            rt.sizeDelta = new Vector2(400f, 44f);
+            rt.localScale = Vector3.one * 0.55f;
+
+            _taPbLabel = go.GetComponent<TextMeshProUGUI>();
+            _taPbLabel.enableAutoSizing = false;
+            _taPbLabel.enableWordWrapping = false;
+            _taPbLabel.overflowMode = TextOverflowModes.Overflow;
+            _taPbLabel.alignment = TextAlignmentOptions.Center;
+            _taPbLabel.color = new Color(1f, 1f, 1f, 0.8f);
+            go.SetActive(true);
+
+            // the binding we just killed still gets one more Update this frame, so writing the text
+            // inline would get stomped back to the lap time. same dance as the load-screen label.
+            yield return null;
+            RefreshTimeAttackPbLabel();
+        }
+
+        static void RefreshTimeAttackPbLabel()
+        {
+            var lbl = _taPbLabel;
+            if (lbl is null || lbl.m_CachedPtr == IntPtr.Zero) return;
+            if (!TryGetLiveRoundIds(out string cacheId, out string roundName, out _)) return;
+
+            bool found = TryGetLiveTimerPb(cacheId, roundName, out float pb);
+            lbl.text = FormatPbText(found, pb);
+            lbl.ForceMeshUpdate();
+        }
+
+        // round cacheId + display name off the LIVE cgm. the _roundIdCache pair is wiped by
+        // CleanupLoadingScreens, so anything asking mid-round has to go back to the manager.
+        static bool TryGetLiveRoundIds(out string cacheId, out string roundName, out bool isUgc)
+        {
+            cacheId = null;
+            roundName = null;
+            isUgc = false;
+
+            ClientGameManager cgm;
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            if (gsv == null || !gsv.GetLiveClientGameManager(out cgm) || cgm?._round == null) return false;
+
+            string rid = PBStore.CanonicalRoundId(_roundIdCache ?? cgm._round.Id);
+            roundName = _roundNameCache ?? cgm._round.DisplayNameUnindented;
+            isUgc = cgm.IsUGCRound;
+            cacheId = (!isUgc && !string.IsNullOrEmpty(roundName)) ? roundName : rid;
+            if (string.IsNullOrEmpty(roundName)) roundName = rid;
+            return !string.IsNullOrEmpty(cacheId);
         }
 
         static void SpawnLiveTimer()
@@ -1075,6 +1212,9 @@ namespace BetterFG.Features.QualificationTime
         const int GhostMagic = unchecked((int)0xBF670002);
 
         internal static List<(float t, Vector3 pos, Quaternion rot, int stateHash, float animTime)> _ghostFrames;
+        // the frame list the live time attack ghost is playing back. we rewrite it in place when you
+        // beat your PB mid-round, so the next lap races the run you just did.
+        static List<(float, Vector3, Quaternion, int, float)> _taLiveGhostFrames;
         static bool _ghostRecording;
         static int _ghostGen;
         // ghosts currently in the round. usually one, but "All" mode spawns up to three.
@@ -1088,6 +1228,13 @@ namespace BetterFG.Features.QualificationTime
         static List<PbType> GhostTypesToSpawn(string cacheId)
         {
             var result = new List<PbType>();
+            // a time attack ghost is timestamped against the LAP clock, a race ghost against the round
+            // clock — they're not interchangeable, so the ghostmode dropdown doesn't get a say here.
+            if (IsTimeAttackRound())
+            {
+                if (GhostExistsFor(cacheId, PbType.TimeAttack)) result.Add(PbType.TimeAttack);
+                return result;
+            }
             string mode = GhostMode;
             if (mode == "current") { var t = PBStore.CurrentType(); if (GhostExistsFor(cacheId, t)) result.Add(t); }
             else if (mode == "solos") { if (GhostExistsFor(cacheId, PbType.Solos)) result.Add(PbType.Solos); }
@@ -1122,6 +1269,8 @@ namespace BetterFG.Features.QualificationTime
         // "fastest" scans solos/duos/squads for this round and shows whichever is quickest.
         static bool TryGetLiveTimerPb(string id, string displayNameHint, out float pb)
         {
+            if (IsTimeAttackRound())
+                return PBStore.TryGet(id, PbType.TimeAttack, out pb, out _, displayNameHint);
             if (feature.GetChoice("livepbmode") != "fastest")
                 return PBStore.TryGet(id, out pb, out _, displayNameHint);
 
@@ -1149,7 +1298,7 @@ namespace BetterFG.Features.QualificationTime
             return false;
         }
 
-        static string ShowLabel(PbType t) => t == PbType.Solos ? "Solos" : t == PbType.Duos ? "Duos" : "Squads";
+        static string ShowLabel(PbType t) => t == PbType.Solos ? "Solos" : t == PbType.Duos ? "Duos" : t == PbType.Squads ? "Squads" : "Time Attack";
 
         static string GetCurrentRoundCacheId()
         {
@@ -1163,7 +1312,7 @@ namespace BetterFG.Features.QualificationTime
             Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
                 "BettrFG", "Settings", "ghosts");
 
-        static string Suffix(PbType t) => t == PbType.Solos ? "__solos" : t == PbType.Duos ? "__duos" : "__squads";
+        static string Suffix(PbType t) => t == PbType.Solos ? "__solos" : t == PbType.Duos ? "__duos" : t == PbType.Squads ? "__squads" : "__timeattack";
 
         // per-show ghost file. legacy ghosts have no suffix and are treated as solos.
         static string GhostPath(string cacheId, PbType t) =>
@@ -1208,6 +1357,7 @@ namespace BetterFG.Features.QualificationTime
             yield return GhostPath(cacheId, PbType.Solos);
             yield return GhostPath(cacheId, PbType.Duos);
             yield return GhostPath(cacheId, PbType.Squads);
+            yield return GhostPath(cacheId, PbType.TimeAttack);
             yield return LegacyGhostPath(cacheId);
         }
 
@@ -1280,6 +1430,8 @@ namespace BetterFG.Features.QualificationTime
             FallGuysCharacterController local = null;
             Transform localTf = null;
             Animator localAnim = null;
+            float lastT = 0f;
+            bool armed = false;
             while (_ghostRecording && _ghostGen == gen)
             {
                 if (local is null || local.m_CachedPtr == IntPtr.Zero)
@@ -1297,7 +1449,13 @@ namespace BetterFG.Features.QualificationTime
                 }
                 if (localTf is not null && localTf.m_CachedPtr != IntPtr.Zero)
                 {
-                    float t = GlobalGameStateClient.Instance?.GameStateView?.GameplayTimeElapsed ?? 0f;
+                    float t = GhostClock();
+                    // between time attack laps: hold the finished run in the buffer, because
+                    // RegisterTime lands after a network round-trip and SaveGhost reads it there.
+                    // the buffer is only wiped once the NEXT lap actually starts.
+                    if (t < 0f) { armed = true; yield return wait; continue; }
+                    if (armed || t < lastT) { _ghostFrames.Clear(); armed = false; }
+                    lastT = t;
                     int sh = 0; float at = 0f;
                     if (localAnim != null)
                     {
@@ -1318,23 +1476,7 @@ namespace BetterFG.Features.QualificationTime
             yield return new WaitForSeconds(2f);
             if (_ghostGen != gen) yield break;
 
-            // _roundIdCache is cleared by the time this runs; read from game state directly
-            string cacheId = null;
-            try
-            {
-                ClientGameManager cgm;
-                var gsv = GlobalGameStateClient.Instance?.GameStateView;
-                if (gsv != null && gsv.GetLiveClientGameManager(out cgm) && cgm?._round != null)
-                {
-                    string rid = PBStore.CanonicalRoundId(cgm._round.Id);
-                    string rname = cgm._round.DisplayNameUnindented;
-                    bool isUgc = rid?.StartsWith("ugc-") ?? false;
-                    cacheId = (!isUgc && !string.IsNullOrEmpty(rname)) ? rname : rid;
-                }
-            }
-            catch (Exception ex) { Plugin.Log.LogWarning("Ghost: round lookup failed: " + ex.Message); }
-
-            if (string.IsNullOrEmpty(cacheId)) { Plugin.Log.LogInfo("Ghost: no round id, skipping"); yield break; }
+            if (!TryGetLiveRoundIds(out string cacheId, out _, out _)) { Plugin.Log.LogInfo("Ghost: no round id, skipping"); yield break; }
 
             var types = GhostTypesToSpawn(cacheId);
             if (types.Count == 0) { Plugin.Log.LogInfo("Ghost: nothing to spawn for mode " + GhostMode); yield break; }
@@ -1351,6 +1493,7 @@ namespace BetterFG.Features.QualificationTime
                 var frames = LoadGhost(cacheId, type);
                 Plugin.Log.LogInfo($"Ghost: loaded {frames?.Count ?? -1} frames for {cacheId} [{type}]");
                 if (frames == null || frames.Count == 0) continue;
+                if (type == PbType.TimeAttack) _taLiveGhostFrames = frames;
 
                 string ghostName = playerName + " (PB - " + ShowLabel(type) + ")";
                 BetterFG.Features.Replay.FeatureReplay.BeginGhostSpawn();
@@ -1503,11 +1646,26 @@ namespace BetterFG.Features.QualificationTime
             int driftFrames = 0;
             int drivenIdx = -1;
             bool hasAnim = ghostAnim != null;
+            bool timeAttack = IsTimeAttackRound();
             var ghostTf = ghostGo.transform;
-            var gsv = GlobalGameStateClient.Instance?.GameStateView;
-            while (ghostGo.m_CachedPtr != IntPtr.Zero && _ghostGen == gen && idx < frames.Count)
+            // a time attack ghost never runs out of laps, so it isn't allowed to fall out of the loop
+            while (ghostGo.m_CachedPtr != IntPtr.Zero && _ghostGen == gen && (timeAttack || idx < frames.Count))
             {
-                float elapsed = gsv != null ? gsv.GameplayTimeElapsed : 0f;
+                float elapsed = GhostClock();
+                // beating your PB mid-round rewrites this list under us, so never trust the old index
+                if (idx >= frames.Count) { idx = 0; drivenIdx = -1; }
+                // between attempts the ghost waits on the start line for the next lap to begin
+                if (elapsed < 0f)
+                {
+                    idx = 0;
+                    lastState = 0;
+                    drivenIdx = -1;
+                    finished = false;
+                    ghostTf.SetPositionAndRotation(frames[0].pos, frames[0].rot);
+                    yield return null;
+                    continue;
+                }
+                if (elapsed < frames[idx].t) { idx = 0; drivenIdx = -1; }
                 while (idx + 1 < frames.Count && frames[idx + 1].t <= elapsed)
                     idx++;
                 if (idx + 1 < frames.Count)
@@ -1522,7 +1680,14 @@ namespace BetterFG.Features.QualificationTime
                 {
                     ghostTf.SetPositionAndRotation(frames[idx].pos, frames[idx].rot);
                     // hit the last frame with live elapsed already past it — ghost has "qualified".
-                    if (elapsed >= frames[idx].t) { finished = true; break; }
+                    // in time attack it sticks around instead: the run isn't over, you just go again.
+                    if (elapsed >= frames[idx].t)
+                    {
+                        if (!timeAttack) { finished = true; break; }
+                        if (!finished) { finished = true; FireGhostQualifyFallFeed(ghostName, ghostPb); }
+                        yield return null;
+                        continue;
+                    }
                 }
 
                 // Play on a recorded state change, and re-assert if the graph drifts off and stays off.
@@ -1562,7 +1727,8 @@ namespace BetterFG.Features.QualificationTime
             }
             // ghost crossed the line — stamp the fallfeed with the PB snapshotted at spawn time.
             // reading PBStore here would return the new (faster) time if the local player just beat it.
-            if (finished)
+            // time attack already fires its own feed per lap inside the loop.
+            if (finished && !timeAttack)
                 FireGhostQualifyFallFeed(ghostName, ghostPb);
             if (ghostGo != null && _ghostGos.Contains(ghostGo))
             {
@@ -1574,6 +1740,11 @@ namespace BetterFG.Features.QualificationTime
         // spawn a fallfeed for a ghost that just finished its playback. bakes the PB time straight
         // into the message when the qual-time tweak is on (its own postfix would no-op on this feed
         // because FeatureTimePlacement has no server qualifyTime for the ghost's fake player key).
+        //
+        // disabled after the FallFeed rework: constructing FallFeedManager.PlayerSlot/FallFeedMessageData
+        // from managed code with `new` crashed the whole game (no managed exception, log just stops) —
+        // Cecil shows PlayerSlot has no constructor at all, so this is an unverified native-boundary
+        // allocation. skip firing the toast until a safe construction path is confirmed live.
         static void FireGhostQualifyFallFeed(string ghostName, float pbSeconds)
         {
             try
@@ -1582,18 +1753,7 @@ namespace BetterFG.Features.QualificationTime
                 var container = mgr?._fallFeedContainer;
                 if (container == null) return;
 
-                string msg = ghostName + " <sprite name=\"fallfeed-race\" tint=1>";
-                if (BetterFG.Tweaks.FallFeedQualTimeTweak.Instance?.IsEnabled == true)
-                {
-                    TimeSpan t = TimeSpan.FromSeconds(pbSeconds);
-                    string stamp = string.Format("{0:D2}:{1:D2}:{2:D3}", t.Minutes, t.Seconds, t.Milliseconds);
-                    msg = ghostName + " <color=#FFFF00>" + stamp + "</color> <sprite name=\"fallfeed-race\" tint=1>";
-                }
-
-                var data = new FGClient.FallFeed.FallFeedManager.FallFeedMessageData();
-                data.Message = msg;
-                container.CreateNotification(data, container._fontSize);
-                container.PlaySounds(FGClient.FallFeed.FallFeedManager.FallFeedAudio.Qualification_squad_member);
+                Plugin.Log.LogInfo("Ghost fallfeed skipped (PlayerSlot construction unverified post-update): " + ghostName);
             }
             catch (Exception ex) { Plugin.Log.LogWarning("Ghost fallfeed failed: " + ex.Message); }
         }
@@ -1603,7 +1763,9 @@ namespace BetterFG.Features.QualificationTime
             if (cgm == null || msg == null) return;
             if (!msg.succeeded || msg.isSkipping) return;
             if (!cgm.IsMyLocalPlayer(msg.playerId)) return;
-            if (!IsRaceRound()) return;
+            // time attack "qualifies" everyone off their ranking when the round ends, so this fires
+            // with the whole round's elapsed. the real per-run time comes through RegisterTime.
+            if (!IsRaceRound() || IsTimeAttackRound()) return;
 
             float elapsed = GlobalGameStateClient.Instance?.GameStateView != null
                 ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed
@@ -1614,6 +1776,66 @@ namespace BetterFG.Features.QualificationTime
 
             Plugin.Log.LogInfo("QualTime: server progress fired, elapsed=" + elapsed);
             ShowQualificationTime(elapsed);
+        }
+
+        // called from the TimeAttackScoreManager.RegisterTime postfix that the leaderboard already
+        // owns. every lap state change for every player lands here; ours is the only one that matters,
+        // and only once the lap actually reads Finished — that's the moment the time is real.
+        public static void OnTimeAttackTimeRegistered(uint remoteId, TimeAttackLapState lapState, ushort lapIndex)
+        {
+            if (!feature.enabled || !IsTimeAttackRound()) return;
+
+            ClientGameManager cgm;
+            var gsv = GlobalGameStateClient.Instance?.GameStateView;
+            if (gsv == null || !gsv.GetLiveClientGameManager(out cgm) || cgm == null) return;
+            var tsm = cgm._timeAttackScoreManager;
+            if (tsm == null || tsm.LocalPlayer != remoteId) return;
+
+            if (lapState != TimeAttackLapState.Finished)
+            {
+                Plugin.Log.LogInfo($"time attack lap {lapIndex} -> {lapState}");
+                return;
+            }
+
+            var stats = tsm._timeAttackManager?.GetPlayerStats(remoteId);
+            var laps = stats?.GetLapTimes;
+            if (laps == null || laps.Length == 0) { Plugin.Log.LogWarning("time attack finished but no lap times came back?"); return; }
+
+            // the lap the message is about, or the newest positive one if the index is off the end
+            float time = lapIndex < laps.Length ? laps[lapIndex] : 0f;
+            if (time <= 0f)
+                for (int i = laps.Length - 1; i >= 0; i--) if (laps[i] > 0f) { time = laps[i]; break; }
+            if (time <= 0f) { Plugin.Log.LogWarning($"time attack lap {lapIndex} finished with no time in {laps.Length} slots"); return; }
+
+            if (!TryGetLiveRoundIds(out string cacheId, out string roundName, out bool isUgc))
+            { Plugin.Log.LogWarning("time attack time registered but the round has no id, dropping it"); return; }
+
+            bool isPb = On("store") && PBStore.TrySet(cacheId, roundName, PbType.TimeAttack, time, isUgc);
+            Plugin.Log.LogInfo($"time attack lap {lapIndex} on {roundName}: {time:F3}s{(isPb ? " — new PB" : "")}");
+            RefreshTimeAttackPbLabel();
+            if (!isPb) return;
+
+            AudioService.PlayPB();
+            if (!On("ghost")) return;
+            SaveGhost(cacheId, PbType.TimeAttack);
+            RaceTheNewTimeAttackGhost();
+        }
+
+        // your new PB should be what you race on the next lap, not the one you turned up with. the
+        // playback coroutine re-reads its list every frame, so rewriting it in place is the whole swap.
+        // nothing to swap into on your first ever time here — spawn the ghost we just wrote instead.
+        static void RaceTheNewTimeAttackGhost()
+        {
+            if (_ghostFrames == null || _ghostFrames.Count == 0) return;
+            if (_taLiveGhostFrames == null)
+            {
+                Plugin.Log.LogInfo("first time attack ghost for this level, bringing it out now");
+                BetterFGUIMan.Instance.StartCoroutine(SpawnGhostDeferred(_ghostGen).WrapToIl2Cpp());
+                return;
+            }
+            _taLiveGhostFrames.Clear();
+            foreach (var f in _ghostFrames) _taLiveGhostFrames.Add(f);
+            Plugin.Log.LogInfo($"ghost swapped onto your new run, {_taLiveGhostFrames.Count} frames");
         }
 
         // called from the shared ClientGameManager.Shutdown hub in UnityRoundPatches.
@@ -1674,7 +1896,11 @@ namespace BetterFG.Features.QualificationTime
                         }
                         int sz = (int)cgm.SquadSize;
                         type = sz <= 1 ? PbType.Solos : (sz == 2 ? PbType.Duos : PbType.Squads);
-                        if (cgm.GameRules != null) isRace = cgm.GameRules.IsRaceRound;
+                        if (cgm.GameRules != null)
+                        {
+                            isRace = cgm.GameRules.IsRaceRound || cgm.GameRules.IsTimeAttackGameMode;
+                            if (cgm.GameRules.IsTimeAttackGameMode) type = PbType.TimeAttack;
+                        }
                     }
                 }
                 catch (Exception ex) { Plugin.Log.LogWarning("QualTime: loadscreen cgm lookup failed: " + ex.Message); }
@@ -2113,40 +2339,6 @@ namespace BetterFG.Features.QualificationTime
             {
                 Plugin.Log.LogWarning($"SplashCache: exception: {ex.Message}");
             }
-        }
-    }
-
-    public class GhostRecorderComponent : MonoBehaviour
-    {
-        public GhostRecorderComponent(IntPtr ptr) : base(ptr) { }
-
-        private Animator _anim;
-        private float _elapsed;
-        const float Interval = 1f / 20f;
-
-        void Awake()
-        {
-            var wrapper = transform.Find("BetterFG_ScaleWrapper");
-            var charT = (wrapper != null ? wrapper : transform).Find("Character");
-            _anim = charT?.GetComponent<Animator>();
-        }
-
-        void Update()
-        {
-            var frames = FeatureQualificationTime._ghostFrames;
-            if (frames == null) return;
-            _elapsed += Time.deltaTime;
-            if (_elapsed < Interval) return;
-            _elapsed = 0f;
-            float t = GlobalGameStateClient.Instance?.GameStateView?.GameplayTimeElapsed ?? 0f;
-            int sh = 0; float at = 0f;
-            if (_anim != null)
-            {
-                var info = _anim.GetCurrentAnimatorStateInfo(0);
-                sh = info.shortNameHash;
-                at = info.normalizedTime;
-            }
-            frames.Add((t, transform.position, transform.rotation, sh, at));
         }
     }
 }

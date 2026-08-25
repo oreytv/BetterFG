@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
+using FG.Common;
+using FGClient;
 
 namespace BetterFG.Customization.Player
 {
     // one texture slot swap within an entry - texName is the ORIGINAL texture's name, the
-    // identity we match against on a bean's live materials (see ApplyTextureToGameObject)
     public class SkinTexOverride
     {
         public string texName;
@@ -28,17 +29,28 @@ namespace BetterFG.Customization.Player
         public float x, y, z, w;
     }
 
-    // one user-created costume retexture - can carry several texture swaps (one per slot) plus
-    // optional material property tweaks (rim colour, emissive, metallic/smoothness, etc)
     public class SkinTexEntry
     {
         public string entryName;
         public bool enabled;
+        public string category = SkinTexCategory.Upper;
         public string costumeName;
 
         public List<string> matNames = new List<string>();
         public List<SkinTexOverride> overrides = new List<SkinTexOverride>();
         public List<MatPropOverride> matProps = new List<MatPropOverride>();
+    }
+
+    public static class SkinTexCategory
+    {
+        public const string Upper = "upper";
+        public const string Lower = "lower";
+        public const string Pattern = "pattern";
+        public const string Colour = "colour";
+        public const string Faceplate = "faceplate";
+
+        public static bool IsOptionField(string category)
+            => category == Colour || category == Faceplate;
     }
 
     public partial class SkinApplicationService
@@ -132,6 +144,7 @@ namespace BetterFG.Customization.Player
                 {
                     entryName = SettingsService.Get(EK(i, "name"), "entry " + i),
                     enabled = SettingsService.Get(EK(i, "enabled"), "1") == "1",
+                    category = SettingsService.Get(EK(i, "category"), SkinTexCategory.Upper),
                     costumeName = SettingsService.Get(EK(i, "costume"), "")
                 };
 
@@ -183,13 +196,14 @@ namespace BetterFG.Customization.Player
                 var e = entries[i];
                 SettingsService.Set(EK(i, "name"), e.entryName);
                 SettingsService.Set(EK(i, "enabled"), e.enabled ? "1" : "0");
+                SettingsService.Set(EK(i, "category"), string.IsNullOrEmpty(e.category) ? SkinTexCategory.Upper : e.category);
                 SettingsService.Set(EK(i, "costume"), e.costumeName);
                 SettingsService.Set(EK(i, "matNames"), string.Join("|", e.matNames));
                 SettingsService.Set(EK(i, "overrideCount"), e.overrides.Count.ToString());
                 for (int j = 0; j < e.overrides.Count; j++)
                 {
                     SettingsService.Set(EK(i, $"override.{j}.texName"), e.overrides[j].texName);
-                    SettingsService.Set(EK(i, $"override.{j}.texPath"), e.overrides[j].texPath);
+                    SettingsService.Set(EK(i, $"override.{j}.texPath"), e.overrides[j].texPath ?? "");
                 }
 
                 SettingsService.Set(EK(i, "propCount"), e.matProps.Count.ToString());
@@ -370,6 +384,7 @@ namespace BetterFG.Customization.Player
         public static int ApplyEntryToBean(SkinTexEntry entry, GameObject bean)
         {
             if (Instance == null || bean == null) return 0;
+            if (SkinTexCategory.IsOptionField(entry.category)) return 0;
             int total = 0;
             foreach (var ov in entry.overrides)
             {
@@ -401,6 +416,7 @@ namespace BetterFG.Customization.Player
             if (Instance == null) return;
             foreach (var bean in GatherBeans())
                 Instance.RevertCustomTexture(bean);
+            RevertAllOptionOverrides();
         }
 
         public static void ReapplyAllEnabledFromSettings()
@@ -415,8 +431,355 @@ namespace BetterFG.Customization.Player
             foreach (var entry in entries)
             {
                 if (!entry.enabled) continue;
-                int n = ApplyEntry(entry);
-                status?.Invoke(n > 0 ? $"applied {entry.entryName}" : "nothing matched");
+                if (SkinTexCategory.IsOptionField(entry.category))
+                {
+                    bool ok = ApplyOptionOverrideEntry(entry);
+                    status?.Invoke(ok ? $"applied {entry.entryName}" : $"{entry.entryName}: option not loaded");
+                }
+                else
+                {
+                    int n = ApplyEntry(entry);
+                    status?.Invoke(n > 0 ? $"applied {entry.entryName}" : "nothing matched");
+                }
+            }
+            RepushAffectedOptionsToBeans();
+        }
+
+        private struct OptionOriginal { public string prop; public string kind; public Color c; public float f; }
+        private static readonly Dictionary<UnityEngine.Object, List<OptionOriginal>> _optionOriginals = new Dictionary<UnityEngine.Object, List<OptionOriginal>>();
+
+        private static bool ApplyOptionOverrideEntry(SkinTexEntry entry)
+        {
+            var opt = FindOptionByName(entry.category, entry.costumeName);
+            if (opt == null) return false;
+            if (!_optionOriginals.TryGetValue(opt, out var originals))
+            {
+                originals = new List<OptionOriginal>();
+                _optionOriginals[opt] = originals;
+            }
+            foreach (var po in entry.matProps)
+            {
+                if (po == null || string.IsNullOrEmpty(po.prop)) continue;
+                if (!TryReadOptionField(opt, po.prop, out string kind, out Color c, out float f)) continue;
+                bool already = false;
+                foreach (var o in originals) if (o.prop == po.prop) { already = true; break; }
+                if (!already) originals.Add(new OptionOriginal { prop = po.prop, kind = kind, c = c, f = f });
+                if (po.kind == "color") TryWriteOptionField(opt, po.prop, new Color(po.x, po.y, po.z, po.w), 0f);
+                else if (po.kind == "float") TryWriteOptionField(opt, po.prop, Color.clear, po.f);
+            }
+            return true;
+        }
+
+        public static void PreviewOptionOverride(SkinTexEntry entry)
+        {
+            if (Instance == null || entry == null) return;
+            RevertAllOptionOverrides();
+            ApplyOptionOverrideEntry(entry);
+            RepushAffectedOptionsToBeans();
+        }
+
+        public static void RevertAllOptionOverrides()
+        {
+            var affected = new List<UnityEngine.Object>();
+            foreach (var kv in _optionOriginals)
+            {
+                var opt = kv.Key;
+                if (opt == null) continue;
+                affected.Add(opt);
+                foreach (var o in kv.Value)
+                {
+                    if (o.kind == "color") TryWriteOptionField(opt, o.prop, o.c, 0f);
+                    else TryWriteOptionField(opt, o.prop, Color.clear, o.f);
+                }
+            }
+            _optionOriginals.Clear();
+            RepushOptionsToBeans(affected);
+        }
+
+        private static void RepushAffectedOptionsToBeans()
+        {
+            if (_optionOriginals.Count == 0) return;
+            var list = new List<UnityEngine.Object>();
+            foreach (var kv in _optionOriginals) list.Add(kv.Key);
+            RepushOptionsToBeans(list);
+        }
+
+        private static void RepushOptionsToBeans(List<UnityEngine.Object> options)
+        {
+            if (options == null || options.Count == 0) return;
+            CustomisationSelections localSel = null;
+            try
+            {
+                var mm = GameObject.Find("MainMenuManager")?.GetComponent<MainMenuManager>();
+                localSel = mm?._playerProfile?.CustomisationSelections;
+            }
+            catch { }
+
+            var localBean = BeanMonitorService.LocalPlayerBean;
+            foreach (var opt in options)
+            {
+                if (opt == null) continue;
+                ColourOption co = null; FaceplateOption fp = null; SkinPatternOption sp = null;
+                try { co = opt.TryCast<ColourOption>(); } catch { }
+                try { fp = opt.TryCast<FaceplateOption>(); } catch { }
+                try { sp = opt.TryCast<SkinPatternOption>(); } catch { }
+
+                bool localMatches = false;
+                if (localSel != null)
+                {
+                    try
+                    {
+                        if (co != null && localSel.ColourOption == co) localMatches = true;
+                        else if (fp != null && localSel.FaceplateOption == fp) localMatches = true;
+                        else if (sp != null && localSel.PatternOption == sp) localMatches = true;
+                    }
+                    catch { }
+                }
+                if (Instance != null)
+                {
+                    if (co != null && Instance.activeColour.On && Instance.activeColour.option == co) localMatches = true;
+                    else if (fp != null && Instance.activeFaceplate.On && Instance.activeFaceplate.option == fp) localMatches = true;
+                    else if (sp != null && Instance.activePattern.On && Instance.activePattern.option == sp) localMatches = true;
+                }
+                if (!localMatches) continue;
+
+                if (localBean != null) PushOne(localBean, co, fp, sp);
+                foreach (var bean in BeanMonitorService.GetTrackedBeans())
+                    if (bean != null && bean != localBean) PushOne(bean, co, fp, sp);
+            }
+        }
+
+        private static void PushOne(GameObject bean, ColourOption co, FaceplateOption fp, SkinPatternOption sp)
+        {
+            var fgch = bean.GetComponent<FallguyCustomisationHandler>();
+            if (fgch == null) return;
+            try
+            {
+                if (co != null) fgch.UpdateColourOption(co);
+                else if (fp != null) fgch.UpdateFaceplateColours(fp);
+                else if (sp != null) { try { sp.LoadBlocking(); } catch { } fgch.UpdatePatternTexture(sp); }
+            }
+            catch { }
+        }
+
+        public static UnityEngine.Object FindOptionByName(string category, string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            Il2CppSystem.Type t;
+            if (category == SkinTexCategory.Colour) t = Il2CppInterop.Runtime.Il2CppType.Of<ColourOption>();
+            else if (category == SkinTexCategory.Faceplate) t = Il2CppInterop.Runtime.Il2CppType.Of<FaceplateOption>();
+            else if (category == SkinTexCategory.Pattern) t = Il2CppInterop.Runtime.Il2CppType.Of<SkinPatternOption>();
+            else return null;
+
+            var raw = Resources.FindObjectsOfTypeAll(t);
+            for (int i = 0; raw != null && i < raw.Length; i++)
+            {
+                var o = raw[i];
+                if (o == null) continue;
+                if (o.name == name) return o;
+            }
+            return null;
+        }
+
+        public static bool TryReadOptionField(UnityEngine.Object opt, string prop, out string kind, out Color c, out float f)
+        {
+            kind = ""; c = default; f = 0f;
+            if (opt == null || string.IsNullOrEmpty(prop)) return false;
+            try
+            {
+                ColourOption co = null; try { co = opt.TryCast<ColourOption>(); } catch { }
+                if (co != null)
+                {
+                    switch (prop)
+                    {
+                        case "primaryColour": kind = "color"; c = co.primaryColour; return true;
+                        case "secondaryColour": kind = "color"; c = co.secondaryColour; return true;
+                        case "rimColor": kind = "color"; c = co.rimColor; return true;
+                        case "primarySmoothness": kind = "float"; f = co.primarySmoothness; return true;
+                        case "secondarySmoothness": kind = "float"; f = co.secondarySmoothness; return true;
+                        case "primaryMetallic": kind = "float"; f = co.primaryMetallic; return true;
+                        case "secondaryMetallic": kind = "float"; f = co.secondaryMetallic; return true;
+                        case "rimPower": kind = "float"; f = co.rimPower; return true;
+                    }
+                    return false;
+                }
+                FaceplateOption fp = null; try { fp = opt.TryCast<FaceplateOption>(); } catch { }
+                if (fp != null)
+                {
+                    switch (prop)
+                    {
+                        case "eyesColour": kind = "color"; c = fp.eyesColour; return true;
+                        case "faceColour": kind = "color"; c = fp.faceColour; return true;
+                        case "eyesSmoothness": kind = "float"; f = fp.eyesSmoothness; return true;
+                        case "eyesMetallic": kind = "float"; f = fp.eyesMetallic; return true;
+                        case "faceSmoothness": kind = "float"; f = fp.faceSmoothness; return true;
+                        case "faceMetallic": kind = "float"; f = fp.faceMetallic; return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static void TryWriteOptionField(UnityEngine.Object opt, string prop, Color c, float f)
+        {
+            if (opt == null || string.IsNullOrEmpty(prop)) return;
+            try
+            {
+                ColourOption co = null; try { co = opt.TryCast<ColourOption>(); } catch { }
+                if (co != null)
+                {
+                    switch (prop)
+                    {
+                        case "primaryColour": co.primaryColour = c; return;
+                        case "secondaryColour": co.secondaryColour = c; return;
+                        case "rimColor": co.rimColor = c; return;
+                        case "primarySmoothness": co.primarySmoothness = f; return;
+                        case "secondarySmoothness": co.secondarySmoothness = f; return;
+                        case "primaryMetallic": co.primaryMetallic = f; return;
+                        case "secondaryMetallic": co.secondaryMetallic = f; return;
+                        case "rimPower": co.rimPower = f; return;
+                    }
+                    return;
+                }
+                FaceplateOption fp = null; try { fp = opt.TryCast<FaceplateOption>(); } catch { }
+                if (fp != null)
+                {
+                    switch (prop)
+                    {
+                        case "eyesColour": fp.eyesColour = c; return;
+                        case "faceColour": fp.faceColour = c; return;
+                        case "eyesSmoothness": fp.eyesSmoothness = f; return;
+                        case "eyesMetallic": fp.eyesMetallic = f; return;
+                        case "faceSmoothness": fp.faceSmoothness = f; return;
+                        case "faceMetallic": fp.faceMetallic = f; return;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static readonly Dictionary<string, Texture2D> _iconTexCache =
+            new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
+        private static Dictionary<string, ItemDefinitionSO> _optionByName;
+        private static float _optionByNameStamp;
+        private const float OPTION_NAME_TTL = 3f;
+
+        private static Dictionary<string, ItemDefinitionSO> GetOptionByName()
+        {
+            if (_optionByName != null && Time.realtimeSinceStartup - _optionByNameStamp < OPTION_NAME_TTL)
+                return _optionByName;
+
+            var map = new Dictionary<string, ItemDefinitionSO>(StringComparer.OrdinalIgnoreCase);
+            void Scan(Il2CppSystem.Type t)
+            {
+                var raw = Resources.FindObjectsOfTypeAll(t);
+                if (raw == null) return;
+                for (int i = 0; i < raw.Length; i++)
+                {
+                    var o = raw[i];
+                    if (o == null || string.IsNullOrEmpty(o.name)) continue;
+                    ItemDefinitionSO opt;
+                    try { opt = o.Cast<ItemDefinitionSO>(); } catch { continue; }
+                    if (opt != null && !map.ContainsKey(o.name)) map[o.name] = opt;
+                }
+            }
+            Scan(Il2CppInterop.Runtime.Il2CppType.Of<CostumeOption>());
+            Scan(Il2CppInterop.Runtime.Il2CppType.Of<SkinPatternOption>());
+            Scan(Il2CppInterop.Runtime.Il2CppType.Of<ColourOption>());
+            Scan(Il2CppInterop.Runtime.Il2CppType.Of<FaceplateOption>());
+
+            _optionByName = map;
+            _optionByNameStamp = Time.realtimeSinceStartup;
+            return map;
+        }
+
+        public static string GetOptionDisplayName(UnityEngine.Object option)
+        {
+            if (option == null) return "";
+            try { return GetGameName(option.Cast<ItemDefinitionSO>(), ""); } catch { }
+            try { return option.name ?? ""; } catch { }
+            return "";
+        }
+
+        public static Sprite ResolveOptionIconSprite(UnityEngine.Object option)
+        {
+            if (option == null) return null;
+            ItemDefinitionSO def = null;
+            try { def = option.Cast<ItemDefinitionSO>(); } catch { }
+            if (def == null) return null;
+            try { var s = def.MenuDisplaySprite; if (s != null) { PinSprite(s); return s; } } catch { }
+            try { var s = def._spriteAtlasLoadableAsset.AssetRef.LoadAsset<Sprite>().Result; if (s != null) { PinSprite(s); return s; } } catch { }
+            return null;
+        }
+
+        private static void PinSprite(Sprite s)
+        {
+            s.hideFlags = HideFlags.HideAndDontSave;
+            if (s.texture != null) s.texture.hideFlags = HideFlags.HideAndDontSave;
+        }
+
+        public static Texture2D ResolveOptionIconTexture(string category, string optionName)
+        {
+            if (string.IsNullOrEmpty(optionName)) return null;
+            if (_iconTexCache.TryGetValue(optionName, out var owned) && owned != null) return owned;
+
+            if (!GetOptionByName().TryGetValue(optionName, out var opt) || opt == null) return null;
+
+            Sprite spr = null;
+            try { spr = opt.MenuDisplaySprite; } catch { }
+            if (spr == null)
+            {
+                try { spr = opt._spriteAtlasLoadableAsset.AssetRef.LoadAsset<Sprite>().Result; } catch { }
+            }
+            if (spr == null) return null;
+
+            var atlas = spr.texture;
+            if (atlas == null) return null;
+
+            var tr = spr.textureRect;
+            int rx = Mathf.Clamp(Mathf.FloorToInt(tr.x), 0, atlas.width);
+            int ry = Mathf.Clamp(Mathf.FloorToInt(tr.y), 0, atlas.height);
+            int rw = Mathf.Clamp(Mathf.CeilToInt(tr.width), 1, atlas.width - rx);
+            int rh = Mathf.Clamp(Mathf.CeilToInt(tr.height), 1, atlas.height - ry);
+
+            var rt = RenderTexture.GetTemporary(atlas.width, atlas.height, 0, RenderTextureFormat.ARGB32);
+            var prev = RenderTexture.active;
+            Graphics.Blit(atlas, rt);
+            RenderTexture.active = rt;
+            var crop = new Texture2D(rw, rh, TextureFormat.RGBA32, false);
+            crop.ReadPixels(new Rect(rx, ry, rw, rh), 0, 0);
+            crop.Apply();
+            crop.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+            crop.name = "bfg_icon_" + optionName;
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+
+            _iconTexCache[optionName] = crop;
+            return crop;
+        }
+
+        public static IEnumerable<(string prop, string kind)> GetOptionFields(string category)
+        {
+            if (category == SkinTexCategory.Colour)
+            {
+                yield return ("primaryColour", "color");
+                yield return ("secondaryColour", "color");
+                yield return ("rimColor", "color");
+                yield return ("rimPower", "float");
+                yield return ("primarySmoothness", "float");
+                yield return ("secondarySmoothness", "float");
+                yield return ("primaryMetallic", "float");
+                yield return ("secondaryMetallic", "float");
+            }
+            else if (category == SkinTexCategory.Faceplate)
+            {
+                yield return ("eyesColour", "color");
+                yield return ("faceColour", "color");
+                yield return ("eyesSmoothness", "float");
+                yield return ("eyesMetallic", "float");
+                yield return ("faceSmoothness", "float");
+                yield return ("faceMetallic", "float");
             }
         }
 
@@ -483,18 +846,6 @@ namespace BetterFG.Customization.Player
                 customTexPollingBeans.Remove(beanId);
         }
 
-        private void RevertLocalCustomTextures()
-        {
-            var local = BeanMonitorService.LocalPlayerBean;
-            if (local != null) RevertCustomTexture(local);
-
-            foreach (var bean in BeanMonitorService.GetTrackedBeans())
-            {
-                if (bean == null || bean == local) continue;
-                if (IsRemoteInRoundBean(bean)) continue;
-                RevertCustomTexture(bean);
-            }
-        }
 
         // scans bean GEO so normal costumes, custom skins, and additive cosmetics all count
         public int ApplyCustomTexture(GameObject bean, int matSlotIdx, Texture2D tex, HashSet<string> matchTexNames)

@@ -379,7 +379,24 @@ namespace BetterFG.UI.Windows
         }
 
         protected virtual void BuildContent(RectTransform contentRoot) { }
-        protected virtual void BuildTitleExtras(Transform titleRoot) { }
+
+        protected virtual bool ShowCloseButton => false;
+
+        public virtual void Close() => Destroy(gameObject);
+
+        protected virtual void BuildTitleExtras(Transform titleRoot)
+        {
+            if (!ShowCloseButton) return;
+            var go = new GameObject("CloseBtn");
+            go.transform.SetParent(titleRoot, false);
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(1f, 1f);
+            rt.sizeDelta = new Vector2(30f, 28f);
+            rt.anchoredPosition = new Vector2(24f, 18f);
+            UGUIShip.CreateButton(go.transform, new Rect(0f, 0f, 30f, 28f),
+                "✕", new Color(0.5f, 0.22f, 0.22f, 1f), WHITE, FS_SM, new Action(Close));
+        }
 
         // ── Helpers ───────────────────────────────────────────────────────────
 

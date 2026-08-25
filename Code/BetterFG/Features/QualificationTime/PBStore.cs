@@ -7,7 +7,8 @@ using UnityEngine;
 namespace BetterFG.Features.QualificationTime
 {
     // which show a time belongs to. solos is the default/fast one, duos/squads are the team shows.
-    internal enum PbType { Solos, Duos, Squads }
+    // timeattack is its own thing entirely: the time is a single lap, not a whole round.
+    internal enum PbType { Solos, Duos, Squads, TimeAttack }
 
     internal static class PBStore
     {
@@ -24,6 +25,7 @@ namespace BetterFG.Features.QualificationTime
             public float? solos;
             public float? duos;
             public float? squads;
+            public float? timeattack;
             public string rawId;
             public bool isUgc;
             // legacy single date kept for back-compat reads. new code writes per-show dates below;
@@ -32,28 +34,30 @@ namespace BetterFG.Features.QualificationTime
             public string solosDate;
             public string duosDate;
             public string squadsDate;
+            public string timeattackDate;
 
-            public float? Get(PbType t) => t == PbType.Solos ? solos : t == PbType.Duos ? duos : squads;
-            public void Set(PbType t, float? v) { if (t == PbType.Solos) solos = v; else if (t == PbType.Duos) duos = v; else squads = v; }
+            public float? Get(PbType t) => t == PbType.Solos ? solos : t == PbType.Duos ? duos : t == PbType.Squads ? squads : timeattack;
+            public void Set(PbType t, float? v) { if (t == PbType.Solos) solos = v; else if (t == PbType.Duos) duos = v; else if (t == PbType.Squads) squads = v; else timeattack = v; }
             public string GetDate(PbType t)
             {
-                string d = t == PbType.Solos ? solosDate : t == PbType.Duos ? duosDate : squadsDate;
+                string d = t == PbType.Solos ? solosDate : t == PbType.Duos ? duosDate : t == PbType.Squads ? squadsDate : timeattackDate;
                 return string.IsNullOrEmpty(d) ? date : d;
             }
             public void SetDate(PbType t, string d)
             {
-                if (t == PbType.Solos) solosDate = d; else if (t == PbType.Duos) duosDate = d; else squadsDate = d;
+                if (t == PbType.Solos) solosDate = d; else if (t == PbType.Duos) duosDate = d; else if (t == PbType.Squads) squadsDate = d; else timeattackDate = d;
             }
-            // fastest non-null of the three, or null if the entry is somehow empty
+            // fastest non-null slot, or null if the entry is somehow empty. time attack laps are much
+            // shorter than a full round, so a TA time would always win "best" — it's left out on purpose.
             public float? Best()
             {
                 float? b = null;
                 if (solos.HasValue && (!b.HasValue || solos.Value < b.Value)) b = solos;
                 if (duos.HasValue && (!b.HasValue || duos.Value < b.Value)) b = duos;
                 if (squads.HasValue && (!b.HasValue || squads.Value < b.Value)) b = squads;
-                return b;
+                return b ?? timeattack;
             }
-            public bool HasAny() => solos.HasValue || duos.HasValue || squads.HasValue;
+            public bool HasAny() => solos.HasValue || duos.HasValue || squads.HasValue || timeattack.HasValue;
         }
 
         // normalizedKey -> Entry
@@ -75,12 +79,28 @@ namespace BetterFG.Features.QualificationTime
                 var gsv = FGClient.GlobalGameStateClient.Instance?.GameStateView;
                 if (gsv != null && gsv.GetLiveClientGameManager(out cgm) && cgm != null)
                 {
+                    if (cgm.GameRules != null && cgm.GameRules.IsTimeAttackGameMode) return PbType.TimeAttack;
                     if (!cgm.IsSquadShow) return PbType.Solos;
                     return cgm.SquadSize == 2 ? PbType.Duos : PbType.Squads;
                 }
             }
             catch (System.Exception ex) { Plugin.Log.LogWarning($"PBStore: show type lookup failed: {ex.Message}"); }
             return PbType.Solos;
+        }
+
+        // the one time-attack test in the mod — the leaderboard and the PB/ghost paths both ask here.
+        // GameRules is null until the round's rules land, so an early call answers false.
+        public static bool IsTimeAttackRound()
+        {
+            try
+            {
+                ClientGameManager cgm;
+                var gsv = FGClient.GlobalGameStateClient.Instance?.GameStateView;
+                if (gsv != null && gsv.GetLiveClientGameManager(out cgm) && cgm?.GameRules != null)
+                    return cgm.GameRules.IsTimeAttackGameMode;
+            }
+            catch (System.Exception ex) { Plugin.Log.LogWarning($"PBStore: time attack lookup failed: {ex.Message}"); }
+            return false;
         }
 
         static void EnsureLoaded()
@@ -189,10 +209,12 @@ namespace BetterFG.Features.QualificationTime
                 sb.Append(",\"solos\":").Append(e.solos.HasValue ? e.solos.Value.ToString(ci) : "null");
                 sb.Append(",\"duos\":").Append(e.duos.HasValue ? e.duos.Value.ToString(ci) : "null");
                 sb.Append(",\"squads\":").Append(e.squads.HasValue ? e.squads.Value.ToString(ci) : "null");
+                sb.Append(",\"timeattack\":").Append(e.timeattack.HasValue ? e.timeattack.Value.ToString(ci) : "null");
                 sb.Append($",\"date\":\"{JsonEscape(e.date ?? "")}\"");
                 sb.Append($",\"solosDate\":\"{JsonEscape(e.solosDate ?? "")}\"");
                 sb.Append($",\"duosDate\":\"{JsonEscape(e.duosDate ?? "")}\"");
                 sb.Append($",\"squadsDate\":\"{JsonEscape(e.squadsDate ?? "")}\"");
+                sb.Append($",\"timeattackDate\":\"{JsonEscape(e.timeattackDate ?? "")}\"");
                 sb.Append($",\"isUgc\":{(e.isUgc ? "true" : "false")}");
                 sb.Append($",\"featured\":{(isFeatured ? "true" : "false")}}}");
             }
@@ -250,6 +272,7 @@ namespace BetterFG.Features.QualificationTime
                     incoming.solos = ReadNullableFloat(entryJson, "solos");
                     incoming.duos = ReadNullableFloat(entryJson, "duos");
                     incoming.squads = ReadNullableFloat(entryJson, "squads");
+                    incoming.timeattack = ReadNullableFloat(entryJson, "timeattack");
                 }
                 else
                 {
@@ -270,9 +293,11 @@ namespace BetterFG.Features.QualificationTime
                 incoming.solosDate = JsonUtil.GetValue(entryJson, "solosDate");
                 incoming.duosDate = JsonUtil.GetValue(entryJson, "duosDate");
                 incoming.squadsDate = JsonUtil.GetValue(entryJson, "squadsDate");
+                incoming.timeattackDate = JsonUtil.GetValue(entryJson, "timeattackDate");
                 if (incoming.solos.HasValue && string.IsNullOrEmpty(incoming.solosDate)) { incoming.solosDate = incoming.date; upgraded = true; }
                 if (incoming.duos.HasValue && string.IsNullOrEmpty(incoming.duosDate)) { incoming.duosDate = incoming.date; upgraded = true; }
                 if (incoming.squads.HasValue && string.IsNullOrEmpty(incoming.squadsDate)) { incoming.squadsDate = incoming.date; upgraded = true; }
+                if (incoming.timeattack.HasValue && string.IsNullOrEmpty(incoming.timeattackDate)) { incoming.timeattackDate = incoming.date; upgraded = true; }
 
                 if ((string.IsNullOrEmpty(id) && string.IsNullOrEmpty(name)) || !incoming.HasAny())
                     continue;
@@ -303,6 +328,7 @@ namespace BetterFG.Features.QualificationTime
             (existing.solos, existing.solosDate) = FasterWithDate(existing.solos, existing.solosDate, incoming.solos, incoming.solosDate);
             (existing.duos, existing.duosDate) = FasterWithDate(existing.duos, existing.duosDate, incoming.duos, incoming.duosDate);
             (existing.squads, existing.squadsDate) = FasterWithDate(existing.squads, existing.squadsDate, incoming.squads, incoming.squadsDate);
+            (existing.timeattack, existing.timeattackDate) = FasterWithDate(existing.timeattack, existing.timeattackDate, incoming.timeattack, incoming.timeattackDate);
             _cache[key] = existing;
         }
 
@@ -352,7 +378,7 @@ namespace BetterFG.Features.QualificationTime
                     string name = Path.GetFileNameWithoutExtension(path);
                     // strip the optional __solos/__duos/__squads suffix before canonicalizing the id
                     string showTag = "";
-                    foreach (var tag in new[] { "__solos", "__duos", "__squads" })
+                    foreach (var tag in new[] { "__solos", "__duos", "__squads", "__timeattack" })
                         if (name.EndsWith(tag)) { showTag = tag; name = name.Substring(0, name.Length - tag.Length); break; }
                     string canon = CanonicalRoundId(name);
                     if (canon == name) continue;
@@ -594,6 +620,7 @@ namespace BetterFG.Features.QualificationTime
                 existing.solos = Faster(existing.solos, kv.Value.solos);
                 existing.duos = Faster(existing.duos, kv.Value.duos);
                 existing.squads = Faster(existing.squads, kv.Value.squads);
+                existing.timeattack = Faster(existing.timeattack, kv.Value.timeattack);
                 if (string.IsNullOrEmpty(existing.rawId)) existing.rawId = kv.Value.rawId;
                 result[nameKey] = existing;
             }

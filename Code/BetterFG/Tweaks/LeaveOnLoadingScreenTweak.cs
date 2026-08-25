@@ -27,7 +27,6 @@ namespace BetterFG.Tweaks
         public override string TweakLabel => "Allow leaving during loading";
         public override bool DefaultEnabled => true;
 
-        private static bool _popupOpen;
         private static NavPromptHandle _prompt;
 
         private const string TitleKey = "bfg_leaveloading_title";
@@ -77,16 +76,12 @@ namespace BetterFG.Tweaks
         {
             if (!_stateLeavable && !ExternalWindowOpen)
             {
-                if (_prompt != null) { _popupOpen = false; DestroyPrompt(); }
+                if (_prompt != null) DestroyPrompt();
                 return;
             }
 
-            // popup can die without its callback firing (loading screen ends, another popup
-            // replaces it, etc), leaving _popupOpen stuck true forever. clear it whenever we're
-            // outside the leavable window — state changes naturally reset stale flags.
             if (!IsInLeavableLoadingState())
             {
-                _popupOpen = false;
                 DestroyPrompt();
                 return;
             }
@@ -113,7 +108,6 @@ namespace BetterFG.Tweaks
             ActiveEliminatedBannerClose = null;
             OnExternalLeaveTriggerEnd();
             DestroyPrompt();
-            _popupOpen = false;
         }
 
         // spawn one copy of the game's own Back nav prompt onto our own overlay canvas. FG's
@@ -159,15 +153,10 @@ namespace BetterFG.Tweaks
 
         private static void ShowLeaveConfirm()
         {
-            // _popupOpen can get stuck true if a previous popup was torn down without its callback
-            // firing (override by another popup, scene change mid-popup, etc). check the actual
-            // modal container instead — if no popup is live on screen, it's safe to spawn ours.
             if (IsAnyModalLive())
             {
-                _popupOpen = true;
                 return;
             }
-            _popupOpen = true;
 
             EnsureStringsRegistered();
             PopUp.ShowPopup(TitleKey, MessageKey, PopupInteractionType.Query, ModalType.MT_OK_CANCEL, OKButtonType.Disruptive, OnLeaveConfirmClosed);
@@ -189,7 +178,6 @@ namespace BetterFG.Tweaks
 
         private static void OnLeaveConfirmClosed(bool wasOk)
         {
-            _popupOpen = false;
             if (!wasOk) return;
             if (ActiveEliminatedBannerClose != null)
             {

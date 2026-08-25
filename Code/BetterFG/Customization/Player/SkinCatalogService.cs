@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
+using BetterFG.Utilities;
 
 namespace BetterFG.Customization.Player
 {
@@ -84,7 +85,7 @@ namespace BetterFG.Customization.Player
             if (!force && _coverCache.TryGetValue(key, out var tex) && tex != null && tex.width > 0) return;
             if (_coverLoading.Contains(key)) return;
 
-            string folder = !string.IsNullOrEmpty(skin.repoFolder) ? skin.repoFolder : $"{GetCategoryFolder(skin.type)}/{skin.file}";
+            string folder = !string.IsNullOrEmpty(skin.repoFolder) ? skin.repoFolder : $"{SkinTypeParser.CategoryFolder(skin.type)}/{skin.file}";
             string[] parts = folder.Split('/');
             if (parts.Length < 2) return;
             _coverLoading.Add(key);
@@ -228,51 +229,18 @@ namespace BetterFG.Customization.Player
             return repo + "|" + skin.file;
         }
 
-        private static string GetCategoryFolder(string typeStr)
-        {
-            switch (SkinTypeParser.FromString(typeStr))
-            {
-                case SkinType.Costume: return "Costumes";
-                case SkinType.Accessory: return "Accessories";
-                case SkinType.Item: return "Items";
-                case SkinType.Plinth: return "Plinths";
-                case SkinType.Emote: return "Emotes";
-                default: return "Costumes";
-            }
-        }
-
-        private static List<BoneOffsetEntry> ParseBoneOffsets(string json)
+        internal static List<BoneOffsetEntry> ParseBoneOffsets(string json)
         {
             var offsets = new List<BoneOffsetEntry>();
-            int boIdx = json.IndexOf("\"boneOffsets\"", StringComparison.OrdinalIgnoreCase);
-            if (boIdx == -1) return offsets;
-            int arrStart = json.IndexOf('[', boIdx);
-            if (arrStart == -1) return offsets;
-            int depth = 0, arrEnd = -1;
-            for (int i = arrStart; i < json.Length; i++)
+            foreach (var obj in JsonUtil.GetArray(json, "boneOffsets"))
             {
-                if (json[i] == '[') depth++;
-                else if (json[i] == ']') { depth--; if (depth == 0) { arrEnd = i; break; } }
-            }
-            if (arrEnd == -1) return offsets;
-            string arr = json.Substring(arrStart + 1, arrEnd - arrStart - 1);
-            int idx = 0;
-            while (idx < arr.Length)
-            {
-                int os = arr.IndexOf('{', idx); if (os == -1) break;
-                int oe = -1; int d = 0;
-                for (int i = os; i < arr.Length; i++)
+                string bone = JsonUtil.GetValue(obj, "bone");
+                if (string.IsNullOrEmpty(bone)) continue;
+                offsets.Add(new BoneOffsetEntry
                 {
-                    if (arr[i] == '{') d++;
-                    else if (arr[i] == '}') { d--; if (d == 0) { oe = i; break; } }
-                }
-                if (oe == -1) break;
-                string obj = arr.Substring(os, oe - os + 1);
-                string bone = GetJsonValue(obj, "bone");
-                float x = GetJsonFloat(obj, "x"), y = GetJsonFloat(obj, "y"), z = GetJsonFloat(obj, "z");
-                if (!string.IsNullOrEmpty(bone))
-                    offsets.Add(new BoneOffsetEntry { bone = bone, localPosition = new Vector3(x, y, z) });
-                idx = oe + 1;
+                    bone = bone,
+                    localPosition = new Vector3(JsonUtil.GetFloat(obj, "x"), JsonUtil.GetFloat(obj, "y"), JsonUtil.GetFloat(obj, "z"))
+                });
             }
             return offsets;
         }
@@ -305,7 +273,7 @@ namespace BetterFG.Customization.Player
                 string obj = json.Substring(os, oe - os + 1);
                 idx = oe + 1;
 
-                string path = GetJsonValue(obj, "path");
+                string path = JsonUtil.GetValue(obj, "path");
                 if (string.IsNullOrEmpty(path)) continue;
                 string typeStr = GetTypeFromPath(path);
                 if (string.IsNullOrEmpty(typeStr)) continue;
@@ -379,11 +347,11 @@ namespace BetterFG.Customization.Player
             {
                 var skin = new SkinInfo
                 {
-                    name = GetJsonValue(json, "name"),
-                    author = GetJsonValue(json, "author"),
-                    description = GetJsonValue(json, "description"),
-                    group = GetJsonValue(json, "group"),
-                    file = GetJsonValue(json, "file"),
+                    name = JsonUtil.GetValue(json, "name"),
+                    author = JsonUtil.GetValue(json, "author"),
+                    description = JsonUtil.GetValue(json, "description"),
+                    group = JsonUtil.GetValue(json, "group"),
+                    file = JsonUtil.GetValue(json, "file"),
                     type = fallbackType,
                     infoFetched = true,
                 };
@@ -393,20 +361,20 @@ namespace BetterFG.Customization.Player
 
                 if (fallbackType == "costume")
                 {
-                    skin.keepBase = GetJsonBool(json, "keepBase");
-                    skin.skinScale = GetJsonFloat(json, "skinScale");
+                    skin.keepBase = JsonUtil.GetBool(json, "keepBase");
+                    skin.skinScale = JsonUtil.GetFloat(json, "skinScale");
                     skin.boneOffsets = ParseBoneOffsets(json);
                 }
                 else if (fallbackType == "item")
                 {
-                    skin.scale = GetJsonFloat(json, "scale", 1f);
+                    skin.scale = JsonUtil.GetFloat(json, "scale", 1f);
                     skin.left = ParseHandInfo(json, "left");
                     skin.right = ParseHandInfo(json, "right");
                 }
                 else if (fallbackType == "emote")
                 {
                     // clip name isn't stored — the mod always plays the first clip in the bundle
-                    skin.audio = GetJsonValue(json, "audio");
+                    skin.audio = JsonUtil.GetValue(json, "audio");
                 }
 
                 return skin;
@@ -424,7 +392,7 @@ namespace BetterFG.Customization.Player
         public static void FillItemInfoFromJson(SkinInfo skin, string json)
         {
             if (skin == null || string.IsNullOrEmpty(json)) return;
-            skin.scale = GetJsonFloat(json, "scale", 1f);
+            skin.scale = JsonUtil.GetFloat(json, "scale", 1f);
             skin.left = ParseHandInfo(json, "left");
             skin.right = ParseHandInfo(json, "right");
         }
@@ -468,41 +436,7 @@ namespace BetterFG.Customization.Player
             return result;
         }
 
-        private static string GetJsonValue(string json, string key)
-        {
-            string searchKey = $"\"{key}\":";
-            int i = json.IndexOf(searchKey);
-            if (i == -1) return "";
-            i += searchKey.Length;
-            while (i < json.Length && (json[i] == ' ' || json[i] == '\t')) i++;
-            if (i >= json.Length || json[i] != '"') return "";
-            i++;
-            int end = json.IndexOf('"', i);
-            return end == -1 ? "" : json.Substring(i, end - i);
-        }
-
-        private static bool GetJsonBool(string json, string key)
-        {
-            string searchKey = $"\"{key}\":";
-            int i = json.IndexOf(searchKey);
-            if (i == -1) return false;
-            i += searchKey.Length;
-            while (i < json.Length && (json[i] == ' ' || json[i] == '\t')) i++;
-            return i + 3 < json.Length && json.Substring(i, 4) == "true";
-        }
-
-        private static float GetJsonFloat(string json, string key, float defaultVal = 0f)
-        {
-            string searchKey = $"\"{key}\":";
-            int i = json.IndexOf(searchKey);
-            if (i == -1) return defaultVal;
-            i += searchKey.Length;
-            while (i < json.Length && (json[i] == ' ' || json[i] == '\t')) i++;
-            int end = i;
-            while (end < json.Length && "0123456789+-.eE".IndexOf(json[end]) != -1) end++;
-            return float.TryParse(json.Substring(i, end - i),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out float v) ? v : defaultVal;
-        }
-    }
+        
+        
+            }
 }

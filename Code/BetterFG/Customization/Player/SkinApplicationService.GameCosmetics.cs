@@ -218,6 +218,13 @@ namespace BetterFG.Customization.Player
                 if (!boundRenderers.Contains(go)) boundRenderers.Add(go);
             }
 
+            for (int i = 0; i < boundRenderers.Count; i++)
+            {
+                var go = boundRenderers[i];
+                if (go != null && go.GetComponent<InvisibilitySyncComponent>() == null)
+                    go.AddComponent<InvisibilitySyncComponent>().playerObject = bean;
+            }
+
             // warm the cache with this cosmetic's mask, then stamp both slots from current state
             yield return LoadCostumeMaskCoroutine(slot.option, "mask", r => { }).WrapToIl2Cpp();
             RestampBeanMasks(bean);
@@ -681,78 +688,18 @@ namespace BetterFG.Customization.Player
             if (bean != null) AssetManager.SpawnPoof(bean.transform.position + Vector3.up);
         }
 
-        private static string GetGameCosmeticName(CostumeOption option)
+        internal static string GetGameName(ItemDefinitionSO option, string fallback)
         {
             try { return option.CMSData.Name._text ?? option.name ?? ""; } catch { }
             try { return option.name ?? ""; } catch { }
-            return "cosmetic";
+            return fallback;
         }
 
-        private static string GetGameCosmeticId(CostumeOption option)
+        private static string GetGameId(ItemDefinitionSO option)
         {
             try
             {
                 var cms = option.CMSData;
-                if (cms != null && !string.IsNullOrEmpty(cms.FullItemId)) return cms.FullItemId;
-                if (cms != null && !string.IsNullOrEmpty(cms.Id)) return cms.Id;
-            }
-            catch { }
-            try { if (!string.IsNullOrEmpty(option.name)) return option.name; } catch { }
-            return option.GetInstanceID().ToString();
-        }
-
-        private static string GetGameColourName(ColourOption option)
-        {
-            try { return option.CMSData.Name._text ?? option.name ?? ""; } catch { }
-            try { return option.name ?? ""; } catch { }
-            return "colour";
-        }
-
-        private static string GetGameColourId(ColourOption option)
-        {
-            try
-            {
-                var cms = option.CMSData;
-                if (cms != null && !string.IsNullOrEmpty(cms.FullItemId)) return cms.FullItemId;
-                if (cms != null && !string.IsNullOrEmpty(cms.Id)) return cms.Id;
-            }
-            catch { }
-            try { if (!string.IsNullOrEmpty(option.name)) return option.name; } catch { }
-            return option.GetInstanceID().ToString();
-        }
-
-        private static string GetGamePatternName(SkinPatternOption option)
-        {
-            try { return option.CMSData.Name._text ?? option.name ?? ""; } catch { }
-            try { return option.name ?? ""; } catch { }
-            return "pattern";
-        }
-
-        private static string GetGamePatternId(SkinPatternOption option)
-        {
-            try
-            {
-                var cms = option.CMSData;
-                if (cms != null && !string.IsNullOrEmpty(cms.FullItemId)) return cms.FullItemId;
-                if (cms != null && !string.IsNullOrEmpty(cms.Id)) return cms.Id;
-            }
-            catch { }
-            try { if (!string.IsNullOrEmpty(option.name)) return option.name; } catch { }
-            return option.GetInstanceID().ToString();
-        }
-
-        private static string GetGameFaceplateName(FaceplateOption option)
-        {
-            try { return ((ItemDefinitionSO)option).CMSData.Name._text ?? option.name ?? ""; } catch { }
-            try { return option.name ?? ""; } catch { }
-            return "faceplate";
-        }
-
-        private static string GetGameFaceplateId(FaceplateOption option)
-        {
-            try
-            {
-                var cms = ((ItemDefinitionSO)option).CMSData;
                 if (cms != null && !string.IsNullOrEmpty(cms.FullItemId)) return cms.FullItemId;
                 if (cms != null && !string.IsNullOrEmpty(cms.Id)) return cms.Id;
             }

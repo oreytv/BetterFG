@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using BetterFG.Features.UnityRound.Editor;
@@ -58,10 +58,10 @@ namespace BetterFG.UI.Windows
             RebuildContent();
         }
 
-        public void Close()
+        public override void Close()
         {
             if (Instance == this) Instance = null;
-            Destroy(gameObject);
+            base.Close();
         }
 
         private void OnDestroy()

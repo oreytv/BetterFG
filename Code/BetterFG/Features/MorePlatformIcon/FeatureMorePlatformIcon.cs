@@ -297,7 +297,7 @@ namespace BetterFG.Features.MorePlatformIcon
 
         // build a RemoteNametagInfo from your own live nametag settings so the local row gets the
         // same name+colour+style path as everyone else.
-        private static BetterFG.Network.RemoteNametagInfo LocalNametagInfo()
+        internal static BetterFG.Network.RemoteNametagInfo LocalNametagInfo()
         {
             var ci = System.Globalization.CultureInfo.InvariantCulture;
             float F(string k, float d) => float.TryParse(BetterFG.Services.SettingsService.Get(k, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : d;

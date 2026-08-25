@@ -12,19 +12,13 @@ namespace BetterFG.UI
     // NOT abstract, on purpose — IL2Cpp class injection can't build a vtable through an abstract
     // method in the hierarchy ("VTable method was null even though base type isn't abstract" kills
     // plugin load entirely). every "abstract" member below is virtual with a stub instead, matching
-    // how Tab/TexturedTab/SwitchTab already do it.
-    public class WizardTab : TexturedTab
+    // how Tab/SwitchTab already do it.
+    public class WizardTab : Tab
     {
         public WizardTab(IntPtr ptr) : base(ptr) { }
 
         public int EditIndex = -1;
 
-        protected static float PAD => UIScale.PAD;
-        protected static float VPAD => UIScale.VPAD;
-        protected static float SH => UIScale.SH;
-        protected static float LH => UIScale.LH;
-        protected static float BTN_H => UIScale.BTN_H;
-        protected static int FS_SM => UIScale.FS_SM;
         protected static float ROW_H => 24f * UIScale.S;
 
         protected static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
@@ -56,6 +50,8 @@ namespace BetterFG.UI
         // link on a sub-tab), distinct from LoadEditedEntry's disk-backed reload. no-op by default.
         protected virtual void ResumeWip() { }
         protected virtual bool CanAdvance(int step) => true;
+        protected virtual int NextStepFrom(int step) => step + 1;
+        protected virtual int PrevStepFrom(int step) => step - 1;
         protected virtual void RefreshSummary() { }
         // validate + persist; return true to leave back to the list, false (with a SetStatus) to stay
         protected virtual bool Save() => false;
@@ -113,14 +109,18 @@ namespace BetterFG.UI
         private void OnBack()
         {
             if (Step == 0) { LeaveToList(); return; }
-            Step--;
+            int p = PrevStepFrom(Step);
+            if (p < 0) { LeaveToList(); return; }
+            Step = p;
             RefreshStep();
         }
 
         private void OnNext()
         {
             if (Step == StepTitles.Length - 1) { if (Save()) LeaveToList(); return; }
-            Step++;
+            int n = NextStepFrom(Step);
+            if (n >= StepTitles.Length) { if (Save()) LeaveToList(); return; }
+            Step = n;
             RefreshStep();
         }
 

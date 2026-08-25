@@ -459,6 +459,11 @@ namespace BetterFG.Customization.Player
                             smr.sharedMesh = mesh;
                         }
                     }
+                    // the bind reparents this mesh OUT of the clone, so the clone's own
+                    // InvisibilitySyncComponent no longer covers it and the game's controller never
+                    // knew about it — it needs its own sync or it stays solid while the wearer is invisible
+                    if (smr.gameObject.GetComponent<InvisibilitySyncComponent>() == null)
+                        smr.gameObject.AddComponent<InvisibilitySyncComponent>().playerObject = bean;
                     bound++;
                 }
                 catch (Exception ex) { Plugin.Log.LogWarning($"{logname}: BindMeshToFallguy failed on {smr.name}: {ex.Message}"); }

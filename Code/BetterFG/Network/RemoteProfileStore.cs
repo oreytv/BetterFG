@@ -44,6 +44,7 @@ namespace BetterFG.Network
             string[] rp = repos.Split(',');
             string[] ty = types.Split(',');
 
+            var hands = LocalHandOverrides();
             var profile = new PlayerRemoteProfile();
             for (int i = 0; i < f.Length; i++)
             {
@@ -56,6 +57,7 @@ namespace BetterFG.Network
                     localPath = i < pth.Length ? pth[i].Trim() : "",
                     repoUrl = i < rp.Length ? rp[i].Trim() : "",
                     type = i < ty.Length ? ty[i].Trim() : "",
+                    hand = hands.TryGetValue(file, out int ov) ? ov : 0,
                 });
             }
             return profile.skins.Count > 0 ? profile : null;

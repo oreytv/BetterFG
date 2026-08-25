@@ -132,5 +132,17 @@ namespace BetterFG.Customization.Player
                 default: return SkinType.Unknown;
             }
         }
+
+        public static string CategoryFolder(string typeStr)
+        {
+            switch (FromString(typeStr))
+            {
+                case SkinType.Accessory: return "Accessories";
+                case SkinType.Item: return "Items";
+                case SkinType.Plinth: return "Plinths";
+                case SkinType.Emote: return "Emotes";
+                default: return "Costumes";
+            }
+        }
     }
 }

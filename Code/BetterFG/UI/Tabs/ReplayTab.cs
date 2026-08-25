@@ -11,11 +11,6 @@ namespace BetterFG.UI.Tabs
 
         protected override string BgResource => "BetterFG.assets.ui.tab.replay.png";
 
-        protected static float PAD => UIScale.PAD;
-        protected static float SH => UIScale.SH;
-        protected static float BTN_H => UIScale.BTN_H;
-        protected static int FS => UIScale.FS;
-        protected static int FS_SM => UIScale.FS_SM;
 
         protected const float HEADER_H = 20f;
 

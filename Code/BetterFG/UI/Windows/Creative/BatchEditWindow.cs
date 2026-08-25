@@ -146,7 +146,9 @@ namespace BetterFG.UI.Windows.Creative
             RebuildContent();
         }
 
-        public void Close()
+        protected override bool ShowCloseButton => true;
+
+        public override void Close()
         {
             CommitPending(); // don't lose a pending recolour/scale on close
             BatchScale.BakeOwnerScale(); // hand the editor's multiselect owner back unscaled
@@ -156,7 +158,7 @@ namespace BetterFG.UI.Windows.Creative
             // commit the selection ourselves a frame after close (AnyOpen is false by then, so our own
             // block prefix lets it through) — saves you clicking off the backlog of blocked place attempts.
             CreativeSelectionWatcher.Instance?.PlaceAfterFrame();
-            Destroy(gameObject);
+            base.Close();
         }
 
         private void OnDestroy()
@@ -193,19 +195,6 @@ namespace BetterFG.UI.Windows.Creative
 
         // close button in the title bar — the nav-prompt can't reopen/close while our input lock is up,
         // so the window needs its own way out (clickable by mouse or controller cursor).
-        protected override void BuildTitleExtras(Transform titleRoot)
-        {
-            var go = new GameObject("CloseBtn");
-            go.transform.SetParent(titleRoot, false);
-            var rt = go.AddComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(1f, 1f);
-            rt.sizeDelta = new Vector2(30f, 28f);
-            rt.anchoredPosition = new Vector2(24f, 18f);
-            UGUIShip.CreateButton(go.transform, new Rect(0f, 0f, 30f, 28f),
-                "✕", new Color(0.5f, 0.22f, 0.22f, 1f), WHITE, FS_SM, new Action(Close));
-        }
-
         // ── content ───────────────────────────────────────────────────────────
 
         protected override void BuildContent(RectTransform contentRoot)
@@ -233,7 +222,6 @@ namespace BetterFG.UI.Windows.Creative
             _activeExtra = nowExtra;
 
             // ── carousel header: ‹  Style  › ──
-            float arrow = 22f;
             if (Solo)
             {
                 MakeLabel(contentRoot, new Rect(PAD, y, w, 22f), subtabs[_subtab], FS_BODY, WHITE, TextAnchor.MiddleCenter);
@@ -241,12 +229,9 @@ namespace BetterFG.UI.Windows.Creative
             }
             else
             {
-                UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, arrow, 22f),
-                    "‹", BTN_ARROW, WHITE, FS_BODY, new Action(() => CycleSubtab(-1)));
-                MakeLabel(contentRoot, new Rect(PAD + arrow, y, w - arrow * 2f, 22f),
-                    subtabs[_subtab], FS_BODY, WHITE, TextAnchor.MiddleCenter);
-                UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - arrow, y, arrow, 22f),
-                    "›", BTN_ARROW, WHITE, FS_BODY, new Action(() => CycleSubtab(+1)));
+                UGUIShip.CreateCarousel(contentRoot, new Rect(PAD, y, w, 22f), subtabs, _subtab,
+                    d => { CommitColourEntry(); _subtab = (_subtab + d + subtabs.Length) % subtabs.Length; RebuildContent(); },
+                    BTN_ARROW, FS_BODY);
                 y += 26f;
 
                 _countLabel = MakeLabel(contentRoot, new Rect(PAD, y, w - 24f, 14f),
@@ -351,7 +336,33 @@ namespace BetterFG.UI.Windows.Creative
                 PreviewColourSet();
             }));
             RefreshHex();
-            y += 22f;
+            y += 24f;
+
+            // the creative colour picker's own custom-colour slots, newest first, exactly as its grid
+            // shows them. re-read on every build so a colour picked since we opened shows up.
+            var recents = LevelEditorColourPaletteSettings.GetFavouriteCustomColoursHexCodes();
+            if (recents == null) return;
+            float sx = PAD;
+            for (int i = 0, shown = 0; i < recents.Length && shown < 5; i++)
+            {
+                if (!UGUIShip.HexToColor(recents[i], out float cr, out float cg, out float cb)) continue;
+                var c = new Color(cr, cg, cb, 1f);
+                UGUIShip.CreateButton(root, new Rect(sx, y, 20f, 20f), "", c, WHITE, FS_SM,
+                    new Action(() =>
+                    {
+                        _colour.r = c.r; _colour.g = c.g; _colour.b = c.b;
+                        suppress[0] = true;
+                        if (sR != null) sR.value = c.r;
+                        if (sG != null) sG.value = c.g;
+                        if (sB != null) sB.value = c.b;
+                        suppress[0] = false;
+                        RefreshHex();
+                        PreviewColourSet();
+                    }), customSprite: false);
+                sx += 24f;
+                shown++;
+            }
+            y += 24f;
         }
 
         // "modify" — brightness / contrast / hue / saturation adjust each object's OWN colour. sliders
@@ -950,14 +961,6 @@ namespace BetterFG.UI.Windows.Creative
         }
 
         // ── carousel / control handlers ──────────────────────────────────────
-
-        private void CycleSubtab(int d)
-        {
-            CommitColourEntry(); // leaving Recolour checkpoints any pending edit
-            int len = Subtabs().Length;
-            _subtab = (_subtab + d + len) % len;
-            RebuildContent();
-        }
 
         // switching modes has to settle the current one first: individual writes into the scale params
         // while the group modes ride the owner's multiplier, so carrying either one across the switch

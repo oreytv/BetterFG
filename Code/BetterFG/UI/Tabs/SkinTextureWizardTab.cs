@@ -1,9 +1,11 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Customization.Player;
+using Il2CppInterop.Runtime;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
@@ -30,9 +32,21 @@ namespace BetterFG.UI.Tabs
             "Name it"
         };
 
+        private static readonly (string id, string label)[] CATEGORIES = new[]
+        {
+            (SkinTexCategory.Upper, "Upper"),
+            (SkinTexCategory.Lower, "Lower"),
+            (SkinTexCategory.Pattern, "Pattern"),
+            (SkinTexCategory.Colour, "Colour"),
+            (SkinTexCategory.Faceplate, "Faceplate"),
+        };
+
+        private string _category = SkinTexCategory.Upper;
+        private Text _categoryLbl;
+
         private InputField _searchField;
         private RectTransform _resultContent;
-        private readonly List<CostumeOption> _results = new List<CostumeOption>();
+        private readonly List<ItemDefinitionSO> _results = new List<ItemDefinitionSO>();
         private readonly List<Button> _resultRows = new List<Button>();
         private int _selectedResult = -1;
         private bool _caching;
@@ -43,9 +57,6 @@ namespace BetterFG.UI.Tabs
 
         private RectTransform _matContent;
         private int _matIdx = -1;
-        // texture name -> replacement png path, one entry per overridden slot (name is the
-        // identity ApplyTextureToGameObject matches against on the live bean's materials).
-        // go back from the Png step to Material and pick another row to add more than one.
         private readonly Dictionary<string, string> _overridePaths = new Dictionary<string, string>();
 
         private string _pngPath = "";
@@ -53,8 +64,6 @@ namespace BetterFG.UI.Tabs
         private RawImage _pngPreview;
         private Text _pngPathLbl;
 
-        // keyed "matName|propName" - every shader property tweak, across every material touched
-        // so far in this entry (not just the currently selected one)
         private readonly Dictionary<string, MatPropOverride> _matProps = new Dictionary<string, MatPropOverride>();
 
         private InputField _nameField;
@@ -87,43 +96,64 @@ namespace BetterFG.UI.Tabs
             if (EditIndex >= entries.Count) { EditIndex = -1; return -1; }
 
             var entry = entries[EditIndex];
+            _category = string.IsNullOrEmpty(entry.category) ? SkinTexCategory.Upper : entry.category;
             _costumeName = entry.costumeName;
             _matNames.AddRange(entry.matNames);
             _overridePaths.Clear();
             foreach (var ov in entry.overrides)
-                if (!string.IsNullOrEmpty(ov.texName)) _overridePaths[ov.texName] = ov.texPath;
+            {
+                if (string.IsNullOrEmpty(ov.texName)) continue;
+                if (!string.IsNullOrEmpty(ov.texPath)) _overridePaths[ov.texName] = ov.texPath;
+            }
             _matProps.Clear();
             foreach (var po in entry.matProps)
                 _matProps[po.matName + "|" + po.prop] = po;
             UGUIShip.SetInputText(_nameField, entry.entryName, false);
+            RefreshCategoryUi();
             RebuildMatRows();
 
-            var costume = FindCostume(_costumeName);
-            if (costume != null) StartCoroutine(CacheCostumeRoutine(costume).WrapToIl2Cpp());
+            if (SkinTexCategory.IsOptionField(_category))
+                return (int)WizardStep.PropsPrompt;
+
+            var option = FindOption(_category, _costumeName);
+            if (option != null) StartCoroutine(CacheOptionRoutine(option).WrapToIl2Cpp());
             else SetStatus(_costumeName + " isn't loaded, search for it again to see its textures");
 
             return (int)WizardStep.Material;
         }
 
-        private static CostumeOption FindCostume(string costumeName)
+        private static ItemDefinitionSO FindOption(string category, string name)
         {
-            if (string.IsNullOrEmpty(costumeName)) return null;
-            var raw = Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<CostumeOption>());
+            if (string.IsNullOrEmpty(name)) return null;
+            var t = TypeFor(category);
+            if (t == null) return null;
+            var raw = Resources.FindObjectsOfTypeAll(t);
             if (raw == null) return null;
             for (int i = 0; i < raw.Length; i++)
             {
                 if (raw[i] == null) continue;
-                CostumeOption opt;
-                try { opt = raw[i].Cast<CostumeOption>(); } catch { continue; }
-                if (opt.name == costumeName) return opt;
+                ItemDefinitionSO opt;
+                try { opt = raw[i].Cast<ItemDefinitionSO>(); } catch { continue; }
+                if (opt != null && opt.name == name) return opt;
+            }
+            return null;
+        }
+
+        private static Il2CppSystem.Type TypeFor(string category)
+        {
+            switch (category)
+            {
+                case SkinTexCategory.Upper:
+                case SkinTexCategory.Lower: return Il2CppType.Of<CostumeOption>();
+                case SkinTexCategory.Pattern: return Il2CppType.Of<SkinPatternOption>();
+                case SkinTexCategory.Colour: return Il2CppType.Of<ColourOption>();
+                case SkinTexCategory.Faceplate: return Il2CppType.Of<FaceplateOption>();
             }
             return null;
         }
 
         protected override Tab MakeListTarget() => BetterFGTabRegistry.CreateTab("Skin Texture");
 
-        // set by SkinTextureMaterialPropsTab's "‹ back" link before switching, so the wizard
-        // resumes the in-progress edit instead of losing it or re-reading a stale disk copy
         public SkinTextureMaterialPropsTab ResumeSource;
         protected override bool SkipLoadEditedEntry => ResumeSource != null;
 
@@ -134,6 +164,7 @@ namespace BetterFG.UI.Tabs
             ResumeSource = null;
 
             EditIndex = src.EditIndex;
+            _category = string.IsNullOrEmpty(src.Category) ? SkinTexCategory.Upper : src.Category;
             _costumeName = src.CostumeName;
             _mats.Clear(); _mats.AddRange(src.Mats);
             _matNames.Clear(); _matNames.AddRange(src.MatNames);
@@ -144,6 +175,7 @@ namespace BetterFG.UI.Tabs
             _matIdx = src.MatIdx;
             if (!string.IsNullOrEmpty(src.EntryName)) UGUIShip.SetInputText(_nameField, src.EntryName, false);
 
+            RefreshCategoryUi();
             RebuildMatRows();
             if (_matIdx >= 0 && _matIdx < _matNames.Count)
             {
@@ -157,22 +189,52 @@ namespace BetterFG.UI.Tabs
         {
             switch ((WizardStep)step)
             {
-                case WizardStep.Costume: return _matNames.Count > 0;
+                case WizardStep.Costume:
+                    if (SkinTexCategory.IsOptionField(_category))
+                        return !string.IsNullOrEmpty(_costumeName);
+                    return _matNames.Count > 0;
                 default: return true;
             }
+        }
+
+        protected override int NextStepFrom(int step)
+        {
+            if (SkinTexCategory.IsOptionField(_category))
+            {
+                if (step == (int)WizardStep.Costume) return (int)WizardStep.PropsPrompt;
+                if (step == (int)WizardStep.Material || step == (int)WizardStep.Png) return (int)WizardStep.PropsPrompt;
+            }
+            return step + 1;
+        }
+
+        protected override int PrevStepFrom(int step)
+        {
+            if (SkinTexCategory.IsOptionField(_category))
+            {
+                if (step == (int)WizardStep.PropsPrompt) return (int)WizardStep.Costume;
+                if (step == (int)WizardStep.Name) return (int)WizardStep.PropsPrompt;
+            }
+            return step - 1;
         }
 
         private void BuildCostumeStep(RectTransform root, float w, float bodyH)
         {
             float cy = SH;
-            float fetchW = 60f * UIScale.S;
 
+            float catH = BTN_H;
+            _categoryLbl = UGUIShip.CreateCarousel(root.transform, new Rect(PAD, cy, w, catH),
+                CategoryLabels(), CategoryIndex(_category),
+                d => SelectCategory(CATEGORIES[(CategoryIndex(_category) + d + CATEGORIES.Length) % CATEGORIES.Length].id),
+                BTN_DARK, FS_SM);
+            cy += catH + SH;
+
+            float fetchW = 60f * UIScale.S;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Search for the skin you want to retexture", FS_SM, LABEL);
+                "Search for the item you want to change", FS_SM, LABEL);
             cy += LH + SH;
 
             _searchField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w - fetchW - PAD, BTN_H),
-                "search costumes by name", Color.black, WHITE, FS_SM);
+                "search by name", Color.black, WHITE, FS_SM);
             _searchField.onEndEdit.AddListener(new Action<string>(v => OnFetch()));
             UGUIShip.CreateButton(root.transform, new Rect(PAD + w - fetchW, cy, fetchW, BTN_H),
                 "SEARCH", BTN_BLUE, WHITE, FS_SM, new Action(OnFetch));
@@ -187,10 +249,48 @@ namespace BetterFG.UI.Tabs
             _resultContent.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         }
 
+        private void SelectCategory(string cat)
+        {
+            if (_category == cat) return;
+            _category = cat;
+            _results.Clear();
+            _selectedResult = -1;
+            _mats.Clear();
+            _matNames.Clear();
+            _costumeName = "";
+            _matIdx = -1;
+            _pngPath = "";
+            RefreshCategoryUi();
+            RebuildResultRows();
+            RebuildMatRows();
+            RefreshStep();
+            SetStatus("category: " + cat);
+        }
+
+        private static string[] CategoryLabels()
+        {
+            var names = new string[CATEGORIES.Length];
+            for (int i = 0; i < CATEGORIES.Length; i++) names[i] = CATEGORIES[i].label;
+            return names;
+        }
+
+        private static int CategoryIndex(string id)
+        {
+            for (int i = 0; i < CATEGORIES.Length; i++)
+                if (CATEGORIES[i].id == id) return i;
+            return 0;
+        }
+
+        private void RefreshCategoryUi()
+        {
+            if (_categoryLbl != null)
+                _categoryLbl.text = CATEGORIES[CategoryIndex(_category)].label;
+        }
+
         private void OnFetch()
         {
             string filter = _searchField.text?.Trim() ?? "";
-            if (string.IsNullOrEmpty(filter)) { SetStatus("type a skin name first"); return; }
+            if (string.IsNullOrEmpty(filter)) { SetStatus("type a name first"); return; }
             StartCoroutine(FetchRoutine(filter).WrapToIl2Cpp());
         }
 
@@ -203,33 +303,40 @@ namespace BetterFG.UI.Tabs
 
             for (int i = 0; i < 2; i++) yield return null;
 
-            try
-            {
-                var raw = Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<CostumeOption>());
-                if (raw == null || raw.Length == 0) { SetStatus("no costumes loaded yet"); yield break; }
+            var type = TypeFor(_category);
+            if (type == null) { SetStatus("unknown category"); yield break; }
 
-                for (int i = 0; i < raw.Length && _results.Count < 60; i++)
-                {
-                    if (raw[i] == null) continue;
-                    CostumeOption opt;
-                    try { opt = raw[i].Cast<CostumeOption>(); } catch { continue; }
-
-                    if (GetDisplayName(opt).IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
-                        _results.Add(opt);
-                }
-            }
+            Il2CppReferenceArray<UnityEngine.Object> raw = null;
+            try { raw = Resources.FindObjectsOfTypeAll(type); }
             catch (Exception ex) { SetStatus("search failed: " + ex.Message); yield break; }
+            if (raw == null || raw.Length == 0) { SetStatus("no " + _category + " loaded yet"); yield break; }
+
+            for (int i = 0; i < raw.Length && _results.Count < 80; i++)
+            {
+                if (raw[i] == null) continue;
+                ItemDefinitionSO opt;
+                try { opt = raw[i].Cast<ItemDefinitionSO>(); } catch { continue; }
+                if (opt == null) continue;
+
+                if (_category == SkinTexCategory.Upper || _category == SkinTexCategory.Lower)
+                {
+                    CostumeOption co = null;
+                    try { co = opt.TryCast<CostumeOption>(); } catch { }
+                    if (co == null) continue;
+                    var t = co.CostumeType;
+                    bool wantTop = _category == SkinTexCategory.Upper;
+                    if (wantTop && t == CostumeType.Bottom) continue;
+                    if (!wantTop && t == CostumeType.Top) continue;
+                }
+
+                if (SkinApplicationService.GetOptionDisplayName(opt).IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                    _results.Add(opt);
+            }
 
             SetStatus(_results.Count == 0 ? "nothing matched " + filter : _results.Count + " match(es), pick one");
             RebuildResultRows();
         }
 
-        private static string GetDisplayName(CostumeOption option)
-        {
-            try { return option.CMSData.Name._text ?? option.name ?? ""; } catch { }
-            try { return option.name ?? ""; } catch { }
-            return "";
-        }
 
         private void RebuildResultRows()
         {
@@ -240,7 +347,7 @@ namespace BetterFG.UI.Tabs
             if (_results.Count == 0 && !string.IsNullOrEmpty(_costumeName))
             {
                 UGUIShip.CreateLabel(_resultContent, new Rect(6f, 0f, TabWidth, ROW_H),
-                    "using " + _costumeName + " - search to pick a different skin", FS_SM, OK);
+                    "using " + _costumeName + " - search to pick a different one", FS_SM, OK);
                 return;
             }
 
@@ -248,7 +355,7 @@ namespace BetterFG.UI.Tabs
             {
                 int idx = i;
                 var btn = UGUIShip.CreateButton(_resultContent, new Rect(0f, 0f, 0f, ROW_H), "",
-                    ROW_IDLE, WHITE, FS_SM, new Action(() => SelectCostume(idx)));
+                    ROW_IDLE, WHITE, FS_SM, new Action(() => SelectOption(idx)));
                 btn.transition = Selectable.Transition.None;
                 var trigger = btn.GetComponent<UnityEngine.EventSystems.EventTrigger>();
                 if (trigger != null) GameObject.Destroy(trigger);
@@ -256,11 +363,10 @@ namespace BetterFG.UI.Tabs
                 le.preferredHeight = ROW_H;
                 le.flexibleWidth = 1f;
 
-                Sprite icon = null;
-                try { icon = ((ItemDefinitionSO)_results[i])?.MenuDisplaySprite; } catch { }
+                Texture2D iconTex = SkinApplicationService.ResolveOptionIconTexture(_category, _results[i].name);
                 float iconSz = (ROW_H - 4f) * 1.4f;
                 float textX = 5f;
-                if (icon != null)
+                if (iconTex != null)
                 {
                     var iconGo = new GameObject("Icon");
                     iconGo.transform.SetParent(btn.transform, false);
@@ -270,20 +376,19 @@ namespace BetterFG.UI.Tabs
                     iconRt.pivot = new Vector2(0f, 0.5f);
                     iconRt.anchoredPosition = new Vector2(3f + iconSz * 0.2f, iconSz * 0.2f);
                     iconRt.sizeDelta = new Vector2(iconSz, iconSz);
-                    var img = iconGo.AddComponent<Image>();
-                    img.sprite = icon;
-                    img.preserveAspect = true;
-                    img.raycastTarget = false;
+                    var raw = iconGo.AddComponent<RawImage>();
+                    raw.texture = iconTex;
+                    raw.raycastTarget = false;
                     textX = 3f + iconSz * 1.2f + 4f;
                 }
 
                 UGUIShip.CreateLabel(btn.transform, new Rect(textX, 0f, TabWidth - PAD * 2f - textX - 8f, ROW_H),
-                    GetDisplayName(_results[i]), FS_SM, WHITE, TextAnchor.MiddleLeft);
+                    SkinApplicationService.GetOptionDisplayName(_results[i]), FS_SM, WHITE, TextAnchor.MiddleLeft);
                 _resultRows.Add(btn);
             }
         }
 
-        private void SelectCostume(int idx)
+        private void SelectOption(int idx)
         {
             if (_caching) return;
             _selectedResult = idx;
@@ -292,13 +397,50 @@ namespace BetterFG.UI.Tabs
                 var img = _resultRows[i].GetComponent<Image>();
                 if (img != null) img.color = i == idx ? ROW_SEL : ROW_IDLE;
             }
-            StartCoroutine(CacheCostumeRoutine(_results[idx]).WrapToIl2Cpp());
+            var opt = _results[idx];
+            if (SkinTexCategory.IsOptionField(_category))
+            {
+                _costumeName = opt.name ?? "";
+                _mats.Clear();
+                _matNames.Clear();
+                SetStatus(SkinApplicationService.GetOptionDisplayName(opt) + " picked - hit next for its options");
+                RefreshStep();
+            }
+            else
+            {
+                StartCoroutine(CacheOptionRoutine(opt).WrapToIl2Cpp());
+            }
         }
 
-        private IEnumerator CacheCostumeRoutine(CostumeOption option)
+        private IEnumerator CacheOptionRoutine(ItemDefinitionSO option)
         {
             _caching = true;
-            SetStatus("loading " + GetDisplayName(option) + "...");
+            SetStatus("loading " + SkinApplicationService.GetOptionDisplayName(option) + "...");
+
+            _mats.Clear();
+            _matNames.Clear();
+
+            if (_category == SkinTexCategory.Pattern)
+            {
+                SkinPatternOption sp = null;
+                try { sp = option.TryCast<SkinPatternOption>(); } catch { }
+                if (sp == null) { _caching = false; SetStatus("that's not a pattern"); yield break; }
+                try { sp.LoadBlocking(); } catch { }
+                yield return null;
+
+                Texture tex = null;
+                try { tex = sp.PatternTexture; } catch { }
+                string tn = tex != null ? tex.name : sp.name;
+                _matNames.Add(string.IsNullOrEmpty(tn) ? sp.name : tn);
+                _mats.Add(null);
+
+                _caching = false;
+                try { _costumeName = sp.name ?? ""; } catch { _costumeName = ""; }
+                RebuildMatRows();
+                RefreshStep();
+                SetStatus($"{_costumeName} pattern ready");
+                yield break;
+            }
 
             GameObject instance = null;
             bool done = false;
@@ -306,12 +448,15 @@ namespace BetterFG.UI.Tabs
 
             try
             {
-                var op = option.costumePrefabReference.InstantiateAsync();
+                CostumeOption co = null;
+                try { co = option.TryCast<CostumeOption>(); } catch { }
+                if (co == null) { _caching = false; SetStatus("that's not a costume"); yield break; }
+                var op = co.costumePrefabReference.InstantiateAsync();
                 StartCoroutine(WaitForAsyncOp(op,
                     r => { instance = r; done = true; },
                     e => { err = e; done = true; }).WrapToIl2Cpp());
             }
-            catch (Exception e) { _caching = false; SetStatus("couldn't load that skin: " + e.Message); yield break; }
+            catch (Exception e) { _caching = false; SetStatus("couldn't load: " + e.Message); yield break; }
 
             float elapsed = 0f;
             while (!done && elapsed < 8f)
@@ -324,13 +469,11 @@ namespace BetterFG.UI.Tabs
 
             if (!done || instance == null)
             {
-                SetStatus(err != null ? "couldn't load that skin: " + err.Message : $"gave up after {elapsed:0.0}s");
+                SetStatus(err != null ? "couldn't load: " + err.Message : $"gave up after {elapsed:0.0}s");
                 yield break;
             }
 
             instance.SetActive(false);
-            _mats.Clear();
-            _matNames.Clear();
             CollectMatsRecursive(instance.transform, _mats, _matNames);
             GameObject.Destroy(instance);
 
@@ -341,8 +484,6 @@ namespace BetterFG.UI.Tabs
             SetStatus($"{_costumeName} has {_matNames.Count} texture(s), hit next");
         }
 
-        // walks every texture slot the shader declares, not just _MainTex - so metallic/normal/
-        // emission maps etc all show up as pickable entries too
         private static void CollectMatsRecursive(Transform t, List<Material> mats, List<string> names)
         {
             var r = t.GetComponent<Renderer>();
@@ -418,10 +559,17 @@ namespace BetterFG.UI.Tabs
             for (int i = _matContent.childCount - 1; i >= 0; i--)
                 GameObject.Destroy(_matContent.GetChild(i).gameObject);
 
+            if (SkinTexCategory.IsOptionField(_category))
+            {
+                UGUIShip.CreateLabel(_matContent, new Rect(6f, 0f, TabWidth, ROW_H),
+                    _category + " has no textures - skip ahead to material properties", FS_SM, HINT);
+                return;
+            }
+
             if (_matNames.Count == 0)
             {
                 UGUIShip.CreateLabel(_matContent, new Rect(6f, 0f, TabWidth, ROW_H),
-                    "go back and pick a skin first", FS_SM, HINT);
+                    "go back and pick something first", FS_SM, HINT);
                 return;
             }
 
@@ -507,7 +655,7 @@ namespace BetterFG.UI.Tabs
                 "BROWSE", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowsePng));
             _pngPathLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD + browseW + PAD, cy, w - browseW - PAD, BTN_H),
                 "no file picked", FS_SM, HINT, TextAnchor.MiddleLeft);
-            cy += BTN_H + SH * 2f;
+            cy += BTN_H + SH;
 
             float previewSz = Mathf.Min(bodyH - cy - SH, w);
             var frameGo = new GameObject("PngPreview");
@@ -527,27 +675,33 @@ namespace BetterFG.UI.Tabs
             _pngPreview.color = Color.clear;
         }
 
-        // its own skippable step (Next just moves on) so the question doesn't get crammed into an
-        // unrelated step - properties belong to a MATERIAL, not a texture slot, so this hands off
-        // the whole WIP entry to its own tab rather than gating on which texture row is selected
         private void BuildPropsPromptStep(RectTransform root, float w, float bodyH)
         {
             float cy = bodyH * 0.5f - (LH + SH + BTN_H) * 0.5f;
 
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Want to tweak this skin's material properties too?", FS_SM, LABEL, TextAnchor.MiddleCenter);
+                SkinTexCategory.IsOptionField(_category)
+                    ? "Open the property editor for this " + _category
+                    : "Want to tweak this skin's material properties too?",
+                FS_SM, LABEL, TextAnchor.MiddleCenter);
             cy += LH + SH;
 
             UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "Tweak properties >", BTN_BLUE, WHITE, FS_SM, new Action(OpenProps));
+                SkinTexCategory.IsOptionField(_category) ? "Edit properties >" : "Tweak properties >",
+                BTN_BLUE, WHITE, FS_SM, new Action(OpenProps));
         }
 
         private void OpenProps()
         {
-            if (_matNames.Count == 0) { SetStatus("go back and pick a skin first"); return; }
+            if (SkinTexCategory.IsOptionField(_category))
+            {
+                if (string.IsNullOrEmpty(_costumeName)) { SetStatus("go back and pick a " + _category + " first"); return; }
+            }
+            else if (_matNames.Count == 0) { SetStatus("go back and pick a skin first"); return; }
 
             var props = BetterFGTabRegistry.NewTab<SkinTextureMaterialPropsTab>();
             props.EditIndex = EditIndex;
+            props.Category = _category;
             props.CostumeName = _costumeName;
             props.Mats.AddRange(_mats);
             props.MatNames.AddRange(_matNames);
@@ -603,7 +757,7 @@ namespace BetterFG.UI.Tabs
             cy += LH + SH;
 
             _nameField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "my texture override", Color.black, WHITE, FS_SM);
+                "my override", Color.black, WHITE, FS_SM);
             cy += BTN_H + SH * 2f;
 
             _summaryLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH * 4f), "", FS_SM, HINT);
@@ -612,8 +766,10 @@ namespace BetterFG.UI.Tabs
 
         protected override void RefreshSummary()
         {
-            string slots = _overridePaths.Count == 0 ? "?" : string.Join(", ", _overridePaths.Keys);
-            _summaryLbl.text = $"skin: {_costumeName}\ntextures changed: {_overridePaths.Count}\n{slots}\nmaterial properties changed: {_matProps.Count}";
+            string slots = _overridePaths.Count == 0
+                ? "?"
+                : string.Join(", ", _overridePaths.Keys);
+            _summaryLbl.text = $"category: {_category}\nitem: {_costumeName}\ntextures changed: {_overridePaths.Count}\n{slots}\nmaterial properties changed: {_matProps.Count}";
         }
 
         protected override bool Save()
@@ -632,6 +788,7 @@ namespace BetterFG.UI.Tabs
             var entry = editing ? entries[EditIndex] : new SkinTexEntry { enabled = true };
 
             entry.entryName = name;
+            entry.category = _category;
             entry.costumeName = _costumeName;
             entry.matNames.Clear();
             entry.matNames.AddRange(_matNames);
@@ -644,12 +801,10 @@ namespace BetterFG.UI.Tabs
             if (!editing) entries.Add(entry);
 
             SkinApplicationService.SaveEntries(entries);
-            Plugin.Log.LogInfo($"skin texture {(editing ? "updated" : "added")}: {name} -> {entry.costumeName} ({entry.overrides.Count} texture(s), {entry.matProps.Count} propertie(s))");
+            Plugin.Log.LogInfo($"skin {_category} {(editing ? "updated" : "added")}: {name} -> {entry.costumeName} ({entry.overrides.Count} texture(s), {entry.matProps.Count} propertie(s))");
             return true;
         }
 
-        // Properties step live-previews sliders straight onto the bean before Save persists
-        // anything - whether the user saves or cancels, wipe back to whatever's actually on disk
         protected override void OnLeave() => SkinApplicationService.ReapplyAllEnabledFromSettings();
     }
 }

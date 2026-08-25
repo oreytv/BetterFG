@@ -70,6 +70,14 @@ namespace BetterFG.Features.Replay
                 _brains.Add(brain);
             }
 
+            foreach (var child in _cam.GetComponentsInChildren<Camera>(true))
+            {
+                if (child == _cam || child.orthographic) continue;
+                _childCams.Add(child);
+                _childFovs.Add(child.fieldOfView);
+            }
+            _childFov = _cam.fieldOfView;
+
             var t = _cam.transform;
             _camParent = t.parent;
             _camLocalPos = t.localPosition;
@@ -267,14 +275,21 @@ namespace BetterFG.Features.Replay
         public void BeginPlayerPick(ReplayVisibilityKeyframe kf)
         {
             _pickVisKeyframe = kf;
-            _pickForNames = false;
+            _pickList = kf.onlyPlayers;
             StartPick(false, null, "click the player to add  ·  right click cancels", false);
         }
 
         public void BeginNamePick(ReplayVisibilityKeyframe kf)
         {
             _pickVisKeyframe = kf;
-            _pickForNames = true;
+            _pickList = kf.nameOnlyPlayers;
+            StartPick(false, null, "click the player to add  ·  right click cancels", true);
+        }
+
+        public void BeginCrownPick(ReplayVisibilityKeyframe kf)
+        {
+            _pickVisKeyframe = kf;
+            _pickList = kf.crownOnlyPlayers;
             StartPick(false, null, "click the player to add  ·  right click cancels", true);
         }
 
@@ -372,10 +387,9 @@ namespace BetterFG.Features.Replay
             }
             else if (!_pickObjects && _pickHoverPlayer != 0)
             {
-                if (_pickVisKeyframe != null)
+                if (_pickList != null)
                 {
-                    var list = _pickForNames ? _pickVisKeyframe.nameOnlyPlayers : _pickVisKeyframe.onlyPlayers;
-                    if (!list.Contains(_pickHoverPlayer)) list.Add(_pickHoverPlayer);
+                    if (!_pickList.Contains(_pickHoverPlayer)) _pickList.Add(_pickHoverPlayer);
                 }
                 else if (_pickLookTarget) { _pickKeyframe.lookAt = ReplayLookAt.Player; _pickKeyframe.lookAtPlayerId = _pickHoverPlayer; }
                 else
@@ -405,6 +419,7 @@ namespace BetterFG.Features.Replay
             var visKf = _pickVisKeyframe;
             _pickKeyframe = null;
             _pickVisKeyframe = null;
+            _pickList = null;
             _pickAllowed = null;
 
             if (kf != null) OpenKeyframeWindow(kf);
@@ -746,6 +761,15 @@ namespace BetterFG.Features.Replay
 
             _cam.fieldOfView = Mathf.Clamp(_cam.fieldOfView - scroll * 2.5f, FOV_MIN, FOV_MAX);
             _freeLook = true;
+            SyncChildCameraFov();
+        }
+
+        void SyncChildCameraFov()
+        {
+            if (_childCams.Count == 0 || Mathf.Approximately(_cam.fieldOfView, _childFov)) return;
+            _childFov = _cam.fieldOfView;
+            for (int i = 0; i < _childCams.Count; i++)
+                if (_childCams[i] != null) _childCams[i].fieldOfView = _childFov;
         }
 
     }

@@ -8,7 +8,7 @@ namespace BetterFG.Features.CustomizeFallGuys
     internal static class EyeGeometry
     {
         const float EyeWeight = 0.5f;
-        const float SurfaceLift = 0.004f;
+        const float SurfaceLift = 0.0003f;
 
         // keyed on mesh SHAPE, not instance id. every bean in a round carries its own Body_LOD0(Clone)
         // — the meshes are cloned per character — so an instance-id key never hit and each of the 32-odd
@@ -23,15 +23,18 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         static readonly Dictionary<string, Carved> _carved = new Dictionary<string, Carved>();
 
-        public static GameObject Attach(GameObject root, Material shared, Color tint)
+        public static GameObject Attach(GameObject root, Material shared, Color tint, out SkinnedMeshRenderer source)
         {
+            source = null;
             var meshes = root.GetComponent<FG.Common.FallguyCustomisationHandler>()?.SkinnedMeshes;
             if (meshes == null) return null;
 
+            for (int pass = 0; pass < 2; pass++)
             for (int i = 0; i < meshes.Count; i++)
             {
                 var body = meshes[i];
                 if (body == null || body.sharedMesh == null) continue;
+                if (pass == 0 && !body.gameObject.activeInHierarchy) continue;
 
                 var bodyBones = body.bones;
                 int el = -1, er = -1;
@@ -49,7 +52,7 @@ namespace BetterFG.Features.CustomizeFallGuys
 
                 var go = new GameObject("BettrFG_Eyes");
                 go.layer = body.gameObject.layer;
-                go.transform.SetParent(body.transform, false);
+                go.transform.SetParent(root.transform, false);
 
                 // source weights stay exactly as authored — the carved verts sit on the BOUNDARY of the
                 // eye patch and plenty are only ~0.6 weighted to an eye joint, so flattening them onto
@@ -67,11 +70,32 @@ namespace BetterFG.Features.CustomizeFallGuys
                 smr.rootBone = body.rootBone;
                 smr.skinnedMotionVectors = false;
                 smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                smr.sharedMaterial = TintedMaterial(shared, tint);
+                var tinted = TintedMaterial(shared, tint);
+                smr.sharedMaterial = tinted;
+                Reassert(smr, body, tinted);
+                source = body;
                 return go;
             }
 
             return null;
+        }
+
+        public static void Reassert(SkinnedMeshRenderer eyes, SkinnedMeshRenderer body, Material want)
+        {
+            if (eyes is null || eyes.m_CachedPtr == IntPtr.Zero || want is null) return;
+
+            var ghost = BetterFG.Core.AssetManager.PeekGhostMaterial();
+            var bodyMat = body is null || body.m_CachedPtr == IntPtr.Zero ? null : body.sharedMaterial;
+            var target = ghost is not null && bodyMat is not null && bodyMat.m_CachedPtr == ghost.m_CachedPtr
+                ? ghost
+                : want;
+            if (target.shader is null) return;
+
+            var cur = eyes.sharedMaterial;
+            if (cur is not null && cur.shader is not null && cur.shader.m_CachedPtr == target.shader.m_CachedPtr) return;
+
+            eyes.sharedMaterial = target;
+            Plugin.Log.LogInfo($"eye overlay was wearing '{(cur is null ? "(none)" : cur.name)}', put ours back");
         }
 
         public static void SetTint(SkinnedMeshRenderer smr, Color tint)
@@ -97,6 +121,7 @@ namespace BetterFG.Features.CustomizeFallGuys
 
             var mat = new Material(shared) { hideFlags = HideFlags.HideAndDontSave };
             mat.SetColor("_MultiplyColor", tint);
+            mat.renderQueue = shared.renderQueue + 1;
             _tinted[key] = mat;
             _sourceOf[mat.GetInstanceID()] = shared;
             return mat;

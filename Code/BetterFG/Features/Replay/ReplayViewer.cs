@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -171,6 +171,7 @@ namespace BetterFG.Features.Replay
         ReplayStarchartPlayer _starchart;
         ReplayVfxPlayer _vfx;
         ReplayTailPlayer _tail;
+        ReplayPowerupPlayer _powerups;
         ReplaySpeechPlayer _speech;
         ReplayPostFx _postFx;
         Camera _cam;
@@ -185,6 +186,7 @@ namespace BetterFG.Features.Replay
             public Transform armRight;
             public int cursor;
             public GameObject nameLabel;
+            public int crownState = -1;
             public bool isGhost;
         }
 
@@ -193,6 +195,9 @@ namespace BetterFG.Features.Replay
         readonly List<AsyncOperationHandle<SceneInstance>> _sceneHandles = new List<AsyncOperationHandle<SceneInstance>>();
         readonly List<Scene> _loadedScenes = new List<Scene>();
         readonly List<CinemachineBrain> _brains = new List<CinemachineBrain>();
+        readonly List<Camera> _childCams = new List<Camera>();
+        readonly List<float> _childFovs = new List<float>();
+        float _childFov;
         Scene _prevActiveScene;
         Transform _camParent;
         Vector3 _camLocalPos;
@@ -252,7 +257,7 @@ namespace BetterFG.Features.Replay
         bool _pickObjects;
         bool _pickWasFree;
         bool _pickLookTarget;
-        bool _pickForNames;
+        List<uint> _pickList;
         bool _pickVisibleOnly;
         ReplayKeyframe _pickKeyframe;
         ReplayVisibilityKeyframe _pickVisKeyframe;
@@ -391,8 +396,8 @@ namespace BetterFG.Features.Replay
             HideGame();
             yield return StartCoroutine(LoadLevel().WrapToIl2Cpp());
             yield return null;
-            ApplySets();
             RollRandomisers();
+            ApplySets();
             DisableControllerLeftovers();
             yield return StartCoroutine(LoadBeanPrefab().WrapToIl2Cpp());
 
@@ -401,6 +406,7 @@ namespace BetterFG.Features.Replay
             _world = new ReplayWorldPlayer(_rec, _loadedScenes);
             _starchart = new ReplayStarchartPlayer(_rec, _loadedScenes);
             _tail = new ReplayTailPlayer(_rec);
+            _powerups = new ReplayPowerupPlayer(_rec);
             yield return StartCoroutine(_world.Prepare().WrapToIl2Cpp());
 
             SpawnBeans();
@@ -486,8 +492,8 @@ namespace BetterFG.Features.Replay
 
             yield return StartCoroutine(LoadLevel().WrapToIl2Cpp());
             yield return null;
-            ApplySets();
             RollRandomisers();
+            ApplySets();
             DisableControllerLeftovers();
             if (_beanPrefab == null) yield return StartCoroutine(LoadBeanPrefab().WrapToIl2Cpp());
 
@@ -499,6 +505,7 @@ namespace BetterFG.Features.Replay
             _world = new ReplayWorldPlayer(_rec, _loadedScenes);
             _starchart = new ReplayStarchartPlayer(_rec, _loadedScenes);
             _tail = new ReplayTailPlayer(_rec);
+            _powerups = new ReplayPowerupPlayer(_rec);
             yield return StartCoroutine(_world.Prepare().WrapToIl2Cpp());
 
             SpawnBeans();
@@ -599,7 +606,7 @@ namespace BetterFG.Features.Replay
                     matched |= on;
                 }
 
-                if (!matched) { unmatched.Add(set.key + "/" + set.chosen); continue; }
+                if (!matched && set.chosen != SetSwitcher.SetSwitcherOffKey) { unmatched.Add(set.key + "/" + set.chosen); continue; }
                 target.ChosenKey = set.chosen;
                 applied++;
             }
@@ -750,10 +757,13 @@ namespace BetterFG.Features.Replay
                 var vfx = bean.GetComponent<FG.Common.Character.FallGuyVFXController>();
                 if (vfx != null) vfxControllers[p.playerId] = vfx;
                 _tail.Attach(p.playerId, bean);
+                _powerups.Attach(p.playerId, bean);
             }
 
             if (_rec.tailEvents.Count > 0)
                 Plugin.Log.LogInfo($"{_rec.tailEvents.Count} tail events, {_tail.AttachedCount} of {_tracks.Count} beans wired up for them");
+            if (_rec.powerupEvents.Count > 0)
+                Plugin.Log.LogInfo($"{_rec.powerupEvents.Count} chicken/invisibility events, {_powerups.AttachedCount} of {_tracks.Count} beans wired up for them");
 
             SpawnGhostBeans();
 
@@ -868,6 +878,7 @@ namespace BetterFG.Features.Replay
                     ActiveSkinSlot slot = null;
                     yield return loader.ResolveProfileSlot(entry, new Action<ActiveSkinSlot>(s => slot = s)).WrapToIl2Cpp();
                     if (slot == null || bean == null) continue;
+                    slot.skinInfo.handOverride = entry.hand;
                     if (slot.type == SkinType.Costume && !slot.skinInfo.keepBase) replacesBean = true;
                     yield return app.ApplySkinToBean(slot, bean).WrapToIl2Cpp();
                 }
@@ -888,6 +899,17 @@ namespace BetterFG.Features.Replay
                 done = true;
             }));
             while (!done) yield return null;
+
+            DressEyes(bean, p);
+        }
+
+        static void DressEyes(GameObject bean, ReplayPlayer p)
+        {
+            // ghosts are the local player's own runs, so "only my Fall Guy" has to count them as local
+            bool local = p.isLocal || p.playerId >= 0x80000000u;
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(bean, local);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyLater(bean, 0.5f, local);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyLater(bean, 1.5f, local);
         }
 
         static void ApplyLook(GameObject bean, ReplayPlayer p, Action onDone)
@@ -977,6 +999,7 @@ namespace BetterFG.Features.Replay
             }
 
             if (!_freeLook) EvaluateKeyframeCamera();
+            SyncChildCameraFov();
             ApplyVisibility();
             _speech?.Apply(_time, _cam);
             _postFx?.Apply(_time, _cam);
@@ -1011,6 +1034,7 @@ namespace BetterFG.Features.Replay
         {
             var kf = VisibilityAt(_time);
             bool showPhrases = kf == null || kf.showPhrases;
+            var crownMode = kf?.crowns ?? ReplayVisibilityMode.All;
             var mode = kf?.players ?? ReplayVisibilityMode.All;
             var nameMode = kf?.names ?? ReplayVisibilityMode.All;
 
@@ -1031,11 +1055,12 @@ namespace BetterFG.Features.Replay
                 if (track.bean.activeSelf != shown) track.bean.SetActive(shown);
 
                 bool nameShown = kf == null || VisibleIn(nameMode, kf.nameOnlyPlayers, track.player.playerId);
-                UpdateNameLabel(track, shown && nameShown);
+                bool crownShown = kf == null || VisibleIn(crownMode, kf.crownOnlyPlayers, track.player.playerId);
+                UpdateNameLabel(track, shown && nameShown, crownShown);
             }
         }
 
-        void UpdateNameLabel(Track track, bool show)
+        void UpdateNameLabel(Track track, bool show, bool showCrowns)
         {
             if (!show)
             {
@@ -1045,6 +1070,13 @@ namespace BetterFG.Features.Replay
 
             if (track.nameLabel == null) BuildNameLabel(track);
             if (track.nameLabel == null) return;
+
+            int wantCrown = showCrowns ? 1 : 0;
+            if (track.crownState != wantCrown)
+            {
+                track.crownState = wantCrown;
+                ApplyCrownRank(track.nameLabel.GetComponent<PlayerInfoDisplayGameObject>(), track.player, showCrowns);
+            }
 
             var pos = track.bean.transform.position + Vector3.up * NAME_LABEL_HEIGHT;
             float dist = Vector3.Distance(pos, _cam.transform.position);
@@ -1081,6 +1113,7 @@ namespace BetterFG.Features.Replay
                 disp._platformIconRenderer.color = c;
             }
             NametagIconApplicator.SetIconAlphaForDisplay(disp, fade);
+            disp.SetCrownRankAlpha(fade);
         }
 
         void BuildNameLabel(Track track)
@@ -1100,6 +1133,9 @@ namespace BetterFG.Features.Replay
             string cleaned = FallGuysLib.Players.PlayerUtils.CleanPlayerName(track.player.name);
             string fallback = string.IsNullOrEmpty(cleaned) ? ("Player " + track.player.playerId) : cleaned;
 
+            disp.SetNameVisualsDependingOnFame(track.player.isLocal, track.player.fameEarnedBadge,
+                new Il2CppSystem.DateTime(track.player.fameUpdatedAt.Ticks));
+
             if (track.player.nametag != null)
                 NametagIconApplicator.ApplyRemoteToNameplate(disp._text, fallback, track.player.nametag);
             else
@@ -1117,8 +1153,60 @@ namespace BetterFG.Features.Replay
                 disp.SetPlatformIcon(track.player.platformId);
                 NametagIconApplicator.ApplyPlatformIconByName(disp, track.player.platformId);
             }
-            disp.SetNameVisualsDependingOnFame(track.player.isLocal, track.player.fameEarnedBadge,
-                new Il2CppSystem.DateTime(track.player.fameUpdatedAt.Ticks));
+
+        }
+
+        void ApplyCrownRank(PlayerInfoDisplayGameObject disp, ReplayPlayer p, bool show)
+        {
+            if (disp == null || !CrownRankManager.HasInstance) return;
+
+            var gfx = GlobalGameStateClient.Instance?.PlayerProfile?.GraphicsSettings;
+            var visibility = gfx != null ? gfx.CrownRankVisibility : GraphicsSettings.CrownRankInGameVisibility.Show;
+            bool mine = p.isLocal || p.playerId >= 0x80000000u;
+
+            if (visibility == GraphicsSettings.CrownRankInGameVisibility.HideAll) show = false;
+            if (visibility == GraphicsSettings.CrownRankInGameVisibility.HideMine && mine) show = false;
+
+            disp.SetCrownRankByCrownsEarned(show ? p.crownsEarned : -1);
+            if (show && mine) CrownRankService.ApplyCrownTo(disp, CrownRankService.CfgFromSettings(), position: false);
+
+            CentreTag(disp);
+            StartCoroutine(CentreTagLater(disp).WrapToIl2Cpp());
+        }
+
+        static void CentreTag(PlayerInfoDisplayGameObject disp)
+        {
+            var helper = disp._crownRankPlayerTagLayoutHelper;
+            if (helper == null) return;
+
+            if (disp._text != null) disp._text.ForceMeshUpdate(false, true);
+
+            var badge = disp._crownRankBadgeViewModel;
+            var crown = helper.crownRankObject;
+            bool active = badge != null && badge.CrownRankActive;
+            if (crown != null && crown.activeSelf != active) crown.SetActive(active);
+
+            if (active && crown != null)
+            {
+                var at = crown.transform.localPosition;
+                if (Mathf.Abs(at.y) > 0.0001f) crown.transform.localPosition = new Vector3(at.x, 0f, at.z);
+            }
+
+            var parent = helper._crownParentTransform;
+            if (NametagIconApplicator.HasIcon(parent))
+            {
+                if (!NametagIconApplicator.Relayout(parent)) NametagIconApplicator.RepositionCrownUnder(parent);
+                return;
+            }
+
+            if (active) helper.CenterNameAndCrownRank();
+            else helper.CenterName();
+        }
+
+        static IEnumerator CentreTagLater(PlayerInfoDisplayGameObject disp)
+        {
+            yield return null;
+            if (disp != null) CentreTag(disp);
         }
 
         static GameObject FindNametagPrefab()
@@ -1600,6 +1688,7 @@ namespace BetterFG.Features.Replay
             if (_exiting || _world == null) return;
             _world.Apply(_time);
             _tail.Apply(_time);
+            _powerups.Apply(_time);
         }
 
         static ReplayKeyframe Clone(ReplayKeyframe k) => new ReplayKeyframe
@@ -1866,6 +1955,11 @@ namespace BetterFG.Features.Replay
             foreach (var brain in _brains)
                 if (brain != null) brain.enabled = true;
             _brains.Clear();
+
+            for (int i = 0; i < _childCams.Count; i++)
+                if (_childCams[i] != null) _childCams[i].fieldOfView = _childFovs[i];
+            _childCams.Clear();
+            _childFovs.Clear();
 
             if (!_tookCamera || _cam == null) return;
             _tookCamera = false;

@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using System.Reflection;
 using BetterFG.Features.UnityRound.Editor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -17,14 +16,9 @@ namespace BetterFG.UI.Tabs
         public CustomCreativeTextureTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Creative - Custom Textures";
+        protected override string BgResource => "BetterFG.assets.ui.tab.creative.png";
         public override Tab MakeFallbackTab() => BetterFGTabRegistry.NewTab<CreativeTab>();
 
-        private static float PAD => UIScale.PAD;
-        private static float VPAD => UIScale.VPAD;
-        private static float SH => UIScale.SH;
-        private static float BTN_H => UIScale.BTN_H;
-        private static int FS => UIScale.FS;
-        private static int FS_SM => UIScale.FS_SM;
         private static float ROW_H => 26f * UIScale.S;
 
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
@@ -41,66 +35,6 @@ namespace BetterFG.UI.Tabs
         private int _texSelected = -1;
         private Text _texStatus;
         private RectTransform _texContentRt;
-
-        private static Texture2D _bgTex;
-        private static Texture2D _hoverTex;
-        private GameObject _bgHoverGo;
-
-        private static Texture2D LoadTex(string resource, ref Texture2D cache)
-        {
-            if (cache != null) return cache;
-            try
-            {
-                var asm = Assembly.GetExecutingAssembly();
-                using var stream = asm.GetManifestResourceStream(resource);
-                if (stream == null) return null;
-                var bytes = new byte[stream.Length];
-                stream.Read(bytes, 0, bytes.Length);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                tex.LoadImage(bytes);
-                tex.wrapMode = TextureWrapMode.Clamp;
-                cache = tex;
-            }
-            catch (Exception ex) { Plugin.Log.LogError("BetterFG: Tex load failed: " + ex.Message); }
-            return cache;
-        }
-
-        protected override void BuildBackground(RectTransform root)
-        {
-            var bgTex = LoadTex("BetterFG.assets.ui.tab.creative.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0);
-            var raw = bgGo.AddComponent<RawImage>();
-            raw.texture = bgTex;
-            raw.raycastTarget = false;
-
-            var hoverTex = LoadTex("BetterFG.assets.ui.bg_hover.png", ref _hoverTex);
-            if (hoverTex != null)
-            {
-                var hoverGo = new GameObject("BG_Hover");
-                hoverGo.transform.SetParent(bgGo.transform, false);
-                var hoverRt = hoverGo.AddComponent<RectTransform>();
-                hoverRt.anchorMin = Vector2.zero;
-                hoverRt.anchorMax = Vector2.one;
-                hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-                hoverGo.AddComponent<RawImage>().texture = hoverTex;
-                hoverGo.SetActive(false);
-                _bgHoverGo = hoverGo;
-            }
-        }
-
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
-        }
 
         protected override void BuildContent(RectTransform contentRoot)
         {

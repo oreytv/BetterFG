@@ -190,23 +190,42 @@ namespace BetterFG.Customization.Menu
         private void ApplyBannerColours(Component banner, BannerSlotKeys[] slotKeys, string highlightPrefix, string enabledKey)
         {
             if (banner == null) return;
-            if (SettingsService.Get(enabledKey, "false") != "true") return;
+            ApplyBannerColours(banner, ColoursFromSettings(slotKeys, highlightPrefix, enabledKey));
+        }
 
+        private static BannerColours ColoursFromSettings(BannerSlotKeys[] slotKeys, string highlightPrefix, string enabledKey)
+        {
             var slots = new System.Collections.Generic.List<BannerSlot>();
-            foreach (var sk in slotKeys)
-            {
-                if (SettingsService.Get(sk.prefix + ".on", "false") != "true") continue;
-                slots.Add(new BannerSlot
+            if (SettingsService.Get(enabledKey, "false") == "true")
+                foreach (var sk in slotKeys)
                 {
-                    bucket = sk.bucket,
-                    target = new Color(ParseF(sk.prefix + ".r", 1f), ParseF(sk.prefix + ".g", 1f), ParseF(sk.prefix + ".b", 1f)),
-                });
-            }
+                    if (SettingsService.Get(sk.prefix + ".on", "false") != "true") continue;
+                    slots.Add(new BannerSlot
+                    {
+                        bucket = sk.bucket,
+                        target = new Color(ParseF(sk.prefix + ".r", 1f), ParseF(sk.prefix + ".g", 1f), ParseF(sk.prefix + ".b", 1f)),
+                    });
+                }
 
-            bool highlightOn = SettingsService.Get(highlightPrefix + ".on", "false") == "true";
+            bool highlightOn = SettingsService.Get(enabledKey, "false") == "true" && SettingsService.Get(highlightPrefix + ".on", "false") == "true";
             Color highlight = new Color(ParseF(highlightPrefix + ".r", 1f), ParseF(highlightPrefix + ".g", 1f), ParseF(highlightPrefix + ".b", 1f));
 
-            ApplyBannerColours(banner, new BannerColours { slots = slots, highlightOn = highlightOn, highlight = highlight });
+            return new BannerColours { slots = slots, highlightOn = highlightOn, highlight = highlight };
+        }
+
+        // same lookup ApplyBannerColours(Component, BannerScreen) uses, minus the game-object walk —
+        // lets the UI tab's carousel preview a saved (unedited) colour set without a live banner around.
+        public BannerColours GetBannerColoursFromSettings(BannerScreen screen)
+        {
+            switch (screen)
+            {
+                case BannerScreen.Qualified: return ColoursFromSettings(QualSlots, "menu.banner.qual.highlight", KEY_BANNER_QUAL_ENABLED);
+                case BannerScreen.Eliminated: return ColoursFromSettings(ElimSlots, "menu.banner.elim.highlight", KEY_BANNER_ELIM_ENABLED);
+                case BannerScreen.Winner: return ColoursFromSettings(WinnerSlots, "menu.banner.win.highlight", KEY_BANNER_WIN_ENABLED);
+                case BannerScreen.RoundOver: return ColoursFromSettings(RoundOverSlots, "menu.banner.round.highlight", KEY_BANNER_ROUND_ENABLED);
+                case BannerScreen.Squad: return ColoursFromSettings(SquadSlots, "menu.banner.squad.highlight", KEY_BANNER_SQUAD_ENABLED);
+                default: return default;
+            }
         }
 
         // banner colour replacement set + the HSV matcher, shared so the UI tab's live preview

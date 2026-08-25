@@ -1331,6 +1331,22 @@ namespace BetterFG.UI
                 fmt == null ? null : new Func<float, string>(v => fmt(Mathf.RoundToInt(v))),
                 onChange == null ? null : new Action<float>(v => onChange(Mathf.RoundToInt(v))));
 
+        public static Text CreateCarousel(Transform parent, Rect rect, string[] labels, int current,
+            Action<int> onStep, Color? bg = null, int fontSize = 13)
+        {
+            var col = bg ?? new Color(0.28f, 0.28f, 0.34f, 1f);
+            float arrowW = rect.height;
+            current = Mathf.Clamp(current, 0, labels.Length - 1);
+            CreateButton(parent, new Rect(rect.x, rect.y, arrowW, rect.height), "‹", col, Color.white, fontSize,
+                new Action(() => onStep(-1)));
+            var lbl = CreateLabel(parent,
+                new Rect(rect.x + arrowW, rect.y, rect.width - arrowW * 2f, rect.height),
+                labels[current], fontSize, Color.white, TextAnchor.MiddleCenter);
+            CreateButton(parent, new Rect(rect.x + rect.width - arrowW, rect.y, arrowW, rect.height), "›", col, Color.white, fontSize,
+                new Action(() => onStep(+1)));
+            return lbl;
+        }
+
         // �� Dropdown ����������������������������������������������������������
         // pass options
         // and an onChange; templateHeight controls how tall the open list gets. listWidth, when
@@ -1770,6 +1786,38 @@ namespace BetterFG.UI
 
         public static void SetButtonSelected(Button btn, bool selected, Color selectedColor)
             => SetButtonColor(btn, selected ? selectedColor : new Color(0.2f, 0.2f, 0.2f, 1f));
+
+        public static readonly Color ROW_ALT = new Color(1f, 1f, 1f, 0.03f);
+        public static readonly Color ROW_CLEAR = new Color(0f, 0f, 0f, 0f);
+        public static readonly Color ROW_HOVER = new Color(1f, 1f, 1f, 0.13f);
+        public static readonly Color ROW_PRESS = new Color(1f, 1f, 1f, 0.2f);
+        public static readonly Color ROW_SEL = new Color(0.45f, 1f, 0.45f, 0.16f);
+
+        public static Button CreateRowEndButton(Transform parent, float anchoredX, float bw, float rowH,
+            string label, Color bg, Action onClick)
+        {
+            float bh = Mathf.Min(rowH - 6f, 24f * UIScale.S);
+            var btn = CreateButton(parent, new Rect(0f, 0f, bw, bh), label, bg, Color.white, UIScale.FS_SM - 1, onClick);
+            var rt = btn.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(1f, 0.5f);
+            rt.anchorMax = new Vector2(1f, 0.5f);
+            rt.pivot = new Vector2(1f, 0.5f);
+            rt.anchoredPosition = new Vector2(anchoredX, 0f);
+            rt.sizeDelta = new Vector2(bw, bh);
+            return btn;
+        }
+
+        public static void PaintListRow(Button row, int index, bool selected)
+        {
+            if (row == null) return;
+            var cols = row.colors;
+            cols.normalColor = selected ? ROW_SEL : (index % 2 == 0 ? ROW_ALT : ROW_CLEAR);
+            cols.highlightedColor = ROW_HOVER;
+            cols.pressedColor = ROW_PRESS;
+            cols.selectedColor = cols.normalColor;
+            cols.fadeDuration = 0f;
+            row.colors = cols;
+        }
     }
 
     // �� GradientImage ���������������������������������������������������������

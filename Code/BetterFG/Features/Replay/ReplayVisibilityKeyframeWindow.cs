@@ -62,6 +62,19 @@ namespace BetterFG.Features.Replay
             _row = 0;
 
             Line("Phrases & emoticons", _kf.showPhrases ? "Shown" : "Hidden", ToggleShowPhrases, ToggleShowPhrases);
+            Line("Crown ranks", ReplayVisibilityKeyframe.PlayersLabel(_kf.crowns), () => StepCrowns(-1), () => StepCrowns(1));
+
+            if (_kf.crowns == ReplayVisibilityMode.Only)
+            {
+                _y += 2f;
+                for (int i = 0; i < _kf.crownOnlyPlayers.Count; i++)
+                    PlayerRow(_kf.crownOnlyPlayers[i], RemoveCrown);
+
+                UGUIShip.CreateButton(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW),
+                    "+ Add crown", ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(AddCrown));
+                _y += ROW;
+            }
+
             Line("Names", ReplayVisibilityKeyframe.PlayersLabel(_kf.names), () => StepNames(-1), () => StepNames(1));
 
             if (_kf.names == ReplayVisibilityMode.Only)
@@ -126,6 +139,20 @@ namespace BetterFG.Features.Replay
         }
 
         void ToggleShowPhrases() { _kf.showPhrases = !_kf.showPhrases; Rebuild(); }
+
+        void StepCrowns(int dir)
+        {
+            _kf.crowns = (ReplayVisibilityMode)ReplayWindowKit.Step((int)_kf.crowns, dir, 3, true);
+            Rebuild();
+        }
+
+        void RemoveCrown(uint id)
+        {
+            _kf.crownOnlyPlayers.Remove(id);
+            Rebuild();
+        }
+
+        void AddCrown() => ReplayViewer.Instance?.BeginCrownPick(_kf);
 
         void ToggleShowGhosts() { _kf.showGhosts = !_kf.showGhosts; Rebuild(); }
 

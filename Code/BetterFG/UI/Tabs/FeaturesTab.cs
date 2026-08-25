@@ -12,6 +12,7 @@ namespace BetterFG.UI.Tabs
         public FeaturesTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Features";
+        protected override string BgResource => "BetterFG.assets.ui.tab.features.png";
 
         static readonly Color WHITE = Color.white;
         static readonly Color ROW_BG = new Color(0f, 0f, 0f, 0.55f);
@@ -19,11 +20,6 @@ namespace BetterFG.UI.Tabs
         static readonly Color ON = new Color(0.25f, 0.5f, 0.25f, 1f);
         static readonly Color OFF = new Color(0f, 0f, 0f, 1f);
 
-        static float PAD => UIScale.PAD;
-        static float VPAD => UIScale.VPAD;
-        static float BTN_H => UIScale.BTN_H;
-        static int FS => UIScale.FS;
-        static int FS_SM => UIScale.FS_SM;
 
         const float HEADER_H = 58f;
         const float SETTING_H = 26f;
@@ -32,47 +28,16 @@ namespace BetterFG.UI.Tabs
         const float PREVIEW_W = 168f;
         const float PREVIEW_H = 126f;
 
-        static Texture2D _bgTex;
-        static Texture2D _hoverTex;
         static readonly System.Collections.Generic.Dictionary<string, Sprite> _featurePics = new System.Collections.Generic.Dictionary<string, Sprite>();
-        GameObject _bgHoverGo;
         RectTransform _listRt;
         float _viewportH;
         float _contentW;
 
         protected override void BuildBackground(RectTransform root)
         {
-            var bgTex = LoadTex("BetterFG.assets.ui.tab.features.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = new Vector2(0f, 0f);
-            bgRt.offsetMax = new Vector2(0f, 1f);
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0f);
-            var raw = bgGo.AddComponent<RawImage>();
-            raw.texture = bgTex;
-            raw.raycastTarget = false;
-
-            var hoverTex = LoadTex("BetterFG.assets.ui.bg_hover.png", ref _hoverTex);
-            if (hoverTex == null) return;
-            _bgHoverGo = new GameObject("BG_Hover");
-            _bgHoverGo.transform.SetParent(bgGo.transform, false);
-            var hoverRt = _bgHoverGo.AddComponent<RectTransform>();
-            hoverRt.anchorMin = Vector2.zero;
-            hoverRt.anchorMax = Vector2.one;
-            hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-            _bgHoverGo.AddComponent<RawImage>().texture = hoverTex;
-            _bgHoverGo.SetActive(false);
-        }
-
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
+            base.BuildBackground(root);
+            var bgRt = root.Find("BG") as RectTransform;
+            if (bgRt != null) bgRt.offsetMax = new Vector2(0f, 1f);
         }
 
         protected override void BuildContent(RectTransform contentRoot)
@@ -437,12 +402,5 @@ namespace BetterFG.UI.Tabs
                 }));
         }
 
-        static Texture2D LoadTex(string resource, ref Texture2D cache)
-        {
-            if (cache != null) return cache;
-            try { cache = EmbeddedResourceandUnity.LoadTexture(resource); }
-            catch (Exception ex) { Plugin.Log.LogError("featuresTab: bg load failed: " + ex.Message); }
-            return cache;
-        }
     }
 }

@@ -24,6 +24,8 @@ namespace BetterFG.UI.Tabs
     {
         public NametagTab(IntPtr ptr) : base(ptr) { }
 
+        protected override string BgResource => "BetterFG.assets.ui.nametag.bg.png";
+
         public static NametagTab Instance { get; private set; }
 
         void Awake() => Instance = this;
@@ -69,11 +71,6 @@ namespace BetterFG.UI.Tabs
         private static readonly Color SEL_COLOR = new Color(0.25f, 0.5f, 0.25f, 1f);
         private static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
         private static readonly Color ICON_OFF = new Color(1f, 1f, 1f, 0.3f);
-
-        // ── Textures ──────────────────────────────────────────────────────────
-        private static Texture2D _bgTex;
-        private static Texture2D _bgHoverTex;
-        private GameObject _bgHoverGo;
 
         // ── Cached name assets ────────────────────────────────────────────────
         // the nametag font + materials only exist once the game has loaded into the menu.
@@ -178,13 +175,6 @@ namespace BetterFG.UI.Tabs
         private Button _btnPlatNone, _btnPlatSelf, _btnPlatEveryone;
 
         // ── Layout shorthands ─────────────────────────────────────────────────
-        private static float PAD => UIScale.PAD;
-        private static float VPAD => UIScale.VPAD;
-        private static float LH => UIScale.LH;
-        private static float SH => UIScale.SH;
-        private static float BTN_H => UIScale.BTN_H;
-        private static int FS => UIScale.FS;
-        private static int FS_SM => UIScale.FS_SM;
 
         private static float subTabH => BTN_H * 0.9f;
         private static float FLAG_ROW_H => UIScale.BTN_H * 0.72f;
@@ -192,20 +182,6 @@ namespace BetterFG.UI.Tabs
         private static float CUSTOM_ICON_ROW_H => BTN_H + PAD + 1f + PAD + (LH + SH) * 3f;
         private const float PLATFORM_ICON_GRID_H = 117f;
 
-        private static Texture2D ResizeTo32(Texture2D src)
-        {
-            const int SIZE = 32;
-            var rt = RenderTexture.GetTemporary(SIZE, SIZE, 0, RenderTextureFormat.ARGB32);
-            rt.filterMode = FilterMode.Bilinear;
-            RenderTexture.active = rt;
-            Graphics.Blit(src, rt);
-            var dst = new Texture2D(SIZE, SIZE, TextureFormat.RGBA32, false);
-            dst.ReadPixels(new Rect(0, 0, SIZE, SIZE), 0, 0);
-            dst.Apply();
-            RenderTexture.active = null;
-            RenderTexture.ReleaseTemporary(rt);
-            return dst;
-        }
 
         private static Texture2D LoadEmbedded(string resourceName, ref Texture2D cache)
         {
@@ -227,45 +203,6 @@ namespace BetterFG.UI.Tabs
         }
 
         // ── Tab overrides ─────────────────────────────────────────────────────
-
-        protected override void BuildBackground(RectTransform root)
-        {
-            var bgTex = LoadEmbedded("BetterFG.assets.ui.nametag.bg.png", ref _bgTex);
-            if (bgTex == null) return;
-
-            var bgGo = new GameObject("BG");
-            bgGo.transform.SetParent(root, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
-            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0f);
-            var raw = bgGo.AddComponent<RawImage>();
-            raw.texture = bgTex;
-            raw.raycastTarget = false;
-
-            var hoverTex = LoadEmbedded("BetterFG.assets.ui.bg_hover.png", ref _bgHoverTex);
-            if (hoverTex != null)
-            {
-                var hoverGo = new GameObject("BG_Hover");
-                hoverGo.transform.SetParent(bgGo.transform, false);
-                var hoverRt = hoverGo.AddComponent<RectTransform>();
-                hoverRt.anchorMin = Vector2.zero;
-                hoverRt.anchorMax = Vector2.one;
-                hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-                hoverRt.localScale = Vector3.one;
-                hoverRt.localPosition = Vector3.zero;
-                hoverGo.AddComponent<RawImage>().texture = hoverTex;
-                hoverGo.SetActive(false);
-                _bgHoverGo = hoverGo;
-            }
-        }
-
-        protected override void OnTitleHoverChanged(bool hovering)
-        {
-            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
-        }
 
         protected override void BuildContent(RectTransform contentRoot)
         {

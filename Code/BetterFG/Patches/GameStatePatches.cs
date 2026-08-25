@@ -898,6 +898,46 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(CellBehaviour), nameof(CellBehaviour.ChangeFallGuyMaterialForBacklight))]
+    internal static class QualCellBacklightEyeRepair
+    {
+        [HarmonyPostfix]
+        public static void Postfix(CellBehaviour __instance)
+        {
+            if (__instance == null) return;
+            var fg = __instance._fallGuy;
+            if (fg == null) return;
+            var bean = fg.gameObject;
+            bool local = __instance._localPlayer;
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ReassertOn(bean);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(bean, local);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyLater(bean, 0.5f, local);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyLater(bean, 1.5f, local);
+        }
+    }
+
+    [HarmonyPatch(typeof(CellBehaviour), nameof(CellBehaviour.SetColors_WithGuy))]
+    internal static class QualCellGuyColourEyeRepair
+    {
+        [HarmonyPostfix]
+        public static void Postfix(CellBehaviour __instance)
+            => BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ReassertOn(__instance);
+    }
+
+    [HarmonyPatch(typeof(FallguyCustomisationHandler), nameof(FallguyCustomisationHandler.SetupForVictoryScreen))]
+    internal static class VictorySetupEyeRepair
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FallguyCustomisationHandler __instance)
+        {
+            if (__instance == null) return;
+            var bean = __instance.gameObject;
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(bean);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyLater(bean, 0.5f);
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyLater(bean, 1.5f);
+        }
+    }
+
     [HarmonyPatch(typeof(CellBehaviour), nameof(CellBehaviour.SetName), new[] { typeof(string) })]
     internal static class QualCellSetNamePatch
     {
@@ -1410,6 +1450,7 @@ namespace BetterFG.Patches.GameStates
 
             NametagIconApplicator.ApplyNametag();
             NametagIconApplicator.ApplyPlatformIcon();
+            BetterFG.Nametag.CrownRankService.ApplyLocal();
 
             var platformHost = BeanMonitorService.Instance;
             if (platformHost != null)
@@ -1484,6 +1525,7 @@ namespace BetterFG.Patches.GameStates
                 yield return new WaitForSeconds(1f);
                 NametagPatchHub.RefreshRemoteNametags();
                 NametagIconApplicator.ApplyNametag();
+                BetterFG.Nametag.CrownRankService.ApplyLocal();
             }
         }
     }

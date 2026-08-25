@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using BetterFG.Utilities;
@@ -34,6 +34,7 @@ namespace BetterFG.Features.Replay
             Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlaySpeechBubbleAudio)), typeof(ReplaySpeechBubbleAudioPatch), false);
             Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlayOneShot), new[] { typeof(string), typeof(Vector3) }), typeof(ReplayObjectAudioPatch), false);
             Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.PlayOneShotAttached), new[] { typeof(string), typeof(GameObject) }), typeof(ReplayAttachedAudioPatch), false);
+            Hook(ReplayCallbackAudioPatch.Target(), typeof(ReplayCallbackAudioPatch), false);
             foreach (var m in ReplayCreateAudioPatch.Targets()) Hook(m, typeof(ReplayCreateAudioPatch), true);
             Hook(AccessTools.Method(typeof(AudioManager), nameof(AudioManager.StopAndReleaseAudioEvent)), typeof(ReplayStopAudioPatch), false);
             Hook(AccessTools.Method(typeof(PlayAudioStateBehaviour), nameof(PlayAudioStateBehaviour.OnStateEnter), new[] { typeof(Animator), typeof(AnimatorStateInfo), typeof(int) }), typeof(ReplayAnimatorAudioPatch), false);
@@ -66,24 +67,41 @@ namespace BetterFG.Features.Replay
         }
     }
 
+    // fmod paths end in the same short key AudioManager uses (".../F_Slide" -> "F_Slide"), so the last
+    // segment is enough to identify anything that starts, whoever started it
     internal static class ReplaySlideEvent
     {
-        static readonly Dictionary<IntPtr, bool> _known = new Dictionary<IntPtr, bool>();
+        struct Info
+        {
+            public string key;
+            public bool slide;
+        }
+
+        static readonly Dictionary<IntPtr, Info> _known = new Dictionary<IntPtr, Info>();
 
         public static void Reset() => _known.Clear();
 
-        public static bool Matches(EventInstance instance, out EventDescription desc)
+        public static bool Resolve(EventInstance instance, out EventDescription desc, out string key, out bool slide)
         {
+            key = null;
+            slide = false;
             desc = default;
             if (!instance.isValid() || instance.getDescription(out desc) != RESULT.OK) return false;
 
-            if (_known.TryGetValue(desc.handle, out bool slide)) return slide;
+            if (!_known.TryGetValue(desc.handle, out var info))
+            {
+                if (desc.getPath(out string path) == RESULT.OK && !string.IsNullOrEmpty(path))
+                {
+                    int cut = path.LastIndexOf('/');
+                    info.key = cut >= 0 ? path.Substring(cut + 1) : path;
+                    info.slide = string.Equals(info.key, "F_Slide", StringComparison.OrdinalIgnoreCase);
+                }
+                _known[desc.handle] = info;
+            }
 
-            slide = desc.getPath(out string path) == RESULT.OK
-                && !string.IsNullOrEmpty(path)
-                && path.EndsWith("/F_Slide", StringComparison.OrdinalIgnoreCase);
-            _known[desc.handle] = slide;
-            return slide;
+            key = info.key;
+            slide = info.slide;
+            return !string.IsNullOrEmpty(key);
         }
     }
 
@@ -91,7 +109,19 @@ namespace BetterFG.Features.Replay
     {
         public static void Prefix(EventInstance __instance)
         {
-            if (FeatureReplay.Live == null || !ReplaySlideEvent.Matches(__instance, out var desc)) return;
+            if (FeatureReplay.Live == null) return;
+            if (!ReplaySlideEvent.Resolve(__instance, out var desc, out string key, out bool slide)) return;
+
+            // blast ball explosions (and anything else a pooled vfx prefab plays for itself) never touch
+            // AudioManager, so the key-based hooks above can't see them. this is where they all end up
+            if (!slide)
+            {
+                var pos = Vector3.zero;
+                if (__instance.get3DAttributes(out var attributes) == RESULT.OK)
+                    pos = new Vector3(attributes.position.x, attributes.position.y, attributes.position.z);
+                FeatureReplay.CaptureStrayAudio(key, pos);
+                return;
+            }
 
             var pairs = new List<(string, float)>();
             if (desc.getParameterDescriptionCount(out int count) == RESULT.OK)
@@ -112,7 +142,8 @@ namespace BetterFG.Features.Replay
     {
         public static void Prefix(EventInstance __instance)
         {
-            if (FeatureReplay.Live == null || !ReplaySlideEvent.Matches(__instance, out _)) return;
+            if (FeatureReplay.Live == null) return;
+            if (!ReplaySlideEvent.Resolve(__instance, out _, out _, out bool slide) || !slide) return;
             FeatureReplay.CloseSlideAudio(__instance.handle);
         }
     }
@@ -150,6 +181,24 @@ namespace BetterFG.Features.Replay
         {
             if (FeatureReplay.Live == null || __1 == null) return;
             FeatureReplay.CaptureAudio(__0, null, __1.transform.position);
+        }
+    }
+
+    // PlayOneShot has a second overload that takes a completion callback, and level-element sounds
+    // like the blast ball's explosion come through that one, not the plain (key, pos) pair
+    internal static class ReplayCallbackAudioPatch
+    {
+        public static MethodBase Target()
+        {
+            foreach (var m in typeof(AudioManager).GetMethods())
+                if (m.Name == nameof(AudioManager.PlayOneShot) && m.GetParameters().Length == 3) return m;
+            return null;
+        }
+
+        public static void Prefix(string __0, Vector3 __2)
+        {
+            if (FeatureReplay.Live == null) return;
+            FeatureReplay.CaptureAudio(__0, null, __2);
         }
     }
 

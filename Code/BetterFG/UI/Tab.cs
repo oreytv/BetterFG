@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using BetterFG.Services;
+using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -102,6 +103,14 @@ namespace BetterFG.UI
         private static readonly Vector3 TitleOpenedPos = new Vector3(21.6729f, 221.1817f, 0f);
         private const float TitleReachClosed = 8f;
         private const float TitleReachOpened = -4f;
+
+        protected static float PAD => UIScale.PAD;
+        protected static float VPAD => UIScale.VPAD;
+        protected static float SH => UIScale.SH;
+        protected static float LH => UIScale.LH;
+        protected static float BTN_H => UIScale.BTN_H;
+        protected static int FS => UIScale.FS;
+        protected static int FS_SM => UIScale.FS_SM;
 
         public virtual string TabTitle => "Tab";
 
@@ -254,9 +263,57 @@ namespace BetterFG.UI
             if (!_isOpen) contentGo.SetActive(false);
         }
 
-        protected virtual void BuildBackground(RectTransform root) { }
+        protected virtual string BgResource => null;
+
+        private static readonly Dictionary<string, Texture2D> _bgTexCache = new Dictionary<string, Texture2D>();
+        private GameObject _bgHoverGo;
+
+        private static Texture2D LoadBgTex(string resource)
+        {
+            if (string.IsNullOrEmpty(resource)) return null;
+            if (_bgTexCache.TryGetValue(resource, out var t) && t != null) return t;
+            t = EmbeddedResourceandUnity.LoadTexture(resource);
+            _bgTexCache[resource] = t;
+            return t;
+        }
+
+        protected virtual void BuildBackground(RectTransform root)
+        {
+            var bgTex = LoadBgTex(BgResource);
+            if (bgTex == null) return;
+
+            var bgGo = new GameObject("BG");
+            bgGo.transform.SetParent(root, false);
+            var bgRt = bgGo.AddComponent<RectTransform>();
+            bgRt.anchorMin = Vector2.zero;
+            bgRt.anchorMax = Vector2.one;
+            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
+            bgRt.localScale = new Vector3(1.5015f, 1.3502f, 1f);
+            bgRt.localPosition = new Vector3(267.7578f, 285.8921f, 0f);
+            var raw = bgGo.AddComponent<RawImage>();
+            raw.texture = bgTex;
+            raw.raycastTarget = false;
+
+            var hoverTex = LoadBgTex("BetterFG.assets.ui.bg_hover.png");
+            if (hoverTex == null) return;
+
+            var hoverGo = new GameObject("BG_Hover");
+            hoverGo.transform.SetParent(bgGo.transform, false);
+            var hoverRt = hoverGo.AddComponent<RectTransform>();
+            hoverRt.anchorMin = Vector2.zero;
+            hoverRt.anchorMax = Vector2.one;
+            hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
+            hoverGo.AddComponent<RawImage>().texture = hoverTex;
+            hoverGo.SetActive(false);
+            _bgHoverGo = hoverGo;
+        }
+
         protected virtual void BuildTitleExtras(Transform titleBar, Text title) { }
-        protected virtual void OnTitleHoverChanged(bool hovering) { }
+
+        protected virtual void OnTitleHoverChanged(bool hovering)
+        {
+            if (_bgHoverGo != null) _bgHoverGo.SetActive(hovering);
+        }
         // called by the UI manager when this tab is opened/closed
         public virtual void OnOpened() { }
         public virtual void OnClosed() { }

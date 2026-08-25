@@ -89,11 +89,9 @@ foreach ($game in $folders) {
 
     $libsSource = Join-Path $BuildOutput "Libs"
     if (Test-Path $libsSource) {
-        Copy-Item -Path (Join-Path $libsSource "*") -Destination $pluginDir -Force
-    }
-    $staleLibs = Join-Path $pluginDir "Libs"
-    if (Test-Path $staleLibs) {
-        Remove-Item -LiteralPath $staleLibs -Recurse -Force
+        $libsDest = Join-Path $pluginDir "Libs"
+        New-Item -ItemType Directory -Path $libsDest -Force | Out-Null
+        Copy-Item -Path (Join-Path $libsSource "*") -Destination $libsDest -Force
     }
     Write-Host "$Store -> plugin copied to $pluginDir"
 }
