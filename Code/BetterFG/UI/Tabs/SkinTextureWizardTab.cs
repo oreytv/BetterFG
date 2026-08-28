@@ -19,6 +19,15 @@ namespace BetterFG.UI.Tabs
         public override string TabTitle => EditIndex >= 0 ? "Skin Texture - Edit" : "Skin Texture - New";
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
 
+        // null = the shared global catalog (SkinApplicationService); non-null = some other owner's
+        // own list (a pet's PetData.skinTexEntries) - lets this exact wizard be reused for both
+        // without a parallel copy, same shape CustomizationTab.PetPickTarget already uses
+        public List<SkinTexEntry> TargetEntries;
+        // a factory, not a live Tab - SwitchSlotTab destroys `this`, so any tab instance handed in
+        // now would be dead by the time MakeListTarget calls it later; build fresh, same shape
+        // CustomizationTab.PetPickTarget already uses
+        public Func<Tab> OwnerListTab;
+
         private static readonly Color OK = new Color(0.55f, 0.85f, 0.55f, 1f);
         private static readonly Color CHECK = new Color(0.55f, 0.9f, 0.55f, 1f);
 
@@ -90,9 +99,16 @@ namespace BetterFG.UI.Tabs
             }
         }
 
+        List<SkinTexEntry> LoadTargetEntries() => TargetEntries ?? SkinApplicationService.LoadEntries();
+        void SaveTargetEntries(List<SkinTexEntry> entries)
+        {
+            if (TargetEntries != null) return; // caller (e.g. PetSkinTextureTab) owns saving its own list
+            SkinApplicationService.SaveEntries(entries);
+        }
+
         protected override int LoadEditedEntry()
         {
-            var entries = SkinApplicationService.LoadEntries();
+            var entries = LoadTargetEntries();
             if (EditIndex >= entries.Count) { EditIndex = -1; return -1; }
 
             var entry = entries[EditIndex];
@@ -152,7 +168,7 @@ namespace BetterFG.UI.Tabs
             return null;
         }
 
-        protected override Tab MakeListTarget() => BetterFGTabRegistry.CreateTab("Skin Texture");
+        protected override Tab MakeListTarget() => OwnerListTab != null ? OwnerListTab() : BetterFGTabRegistry.CreateTab("Skin Texture");
 
         public SkinTextureMaterialPropsTab ResumeSource;
         protected override bool SkipLoadEditedEntry => ResumeSource != null;
@@ -164,6 +180,8 @@ namespace BetterFG.UI.Tabs
             ResumeSource = null;
 
             EditIndex = src.EditIndex;
+            TargetEntries = src.TargetEntries;
+            OwnerListTab = src.OwnerListTab;
             _category = string.IsNullOrEmpty(src.Category) ? SkinTexCategory.Upper : src.Category;
             _costumeName = src.CostumeName;
             _mats.Clear(); _mats.AddRange(src.Mats);
@@ -701,6 +719,8 @@ namespace BetterFG.UI.Tabs
 
             var props = BetterFGTabRegistry.NewTab<SkinTextureMaterialPropsTab>();
             props.EditIndex = EditIndex;
+            props.TargetEntries = TargetEntries;
+            props.OwnerListTab = OwnerListTab;
             props.Category = _category;
             props.CostumeName = _costumeName;
             props.Mats.AddRange(_mats);
@@ -777,7 +797,7 @@ namespace BetterFG.UI.Tabs
             string name = _nameField.text?.Trim() ?? "";
             if (string.IsNullOrEmpty(name)) { SetStatus("give it a name first"); return false; }
 
-            var entries = SkinApplicationService.LoadEntries();
+            var entries = LoadTargetEntries();
             for (int i = 0; i < entries.Count; i++)
             {
                 if (i == EditIndex) continue;
@@ -800,11 +820,16 @@ namespace BetterFG.UI.Tabs
 
             if (!editing) entries.Add(entry);
 
-            SkinApplicationService.SaveEntries(entries);
+            SaveTargetEntries(entries);
             Plugin.Log.LogInfo($"skin {_category} {(editing ? "updated" : "added")}: {name} -> {entry.costumeName} ({entry.overrides.Count} texture(s), {entry.matProps.Count} propertie(s))");
             return true;
         }
 
-        protected override void OnLeave() => SkinApplicationService.ReapplyAllEnabledFromSettings();
+        // reapplying the global catalog only makes sense for the global catalog - a pet's own
+        // entries apply whenever it's (re)spawned (PetBeanBuilder), not against the local player
+        protected override void OnLeave()
+        {
+            if (TargetEntries == null) SkinApplicationService.ReapplyAllEnabledFromSettings();
+        }
     }
 }

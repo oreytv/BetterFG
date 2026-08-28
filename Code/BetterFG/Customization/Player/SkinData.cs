@@ -40,6 +40,15 @@ namespace BetterFG.Customization.Player
         public ItemHandInfo right;
         // 0=use info.json default, 1=left only, 2=right only, 3=both
         public int handOverride = 0;
+
+        // when this skin came off someone else's profile, their settings drive the per-skin item
+        // placement instead of ours
+        public Dictionary<string, string> ownerSettings;
+
+        public string OwnerSetting(string key, string def) =>
+            ownerSettings != null
+                ? (ownerSettings.TryGetValue(key, out var v) && !string.IsNullOrEmpty(v) ? v : def)
+                : BetterFG.Services.SettingsService.Get(key, def);
     }
 
     [Serializable]

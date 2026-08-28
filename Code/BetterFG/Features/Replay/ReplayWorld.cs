@@ -264,6 +264,7 @@ namespace BetterFG.Features.Replay
             public Levels.Obstacles.LevelEditorCommonConveyorBelt convLe;
             public Levels.Powerups.COMMON_PowerupPickup pick;
             public Levels.Obstacles.COMMON_RespawningTile tile;
+            public Levels.FloorFall.FloorFall_FallingPlatform floor;
             public int blastState;
             public bool holdPending;
             public float holdTime;
@@ -277,6 +278,7 @@ namespace BetterFG.Features.Replay
         static readonly HashSet<IntPtr> _knownNet = new HashSet<IntPtr>();
         static readonly HashSet<int> _seen = new HashSet<int>();
         static readonly HashSet<int> _keep = new HashSet<int>();
+        static readonly HashSet<int> _watchAt = new HashSet<int>();
         static readonly HashSet<IntPtr> _aliveThisTick = new HashSet<IntPtr>();
         static readonly HashSet<int> _particleAt = new HashSet<int>();
         static readonly HashSet<int> _beanAt = new HashSet<int>();
@@ -289,6 +291,7 @@ namespace BetterFG.Features.Replay
         static readonly Dictionary<int, Behaviour> _convAt = new Dictionary<int, Behaviour>();
         static readonly Dictionary<int, Levels.Powerups.COMMON_PowerupPickup> _pickAt = new Dictionary<int, Levels.Powerups.COMMON_PowerupPickup>();
         static readonly Dictionary<int, Levels.Obstacles.COMMON_RespawningTile> _tileAt = new Dictionary<int, Levels.Obstacles.COMMON_RespawningTile>();
+        static readonly Dictionary<int, Levels.FloorFall.FloorFall_FallingPlatform> _floorAt = new Dictionary<int, Levels.FloorFall.FloorFall_FallingPlatform>();
         static ReplayRecording _rec;
         static int _frames;
         static int _subtree;
@@ -375,6 +378,8 @@ namespace BetterFG.Features.Replay
             _convAt.Clear();
             _pickAt.Clear();
             _tileAt.Clear();
+            _floorAt.Clear();
+            _watchAt.Clear();
         }
 
         static void Discover()
@@ -415,6 +420,8 @@ namespace BetterFG.Features.Replay
                         if (c != null) _pickAt[c.transform.GetInstanceID()] = c;
                     foreach (var c in root.GetComponentsInChildren<Levels.Obstacles.COMMON_RespawningTile>(true))
                         if (c != null) _tileAt[c.transform.GetInstanceID()] = c;
+                    foreach (var c in root.GetComponentsInChildren<Levels.FloorFall.FloorFall_FallingPlatform>(true))
+                        if (c != null) _floorAt[c.transform.GetInstanceID()] = c;
 
                     var anims = root.GetComponentsInChildren<Animator>(true);
                     foreach (var c in anims) if (c != null) _animAt[c.transform.GetInstanceID()] = c;
@@ -438,6 +445,16 @@ namespace BetterFG.Features.Replay
                     foreach (var c in _blastAt.Values) MarkKeep(c.transform);
                     foreach (var c in _destAt.Values) MarkKeep(c.transform);
                     foreach (var c in _convAt.Values) MarkKeep(c.transform);
+                    // a tile never moves its own transform, it drops and hides these children, and an
+                    // active MeshRenderer isn't reason enough to keep one, so the whole floor replayed intact
+                    foreach (var c in _tileAt.Values)
+                    {
+                        if (c._visualsForRespawn != null) Watch(c._visualsForRespawn.transform);
+                        if (c._colliderObject != null) Watch(c._colliderObject.transform);
+                        if (c._outerRingObject != null) Watch(c._outerRingObject.transform);
+                    }
+                    foreach (var c in _floorAt.Values)
+                        if (c._visuals != null) Watch(c._visuals.transform);
                     foreach (var c in root.GetComponentsInChildren<Renderer>(true))
                         if (c != null && !c.gameObject.activeSelf) MarkKeep(c.transform);
 
@@ -471,6 +488,13 @@ namespace BetterFG.Features.Replay
 
             if (_rec.sets.Count > 0)
                 Plugin.Log.LogInfo($"{_rec.sets.Count} set switchers noted down with their chosen variation");
+        }
+
+        // these go dark the moment the tile breaks, so they can't wait for the every-16th-visit activeSelf check
+        static void Watch(Transform tf)
+        {
+            _watchAt.Add(tf.GetInstanceID());
+            MarkKeep(tf);
         }
 
         static void MarkKeep(Transform tf)
@@ -559,7 +583,8 @@ namespace BetterFG.Features.Replay
             _convAt.TryGetValue(id, out var conveyor);
             _pickAt.TryGetValue(id, out var pickup);
             _tileAt.TryGetValue(id, out var tile);
-            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, conveyor, pickup, tile, spawned, _subtree == 0, t);
+            _floorAt.TryGetValue(id, out var floor);
+            var node = Add(data, tf, spawned ? tf.GetComponentInChildren<Animator>(true) : anim, blast, dest, uv, conveyor, pickup, tile, floor, spawned, _subtree == 0, t);
             _subtree++;
 
             string sep = path.Length > 0 ? "/" : "";
@@ -577,7 +602,8 @@ namespace BetterFG.Features.Replay
 
         static Node Add(ReplayObject data, Transform tf, Animator anim, Levels.Obstacles.COMMON_BlastBall blast,
             LevelEditorDestructibleObjectResponder dest, Levels.TextureUVImageRenderer uv, Behaviour conveyor,
-            Levels.Powerups.COMMON_PowerupPickup pickup, Levels.Obstacles.COMMON_RespawningTile tile, bool world, bool seed, float t)
+            Levels.Powerups.COMMON_PowerupPickup pickup, Levels.Obstacles.COMMON_RespawningTile tile,
+            Levels.FloorFall.FloorFall_FallingPlatform floor, bool world, bool seed, float t)
         {
             var go = tf.gameObject;
             var node = new Node
@@ -606,11 +632,13 @@ namespace BetterFG.Features.Replay
             }
             else if (pickup != null) node.pick = pickup;
             else if (tile != null) node.tile = tile;
+            else if (floor != null) node.floor = floor;
 
             node.watchActive = world || seed || !node.active || anim != null
                 || node.blast is not null || node.dest is not null || node.uv is not null
                 || node.conv is not null || node.convLe is not null || node.pick is not null
-                || node.tile is not null;
+                || node.tile is not null || node.floor is not null
+                || _watchAt.Contains(tf.GetInstanceID());
 
             if (ReadState(node, out node.blastState))
                 data.states.Add(new ReplayObjectState { t = t, state = node.blastState });
@@ -655,6 +683,7 @@ namespace BetterFG.Features.Replay
             if (node.convLe is not null && node.convLe.m_CachedPtr != IntPtr.Zero) { state = Mathf.RoundToInt(node.convLe._currentScroll * SCROLL_Q); return true; }
             if (node.pick is not null && node.pick.m_CachedPtr != IntPtr.Zero) { state = ReplayPowerupPickup.Pack(node.pick); return true; }
             if (node.tile is not null && node.tile.m_CachedPtr != IntPtr.Zero) { state = (int)node.tile.TileState; return true; }
+            if (node.floor is not null && node.floor.m_CachedPtr != IntPtr.Zero) { state = node.floor._hasTriggerStarted ? 1 : 0; return true; }
             return false;
         }
 
@@ -902,7 +931,6 @@ namespace BetterFG.Features.Replay
             public Levels.Obstacles.COMMON_ConveyorBelt conv;
             public Levels.Obstacles.LevelEditorCommonConveyorBelt convLe;
             public Levels.Powerups.COMMON_PowerupPickup pick;
-            public Levels.Obstacles.COMMON_RespawningTile tile;
             public bool world;
             public int cursor;
             public int stateCursor;
@@ -1041,7 +1069,6 @@ namespace BetterFG.Features.Replay
                     conv = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.COMMON_ConveyorBelt>() : null,
                     convLe = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.LevelEditorCommonConveyorBelt>() : null,
                     pick = obj.states.Count > 0 ? tf.GetComponent<Levels.Powerups.COMMON_PowerupPickup>() : null,
-                    tile = obj.states.Count > 0 ? tf.GetComponent<Levels.Obstacles.COMMON_RespawningTile>() : null,
                     world = !string.IsNullOrEmpty(obj.prefab),
                     active = tf.gameObject.activeSelf,
                     spawned = spawned,
@@ -1152,7 +1179,6 @@ namespace BetterFG.Features.Replay
                     else if (live.dest != null) DriveDestructible(live, time, live.tf.position);
                     else if (live.uv != null) DriveTileImage(live, time);
                     else if (live.pick != null) DrivePowerupPickup(live, time);
-                    else if (live.tile != null) DriveRespawningTile(live, time);
                     else DriveConveyor(live, time);
                     continue;
                 }
@@ -1202,7 +1228,6 @@ namespace BetterFG.Features.Replay
                 else if (live.dest != null) DriveDestructible(live, time, pos);
                 else if (live.uv != null) DriveTileImage(live, time);
                 else if (live.pick != null) DrivePowerupPickup(live, time);
-                else if (live.tile != null) DriveRespawningTile(live, time);
                 else DriveConveyor(live, time);
 
                 if (live.anim == null || a.stateHash == 0 || live.anim.runtimeAnimatorController == null) continue;
@@ -1249,41 +1274,6 @@ namespace BetterFG.Features.Replay
                 {
                     Plugin.Log.LogWarning($"blast ball keeps throwing on state {state} ({ex.Message}), leaving it alone now");
                     live.blast = null;
-                }
-            }
-        }
-
-        // the tile only moves its visuals child, which nothing marks as worth tracking, so sampled
-        // transforms never saw a hexagon drop. run the game's own despawn/respawn routines instead
-        void DriveRespawningTile(Live live, float time)
-        {
-            var states = live.data.states;
-
-            int want = -1;
-            for (int i = 0; i < states.Count; i++)
-            {
-                if (states[i].t > time) break;
-                want = i;
-            }
-
-            if (want == live.stateCursor || want < 0) return;
-            bool first = live.stateCursor < 0;
-            live.stateCursor = want;
-
-            int state = states[want].state;
-
-            try
-            {
-                if (state == 1) live.tile.HandleTileTriggerDespawning();
-                else if (state == 4) live.tile.OnTriggerRespawnRoutine();
-                else if (state == 0 && !first) live.tile.Reboot();
-            }
-            catch (Exception ex)
-            {
-                if (++live.stateFailures >= 4)
-                {
-                    Plugin.Log.LogWarning($"hextile keeps throwing on state {state} ({ex.Message}), leaving it alone now");
-                    live.tile = null;
                 }
             }
         }

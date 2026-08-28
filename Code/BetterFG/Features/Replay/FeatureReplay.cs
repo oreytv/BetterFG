@@ -412,6 +412,8 @@ namespace BetterFG.Features.Replay
         public Vector3 tailLocalPos;
         public Quaternion tailLocalRot = Quaternion.identity;
         public Vector3 tailLocalScale = Vector3.one;
+        public string petId = "";
+        public readonly List<ReplayFrame> petFrames = new List<ReplayFrame>();
         public readonly List<ReplayPlayer> players = new List<ReplayPlayer>();
         public readonly List<ReplayGhost> ghosts = new List<ReplayGhost>();
         public readonly List<ReplayKeyframe> keyframes = new List<ReplayKeyframe>();
@@ -470,6 +472,8 @@ namespace BetterFG.Features.Replay
         static ReplayRecording _live;
         static int _recGen;
         static Transform _gameCam;
+        static Animator _petAnim;
+        static IntPtr _petAnimPtr;
         static RenderTexture _thumbRt;
         static ClientGameStateView _gsv;
         static long _worldTicks;
@@ -571,6 +575,8 @@ namespace BetterFG.Features.Replay
             _lastDiveSlideTimes.Clear();
             ReplaySlideEvent.Reset();
             _gameCam = null;
+            _petAnim = null;
+            _petAnimPtr = IntPtr.Zero;
             _worldTicks = 0;
             _playerTicks = 0;
             _sampledFrames = 0;
@@ -735,8 +741,36 @@ namespace BetterFG.Features.Replay
                     });
                 }
 
+                CapturePet(t);
+
                 _playerTicks += Stopwatch.GetTimestamp() - afterWorld;
             }
+        }
+
+        static void CapturePet(float t)
+        {
+            var fgcc = BetterFG.Customization.Pets.PetService.Instance?.LiveFgcc;
+            if (fgcc is null || fgcc.m_CachedPtr == IntPtr.Zero) return;
+
+            if (_petAnimPtr != fgcc.m_CachedPtr)
+            {
+                _petAnimPtr = fgcc.m_CachedPtr;
+                _petAnim = BeanAnimationUtil.FindAnimator(fgcc.gameObject);
+                if (_petAnim == null) _petAnim = fgcc.GetComponentInChildren<Animator>(true);
+            }
+
+            fgcc.transform.GetPositionAndRotation(out var pos, out var rot);
+
+            int sh = 0;
+            float at = 0f;
+            if (_petAnim is not null && _petAnim.m_CachedPtr != IntPtr.Zero)
+            {
+                var info = _petAnim.GetCurrentAnimatorStateInfo(0);
+                sh = info.shortNameHash;
+                at = info.normalizedTime;
+            }
+
+            _live.petFrames.Add(new ReplayFrame { t = t, pos = pos, rot = rot, stateHash = sh, animTime = at });
         }
 
         static void CaptureCreativeLevel(ReplayRecording rec)
@@ -827,10 +861,15 @@ namespace BetterFG.Features.Replay
             _paramSets.Clear();
             _openSounds.Clear();
             _gameCam = null;
+            _petAnim = null;
+            _petAnimPtr = IntPtr.Zero;
             if (rec == null) { _gsv = null; return; }
 
             rec.duration = _gsv?.GameplayTimeElapsed ?? 0f;
             _gsv = null;
+
+            if (rec.petFrames.Count > 0)
+                rec.petId = BetterFG.Customization.Pets.PetStore.ActivePetId ?? "";
 
             var audio = UnityEngine.Object.FindObjectOfType<AudioManager>();
             if (audio != null) audio.RemovePlayersAudioActive = _culledRemotes;
@@ -1025,7 +1064,9 @@ namespace BetterFG.Features.Replay
         // a sound fmod started that no AudioManager hook claimed. keys AudioManager does play are left
         // alone so nothing lands twice, and a key is taken at most once every 50ms so a looping emitter
         // restarting can't fill the file
-        public static void CaptureStrayAudio(string key, Vector3 pos)
+        public static void CaptureStrayAudio(string key, Vector3 pos) => CaptureStrayAudio(key, pos, IntPtr.Zero);
+
+        public static void CaptureStrayAudio(string key, Vector3 pos, IntPtr loopHandle)
         {
             if (_live == null || string.IsNullOrEmpty(key)) return;
             if (_audioManagerKeys.Contains(key) || key.StartsWith("UI_Gen_", StringComparison.Ordinal)) return;
@@ -1034,7 +1075,19 @@ namespace BetterFG.Features.Replay
             if (_strayAudioAt.TryGetValue(key, out float when) && now - when < 0.05f) return;
             _strayAudioAt[key] = now;
 
-            RecordAudio(Intern(_live.audioKeys, _keyIds, key), null, pos, null);
+            int index = RecordAudio(Intern(_live.audioKeys, _keyIds, key), null, pos, null);
+            if (loopHandle != IntPtr.Zero && index >= 0) _openSounds[loopHandle] = index;
+        }
+
+        // a looping fmod event a vfx prefab started for itself has just stopped. close the open event
+        // so playback stops it too instead of looping the speech-arch / ambience noise forever
+        public static void CloseStrayAudio(IntPtr handle)
+        {
+            if (_live == null || !_openSounds.TryGetValue(handle, out int index)) return;
+            _openSounds.Remove(handle);
+
+            var sound = _live.audioEvents[index];
+            if (sound.end < 0f) { sound.end = GameplayTime; _live.audioEvents[index] = sound; }
         }
 
         public static void CaptureHeldAudio(EventInstanceReference reference, string key, Vector3 pos)

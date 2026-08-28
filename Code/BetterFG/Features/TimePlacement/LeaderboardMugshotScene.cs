@@ -20,6 +20,14 @@ namespace BetterFG.Features.TimePlacement
 
         public static readonly Color Ambient = new Color(0.17f, 0.17f, 0.2f);
 
+        // NOT real alpha - per the note above, the body shader's forced alpha 0 means an ARGB
+        // target with real transparency drops the whole body, leaving only whatever else renders
+        // real alpha (a bare-bean preview like EyePreview's ends up showing nothing but the eye
+        // overlay). RGB565 has no alpha channel at all, so it's immune to that lie by construction -
+        // this is a solid, opaque backdrop meant to be colour-keyed out downstream, not composited
+        // with real transparency. Real transparency needs the two-shot MaskA/MaskB diff above.
+        public static readonly Color KeyBackdrop = new Color(1f, 239f / 255f, 246f / 255f, 1f);
+
         public static readonly Vector3 KeyAngles = new Vector3(40f, -30f, 0f);
         public static readonly Color KeyColour = new Color(1f, 0.97f, 0.9f);
         public const float KeyIntensity = 0.8f;
@@ -82,6 +90,15 @@ namespace BetterFG.Features.TimePlacement
             cam.orthographicSize = h * HeadSize;
         }
 
+        // same rig as FrameHead, framed on the whole bean instead of just the head
+        public static void FrameBody(Camera cam, Bounds body, Vector3 yawForward, float margin = 1.1f)
+        {
+            float h = Mathf.Max(0.01f, body.size.y);
+            cam.transform.position = body.center + yawForward * Distance;
+            cam.transform.rotation = Quaternion.LookRotation(-yawForward, Vector3.up);
+            cam.orthographicSize = h * 0.5f * margin;
+        }
+
         static bool _fog;
         static AmbientMode _ambientMode;
         static Color _ambientColour;
@@ -103,6 +120,22 @@ namespace BetterFG.Features.TimePlacement
             RenderSettings.fog = _fog;
             RenderSettings.ambientMode = _ambientMode;
             RenderSettings.ambientLight = _ambientColour;
+        }
+
+        // black-bg and white-bg shots of the same alpha-0 bean: alpha = how little the backdrop
+        // bled through, and the black shot is premultiplied by it so divide it back out. mutates
+        // `black` in place into the straight-alpha cutout. same trick BeanPortraits/PetThumb use.
+        public static void AlphaFromAB(Color[] black, Color[] white)
+        {
+            for (int i = 0; i < black.Length; i++)
+            {
+                Color ca = black[i], cb = white[i];
+                float diff = (Mathf.Abs(cb.r - ca.r) + Mathf.Abs(cb.g - ca.g) + Mathf.Abs(cb.b - ca.b)) / 3f;
+                float alpha = Mathf.Clamp01(1f - diff);
+                black[i] = alpha <= 0.02f
+                    ? new Color(0f, 0f, 0f, 0f)
+                    : new Color(ca.r / alpha, ca.g / alpha, ca.b / alpha, alpha);
+            }
         }
     }
 }

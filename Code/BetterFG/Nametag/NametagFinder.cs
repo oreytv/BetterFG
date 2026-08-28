@@ -172,7 +172,7 @@ namespace BetterFG.Nametag
 
             NametagIconApplicator.ApplyRemoteToNameplate(tmp, memberName, nt);
             NametagIconApplicator.ApplyPartyBacking(vm.transform, nt.backingEnabled, nt.backingPath, nt.backingOffX, nt.backingOffY, nt.backingScale);
-            NametagIconApplicator.ApplyNickname(vm.transform, party: true, enabled: !string.IsNullOrEmpty(nt.nickname), text: nt.nickname ?? "");
+            NametagIconApplicator.ApplyNickname(vm.transform, party: true, enabled: true, text: nt.nickname ?? "");
 #endif
         }
 

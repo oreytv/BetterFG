@@ -60,6 +60,7 @@ namespace BetterFG.Patches.GameStates
             BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
             BetterFG.Features.Replay.ReplayViewer.OnMainMenuEntered();
             BetterFG.Patches.SeasonProgressHoverPatch.SetMenuActive(true);
+            BetterFG.Customization.Pets.PetPreview.RetryOnMainMenuEntered();
 
             BetterFG.UI.Tabs.NametagTab.CacheNameAssets();
             BetterFG.UI.BetterFGUIMan.ResolveAsapFont();
@@ -129,7 +130,10 @@ namespace BetterFG.Patches.GameStates
             if (!string.IsNullOrEmpty(localName))
             {
                 LocalPlayerInfo.FGlocalplayerusername = localName;
-                Plugin.Log.LogInfo($"MainMenuBean: FG username set: {localName}");
+                string platformName = "";
+                try { platformName = GlobalGameStateClient.Instance?.PlayerProfile?.PlatformAccountName ?? ""; } catch { }
+                Plugin.Log.LogInfo($"MainMenuBean: FG username set: {localName}"
+                    + (string.IsNullOrEmpty(platformName) || platformName == localName ? "" : $" (party menu shows you as '{platformName}')"));
             }
 
 #if PROFILES
@@ -248,6 +252,21 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(PartyNameTag), nameof(PartyNameTag.SetStatus))]
+    public class PartyNameTagStatusChanged
+    {
+        [HarmonyPostfix]
+        static void Postfix(PartyNameTag __instance)
+        {
+            if (__instance == null) return;
+            BetterFG.Customization.Menu.MenuCustomizationApplication.Instance?
+                .QueueForegroundScope(__instance.transform, anyImage: true);
+#if PROFILES
+            BetterFG.Customization.Profiles.LobbyProfileService.ReapplyTag(__instance);
+#endif
+        }
+    }
+
     [HarmonyPatch(typeof(PartyNameTag), nameof(PartyNameTag.HandlePlayerJoinedOrLeft))]
     public class PartyNameTagJoinLeave
     {
@@ -294,7 +313,13 @@ namespace BetterFG.Patches.GameStates
             string localName = LocalPlayerInfo.FGlocalplayerusername;
             bool isLocal = !string.IsNullOrEmpty(localName)
                 && FallGuysLib.Players.PlayerUtils.CleanPlayerName(current) == localName;
-            if (!isLocal) yield break;
+            if (!isLocal)
+            {
+#if PROFILES
+                BetterFG.Customization.Profiles.LobbyProfileService.ReapplyTag(tag);
+#endif
+                yield break;
+            }
 
             bool useDisplay = SettingsService.Get("nametag.enabled", "false") == "true"
                               || !string.IsNullOrEmpty(LocalPlayerInfo.CustomName);
@@ -542,6 +567,7 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix()
         {
+            BetterFG.Customization.Player.CostumePollerComponent.LastLoadingFinished = Time.time;
             BetterFGUnityRounds.MarkSceneReadyAndInstantiateQueuedRound();
         }
     }
@@ -647,6 +673,20 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance == null) return;
             MenuCustomizationApplication.Instance?.QueueForegroundScope(__instance.transform, true);
+        }
+    }
+
+    // tile hover / nav-highlight in the creative Level Browser. feeds LevelBrowserPortPrompt so it
+    // can float the import/export nav prompt while a real level sits under the cursor. patching the
+    // screen's OnHighlightEvent instead crashes Harmony's glue — it takes a struct-by-value param.
+    [HarmonyPatch(typeof(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileViewModel), "OnSelected")]
+    internal static class LevelBrowserTileSelectedPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileViewModel __instance)
+        {
+            if (__instance == null) return;
+            BetterFG.Features.LevelPort.LevelBrowserPortPrompt.OnTileSelected(__instance);
         }
     }
 
@@ -1474,6 +1514,7 @@ namespace BetterFG.Patches.GameStates
             catch (Exception ex) { Plugin.Log.LogWarning($"HSR: phrase patch: {ex.Message}"); }
 
             BetterFG.Tweaks.BfgTweak.RaiseRoundStart();
+            BetterFG.Customization.Pets.PetService.OnRoundStart();
             BetterFG.Services.DiscordPresenceService.OnRoundStart();
             BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh();
 
@@ -1538,9 +1579,13 @@ namespace BetterFG.Patches.GameStates
         {
             // a switch to any view OTHER than our Customiser backdrop means the user navigated away
             // from the PB tab — drop the overlay.
+            if (__instance != null)
+                Plugin.Log.LogInfo($"navprobe SetViewImplementation post: idx {__instance.CurrentViewIndex}, prev {__instance.PreviousViewIndex}, animated {__instance.IsBeingAnimated}, pb {BetterFG.Features.QualificationTime.PBTabView.IsOpen}");
+
             if (BetterFG.Features.QualificationTime.PBTabView.IsOpen && __instance != null
                 && __instance.CurrentViewIndex != BetterFG.Features.QualificationTime.PBTabView.BackdropIndex)
                 BetterFG.Features.QualificationTime.PBTabView.Hide();
+
 
             if (BetterFG.Features.UnityRound.Editor.UnityRoundLoader.InLevelEditor) return;
 
@@ -1627,7 +1672,10 @@ namespace BetterFG.Patches.GameStates
     {
         [HarmonyPostfix]
         static void Postfix(SwitchableViewRewiredNavigation __instance, int viewIndex)
-            => BetterFG.Features.QualificationTime.PBTabView.OnNavIndex(__instance.SwitchableView, viewIndex);
+        {
+            Plugin.Log.LogInfo($"navprobe rewired SetView({viewIndex})");
+            BetterFG.Features.QualificationTime.PBTabView.OnNavIndex(__instance.SwitchableView, viewIndex);
+        }
     }
 
     [HarmonyPatch(typeof(SwitchableViewRewiredNavigation), nameof(SwitchableViewRewiredNavigation.ChangeTab))]

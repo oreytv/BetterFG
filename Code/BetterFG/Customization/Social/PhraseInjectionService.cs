@@ -123,10 +123,7 @@ namespace BetterFG.Customization.Social
                 SoundOwner.Clear();
 
                 // find a reference phrase option to clone metadata from
-                ImageSpeechOption refOpt = null;
-                foreach (var kvp in lookup)
-                    if (kvp.Value?.CMSGroupID == "cosmetics_phrases")
-                    { refOpt = kvp.Value.Cast<ImageSpeechOption>(); break; }
+                ImageSpeechOption refOpt = SpeechOptionBuilder.FindReferencePhraseOption();
                 if (refOpt == null) { LastStatus = "No reference phrase found in lookup."; return; }
 
                 // ── Step 2: inject enabled entries, always rebuilding fresh ────
@@ -145,30 +142,9 @@ namespace BetterFG.Customization.Social
                     // always build a fresh option so text/id changes take effect immediately
                     int customId = 50000 + slotIndex * 100 + injected;
 
-                    var cms = new CustomiserPhrases();
-                    cms.Id = string.IsNullOrEmpty(e.phraseId) ? $"bfg_phrase_{e.id}" : e.phraseId;
-                    var loc = new LocalisedString
-                    {
-                        Id = cms.Id + "_text",
-                        Text = string.IsNullOrEmpty(e.phraseText) ? "..." : e.phraseText
-                    };
-                    cms.Cast<CMSItemDefinition>().Name = loc;
-                    cms.Cast<CMSItemDefinition>().IconName = refOpt.CMSData.Cast<CMSItemDefinition>().IconName;
-                    cms.Cast<CMSItemDefinition>().ItemRarity = refOpt.CMSData.Cast<CMSItemDefinition>().ItemRarity;
-
-                    var opt = ScriptableObject.CreateInstance<TextAndImageSpeechOption>();
-                    opt.SetCMSData(cms);
-                    opt.name = cms.Id;
+                    string optId = string.IsNullOrEmpty(e.phraseId) ? $"bfg_phrase_{e.id}" : e.phraseId;
+                    var opt = SpeechOptionBuilder.Build(optId, e.phraseText, refOpt);
                     opt._speechId = customId;
-                    opt._speechDuration = 3f;
-                    opt._speechHasDuration = true;
-                    opt._audioBank = null;
-                    opt._audioEvent = null;
-                    opt._cachedAtlasSprite = refOpt._cachedAtlasSprite;
-                    opt._sprite = refOpt._sprite;
-                    opt._spriteAtlasLoadableAsset = refOpt._spriteAtlasLoadableAsset;
-                    opt.menuDisplaySpriteAtlasReference = refOpt.menuDisplaySpriteAtlasReference;
-                    opt.menuDisplaySpriteReference = refOpt.menuDisplaySpriteReference;
 
                     // custom image — cached sprite, rebuilt only when the file changes
                     if (SocialSpriteCache.TryGet(e.imagePath, out var customSprite, out var cacheableSprite))

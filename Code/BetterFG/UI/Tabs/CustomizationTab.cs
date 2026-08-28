@@ -25,6 +25,13 @@ namespace BetterFG.UI.Tabs
         public override string TabTitle => "UGC Customization";
         protected override string BgResource => "BetterFG.assets.ui.cskins.bg.png";
 
+        // pick-mode: when set, this tab is on loan to a picker flow (currently the pet wizard).
+        // Select on a Costume row hands the skin (or null for the back link) to this instead of the
+        // normal multi-select+Apply loadout flow - everything else about the tab is unchanged.
+        public Func<SkinInfo, Tab> PetPickTarget;
+        protected override string SwitchLabel => PetPickTarget != null ? "< Back" : "";
+        protected override Tab MakeSwitchTarget() => PetPickTarget != null ? PetPickTarget(null) : null;
+
 
         // ── Empty state ───────────────────────────────────────────────────────
         private const string EMPTY_NO_REPO = "No repository selected.";
@@ -348,12 +355,21 @@ namespace BetterFG.UI.Tabs
 
             var belowRt = contentRoot;
 
-            // ── Filter bar: Costumes | Accessories | Items ─────────────────────
-            BuildFilterBar(belowRt, y, w);
-            y += BTN_H + SH;
+            // pick mode (pets) never touches the local player's own loadout - no filter bar (stays
+            // pinned on Costume, the only type PetPickTarget accepts), no Fetch/Import/Apply/Remove
+            // All (all four write to the SAME shared settings keys and apply straight to the real
+            // local bean, regardless of what's being browsed for)
+            bool pickMode = PetPickTarget != null;
 
-            _filterDivider2Rt = UGUIShip.CreatePanel(belowRt, PR(y, w, 1f), new Color(1f, 1f, 1f, 0.06f));
-            y += 1f + SH;
+            if (!pickMode)
+            {
+                // ── Filter bar: Costumes | Accessories | Items ─────────────────────
+                BuildFilterBar(belowRt, y, w);
+                y += BTN_H + SH;
+
+                _filterDivider2Rt = UGUIShip.CreatePanel(belowRt, PR(y, w, 1f), new Color(1f, 1f, 1f, 0.06f));
+                y += 1f + SH;
+            }
 
             // filter bar block (bar + its spacing + this divider + spacing) is reclaimed when hidden
             _filterCollapse = BTN_H + 1f + 2f * SH;
@@ -363,19 +379,22 @@ namespace BetterFG.UI.Tabs
             y += LH + SH;
 
             const float BOTTOM_PAD = 6f;
-            float scrollH = TabHeight - y - BTN_H - SH - VPAD - BOTTOM_PAD;
+            float scrollH = TabHeight - y - (pickMode ? 0f : BTN_H + SH) - VPAD - BOTTOM_PAD;
             _scrollRectNormal = new Rect(PAD, y, w, scrollH);
             BuildScrollView(belowRt, y, w, scrollH);
             y += scrollH + SH;
 
-            float singleW = (w - 3f * (PAD * 0.5f)) / 4f;
-            float gap = PAD * 0.5f;
-            float bx = PAD;
+            if (!pickMode)
+            {
+                float singleW = (w - 3f * (PAD * 0.5f)) / 4f;
+                float gap = PAD * 0.5f;
+                float bx = PAD;
 
-            UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Fetch", BTN_FETCH, WHITE, FS, new Action(OnFetch)); bx += singleW + gap;
-            UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Import", BTN_IMPORT, WHITE, FS, new Action(OnImport)); bx += singleW + gap;
-            UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Apply", BTN_APPLY, WHITE, FS, new Action(OnApply)); bx += singleW + gap;
-            UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Remove All", BTN_REMOVE, WHITE, FS, new Action(OnRemoveAll));
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Fetch", BTN_FETCH, WHITE, FS, new Action(OnFetch)); bx += singleW + gap;
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Import", BTN_IMPORT, WHITE, FS, new Action(OnImport)); bx += singleW + gap;
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Apply", BTN_APPLY, WHITE, FS, new Action(OnApply)); bx += singleW + gap;
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Remove All", BTN_REMOVE, WHITE, FS, new Action(OnRemoveAll));
+            }
 
             Refresh();
         }
@@ -1166,6 +1185,14 @@ namespace BetterFG.UI.Tabs
             SkinInfo skin = availableSkins[index];
             SkinType type = SkinTypeParser.FromString(skin.type);
 
+            if (PetPickTarget != null)
+            {
+                if (type != SkinType.Costume) { SetStatus("pets can only wear a Costume"); return; }
+                var target = PetPickTarget(skin);
+                if (target != null) BetterFGUIMan.Instance?.SwitchSlotTab(this, target);
+                return;
+            }
+
             // track every row whose selected-state changed so we can repaint just those in place
             // instead of rebuilding the entire list (the click freeze). a single click can flip
             // two rows: the clicked one + whatever costume/plinth got auto-deselected.
@@ -1221,17 +1248,20 @@ namespace BetterFG.UI.Tabs
         // ── Persist & restore ─────────────────────────────────────────────────
 
         private const string KEY_MULTI_REPOS = "skin.multi.repos";
+        private const string KEY_MULTI_FOLDERS = "skin.multi.folders";
 
         private void SaveSelection()
         {
             bool hadPlinth = MenuCustomizationApplication.TryGetSavedPlinthEntry(
-                out string plinthFile, out string plinthSource, out string plinthPath, out string plinthRepo);
+                out string plinthFile, out string plinthSource, out string plinthPath, out string plinthRepo,
+                out string plinthFolder);
 
             var files = new List<string>();
             var sources = new List<string>();
             var paths = new List<string>();
             var repos = new List<string>();
             var types = new List<string>();
+            var folders = new List<string>();
 
             foreach (int i in selectedIndices)
             {
@@ -1244,6 +1274,7 @@ namespace BetterFG.UI.Tabs
                     ? Path.GetDirectoryName(s.localPath) : "");
                 repos.Add(s.sourceRepo ?? "");
                 types.Add(s.type ?? "");
+                folders.Add(s.repoFolder ?? "");
             }
 
             SettingsService.Set(KEY_MULTI_FILES, string.Join(",", files));
@@ -1251,9 +1282,10 @@ namespace BetterFG.UI.Tabs
             SettingsService.Set(KEY_MULTI_PATHS, string.Join(",", paths));
             SettingsService.Set(KEY_MULTI_REPOS, string.Join(",", repos));
             SettingsService.Set(KEY_MULTI_TYPES, string.Join(",", types));
+            SettingsService.Set(KEY_MULTI_FOLDERS, string.Join(",", folders));
 
             if (hadPlinth)
-                MenuCustomizationApplication.SavePlinthEntry(plinthFile, plinthSource, plinthPath, plinthRepo);
+                MenuCustomizationApplication.SavePlinthEntry(plinthFile, plinthSource, plinthPath, plinthRepo, plinthFolder);
         }
 
         private void SaveHandOverrides()
@@ -1344,7 +1376,7 @@ namespace BetterFG.UI.Tabs
 
         private void OnSkinsLoaded(List<SkinInfo> skins)
         {
-            availableSkins = MergeImported(skins);
+            SwapCatalog(skins);
             RefreshSkinList();
             SetStatus($"Loaded {skins.Count} customizations");
             // sync selection from already-applied slots every time new skins arrive
@@ -1357,16 +1389,41 @@ namespace BetterFG.UI.Tabs
 
         private void OnFetchCompleted()
         {
-            availableSkins = MergeImported(catalogService?.AvailableSkins);
+            SwapCatalog(catalogService?.AvailableSkins);
             RefreshSkinList();
 
             if (!_restoredOnce)
             {
                 _restoredOnce = true;
-                TryRestoreSelection();
+                // never pull the local player's own restored selection into a pick-mode instance -
+                // it has nothing to do with what's being picked for the pet
+                if (PetPickTarget == null) TryRestoreSelection();
             }
 
             RetryPendingRestore();
+        }
+
+        // selectedIndices are positions in availableSkins, so replacing the list outright silently
+        // repoints every selection at whatever skin now sits at that index (a second repo's catalog
+        // landing turned an equipped costume into someone else's item, and SaveSelection wrote it).
+        // re-resolve by file across the swap; anything the new catalog dropped goes back on the
+        // pending list so RetryPendingRestore picks it up when its repo returns.
+        private void SwapCatalog(List<SkinInfo> skins)
+        {
+            var wasSelected = new List<string>();
+            foreach (int i in selectedIndices)
+                if (i >= 0 && i < availableSkins.Count) wasSelected.Add(availableSkins[i].file);
+
+            availableSkins = MergeImported(skins);
+
+            selectedIndices.Clear();
+            foreach (string file in wasSelected)
+            {
+                int idx = availableSkins.FindIndex(s => s.file == file);
+                if (idx >= 0) selectedIndices.Add(idx);
+                else if (_pendingRestoreFiles.FindIndex(p => p.file == file) < 0)
+                    _pendingRestoreFiles.Add((file, ""));
+            }
         }
 
         // catalog callbacks return only remote skins — fold the persisted local imports

@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using BetterFG.Core;
+using BetterFG.Customization.Player;
 using BetterFG.Network;
 using BetterFG.Services;
 using BetterFG.Tweaks;
@@ -167,6 +168,23 @@ namespace BetterFG.Nametag
         [HarmonyPatch(typeof(PlayerInfoHUDBase), "SpawnPlayerTag")]
         internal static class patch_SpawnPlayerTag
         {
+            // pet beans spawn through the real networked path, so the HUD would give them a floating
+            // name tag. block the row from ever being created - stripping it afterward means fighting
+            // UpdateInfoTags' per-frame re-show and risks NREing that loop on a half-torn row. the
+            // pet's fgcc isn't registered with PetService until a beat after this first fires, so also
+            // match on the spawn key (carries the pet name) during the spawn window, and grab the fgcc.
+            [HarmonyPrefix]
+            public static bool Prefix([HarmonyArgument(0)] SpawnPlayerTagEvent spawnEvent)
+            {
+                if (spawnEvent == null) return true;
+                var po = spawnEvent.playerObject;
+                bool isPet = BetterFG.Customization.Pets.PetService.IsPetFgcc(po)
+                          || BetterFG.Customization.Pets.PetService.MatchesPendingPet(spawnEvent.playerKey);
+                if (isPet && po != null)
+                    BetterFG.Customization.Pets.PetService.Instance?.RegisterLiveFgcc(po);
+                return !isPet;
+            }
+
             [HarmonyPostfix]
             public static void Postfix(PlayerInfoHUDBase __instance)
             {
@@ -302,7 +320,7 @@ namespace BetterFG.Nametag
 
                     var tmp = NametagIconApplicator.TryGetNameText(display);
 
-                    PlayerRemoteProfile profile = null;
+                    BfgProfile profile = null;
                     if (anyProfiles)
                     {
                         string key = row.fgcc != null ? BeanNetworkUtil.TryGetPlayerKeyForBean(row.fgcc.gameObject) : "";
@@ -327,7 +345,7 @@ namespace BetterFG.Nametag
                     NametagIconApplicator.ApplyRemoteToDisplay(display, tmp != null ? tmp.text : "", info);
                     NametagIconApplicator.ApplyBacking(display.transform, !string.IsNullOrEmpty(info.backingPath), info.backingPath,
                         info.backingOffX, info.backingOffY, info.backingScale <= 0f ? 1f : info.backingScale);
-                    NametagIconApplicator.ApplyNickname(display.transform, party: false, !string.IsNullOrEmpty(info.nickname), info.nickname);
+                    NametagIconApplicator.ApplyNickname(display.transform, party: false, enabled: true, info.nickname ?? "");
                     if (info.platformHide == "true" || !string.IsNullOrEmpty(info.platformCustom))
                         NametagIconApplicator.ApplyPlatformIcon(display.gameObject, info.platformHide == "true", info.platformCustom ?? "");
                 }
@@ -372,7 +390,7 @@ namespace BetterFG.Nametag
             var txt = vm._playerNameText;
             if (txt == null) return;
 
-            PlayerRemoteProfile profile = null;
+            BfgProfile profile = null;
             // _playerName in the private lobby carries rich-text/decoration the store isn't keyed on,
             // so try the raw value, then a stripped version, then whatever the actual TMP shows.
             string stripped = StripTags.Replace(playerKey, "").Trim();
@@ -401,7 +419,7 @@ namespace BetterFG.Nametag
             var info = profile.nametag;
             NametagIconApplicator.ApplyBacking(vm.transform, !string.IsNullOrEmpty(info.backingPath), info.backingPath,
                 info.backingOffX, info.backingOffY, info.backingScale <= 0f ? 1f : info.backingScale);
-            NametagIconApplicator.ApplyNickname(vm.transform, party: false, !string.IsNullOrEmpty(info.nickname), info.nickname);
+            NametagIconApplicator.ApplyNickname(vm.transform, party: false, enabled: true, info.nickname ?? "");
 
             bool hide = info.platformHide == "true";
             string customSprite = info.platformCustom ?? "";

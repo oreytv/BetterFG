@@ -66,6 +66,8 @@ namespace BetterFG.UI.Tabs
         private Texture2D _scPreviewGradTex;
         private Texture2D _scPreviewPatternTex;
         private string _scPreviewPatternPath;
+        private Sprite _scPreviewDefaultPatternSprite;
+        private Image.Type _scPreviewDefaultPatternType;
         private Text _scPreviewHintLabel;
         private Material _scPreviewCirclesMat;
         private Text _scPatternLabel;
@@ -430,7 +432,9 @@ namespace BetterFG.UI.Tabs
                 if (g != null) g.raycastTarget = false;
 
             _scPreviewBackdrop = _scPreviewGo.transform.Find("Backdrop")?.GetComponent<Image>();
-            _scPreviewCircles = _scPreviewGo.transform.Find("Circles")?.GetComponent<Image>();
+            _scPreviewCircles = ScreenBackgroundService.FindCirclesChild(_scPreviewGo.transform)?.GetComponent<Image>();
+            _scPreviewDefaultPatternSprite = _scPreviewCircles != null ? _scPreviewCircles.sprite : null;
+            _scPreviewDefaultPatternType = _scPreviewCircles != null ? _scPreviewCircles.type : Image.Type.Simple;
 
             // Image.material does NOT auto-instance like Renderer.material does — Instantiate leaves the
             // clone pointing at the SAME shared Material asset the live menu's real Circles uses. every
@@ -529,23 +533,38 @@ namespace BetterFG.UI.Tabs
 
             if (_scPreviewCircles != null && _scPreviewCircles.material != null)
             {
-                // circles are a shared seasonal decoration, not per-screen themed art like Backdrop is —
-                // fall back to FallForce's (always known) pattern rather than null when a screen's own
-                // hasn't been cached, so the pattern doesn't just vanish for screens we haven't learned yet.
-                Texture patternTex = _scPreviewDefaultPattern;
-                if (!isFallForce && ScreenBackgroundService.TryGetScreenDefault(_screenSel, out _, out _, out var cachedPattern))
-                    patternTex = cachedPattern;
-                if (_scEnabled && !string.IsNullOrEmpty(_scPattern))
+                if (_scEnabled && !string.IsNullOrEmpty(_scPattern) && _scPreviewPatternPath != _scPattern)
                 {
-                    if (_scPreviewPatternPath != _scPattern)
-                    {
-                        if (_scPreviewPatternTex != null) Destroy(_scPreviewPatternTex);
-                        _scPreviewPatternTex = ScreenBackgroundService.LoadPatternTexture(_scPattern);
-                        _scPreviewPatternPath = _scPattern;
-                    }
-                    if (_scPreviewPatternTex != null) patternTex = _scPreviewPatternTex;
+                    if (_scPreviewPatternTex != null) Destroy(_scPreviewPatternTex);
+                    _scPreviewPatternTex = ScreenBackgroundService.LoadPatternTexture(_scPattern);
+                    _scPreviewPatternPath = _scPattern;
                 }
-                _scPreviewCircles.material.SetTexture("_Pattern", patternTex);
+
+                // FinalRoundBackground's "Pattern" node has no _Pattern property on its material at all
+                // (UI/ScrollingSprite2.0 paints from Image.sprite instead) — same split as ApplyToContainer.
+                if (_scPreviewCircles.material.HasProperty("_Pattern"))
+                {
+                    // circles are a shared seasonal decoration, not per-screen themed art like Backdrop is —
+                    // fall back to FallForce's (always known) pattern rather than null when a screen's own
+                    // hasn't been cached, so the pattern doesn't just vanish for screens we haven't learned yet.
+                    Texture patternTex = _scPreviewDefaultPattern;
+                    if (!isFallForce && ScreenBackgroundService.TryGetScreenDefault(_screenSel, out _, out _, out var cachedPattern))
+                        patternTex = cachedPattern;
+                    if (_scEnabled && !string.IsNullOrEmpty(_scPattern) && _scPreviewPatternTex != null) patternTex = _scPreviewPatternTex;
+                    _scPreviewCircles.material.SetTexture("_Pattern", patternTex);
+                }
+                else if (_scEnabled && !string.IsNullOrEmpty(_scPattern) && _scPreviewPatternTex != null)
+                {
+                    _scPreviewCircles.sprite = Sprite.Create(_scPreviewPatternTex,
+                        new Rect(0, 0, _scPreviewPatternTex.width, _scPreviewPatternTex.height), new Vector2(0.5f, 0.5f));
+                    _scPreviewCircles.type = Image.Type.Tiled;
+                    _scPreviewCircles.pixelsPerUnitMultiplier = ScreenBackgroundService.FinalRoundPatternTileScale;
+                }
+                else
+                {
+                    _scPreviewCircles.sprite = _scPreviewDefaultPatternSprite;
+                    _scPreviewCircles.type = _scPreviewDefaultPatternType;
+                }
                 _scPreviewCircles.color = _scEnabled ? new Color(_scPatternR, _scPatternG, _scPatternB, _scPatternA) : _scPreviewDefaultCirclesColor;
             }
         }

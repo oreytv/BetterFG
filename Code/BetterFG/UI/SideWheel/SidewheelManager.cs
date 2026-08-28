@@ -546,6 +546,23 @@ namespace BetterFG.UI.SideWheel
             }
         }
 
+        // swap what's in the open slot for another window without touching the ring selection, so a
+        // partial window (and its back link) rides the same icon the parent came out of.
+        public void SwapWindow(BetterFGWindow next)
+        {
+            if (_windowIconIdx < 0) { Plugin.Log.LogWarning("sidewheel: nothing open to swap out of"); return; }
+
+            if (_openWindow != null)
+            {
+                var old = _openWindow;
+                _openWindow = null;
+                StartCoroutine(AnimateWindowClose(old).WrapToIl2Cpp());
+            }
+
+            _openWindow = next;
+            StartCoroutine(AnimateWindowOpen(next, _currentAngle - ICON_STEP_DEG * _windowIconIdx, Vector2.zero).WrapToIl2Cpp());
+        }
+
         private void RefreshIconTints()
         {
             for (int i = 0; i < _iconImgs.Count; i++)

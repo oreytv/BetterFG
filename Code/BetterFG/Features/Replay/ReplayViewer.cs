@@ -188,6 +188,7 @@ namespace BetterFG.Features.Replay
             public GameObject nameLabel;
             public int crownState = -1;
             public bool isGhost;
+            public bool isPet;
         }
 
         readonly List<GameObject> _beans = new List<GameObject>();
@@ -252,6 +253,7 @@ namespace BetterFG.Features.Replay
         Button _restoreBtn;
         Button _doneBtn;
         bool _minimized;
+        bool _overlayHidden;
         bool _editingCam;
         bool _picking;
         bool _pickObjects;
@@ -766,6 +768,7 @@ namespace BetterFG.Features.Replay
                 Plugin.Log.LogInfo($"{_rec.powerupEvents.Count} chicken/invisibility events, {_powerups.AttachedCount} of {_tracks.Count} beans wired up for them");
 
             SpawnGhostBeans();
+            SpawnPetBean();
 
             _speech = new ReplaySpeechPlayer(_rec, transform);
             _speech.Prepare(speakers);
@@ -862,6 +865,45 @@ namespace BetterFG.Features.Replay
             }
         }
 
+        void SpawnPetBean()
+        {
+            if (string.IsNullOrEmpty(_rec.petId) || _rec.petFrames.Count == 0) return;
+
+            var data = BetterFG.Customization.Pets.PetService.Instance?.Pets.Find(p => p.id == _rec.petId);
+            if (data == null)
+            {
+                Plugin.Log.LogInfo($"replay wants pet {_rec.petId} but it's not one of your saved pets, leaving it out");
+                return;
+            }
+            StartCoroutine(BuildPetBean(data).WrapToIl2Cpp());
+        }
+
+        IEnumerator BuildPetBean(BetterFG.Customization.Pets.PetData data)
+        {
+            GameObject bean = null;
+            yield return BetterFG.Customization.Pets.PetBeanBuilder.Build(data, new Action<GameObject>(b => bean = b));
+            if (bean == null) { Plugin.Log.LogWarning("replay pet bean didn't build"); yield break; }
+            if (_exiting || _swapping) { Destroy(bean); yield break; }
+
+            Neutralise(bean, bean.GetComponent<FallGuysCharacterController>());
+            bean.name = "BettrFG_ReplayPet_" + data.name;
+
+            var synthetic = new ReplayPlayer { playerId = 0x7FFFFFFFu, name = data.name };
+            synthetic.frames.AddRange(_rec.petFrames);
+
+            var anim = BeanAnimationUtil.FindAnimator(bean);
+            if (anim == null) anim = bean.GetComponentInChildren<Animator>(true);
+            if (anim != null) anim.speed = 0f;
+
+            bean.transform.position = _rec.petFrames[0].pos;
+            bean.SetActive(true);
+
+            _beans.Add(bean);
+            _tracks.Add(new Track { player = synthetic, bean = bean, anim = anim, isPet = true });
+            ApplyTime();
+            Plugin.Log.LogInfo($"replay pet '{data.name}' in, {_rec.petFrames.Count} frames");
+        }
+
         IEnumerator DressBean(GameObject bean, ReplayPlayer p)
         {
             if (p.bfgScale > 0f)
@@ -878,7 +920,6 @@ namespace BetterFG.Features.Replay
                     ActiveSkinSlot slot = null;
                     yield return loader.ResolveProfileSlot(entry, new Action<ActiveSkinSlot>(s => slot = s)).WrapToIl2Cpp();
                     if (slot == null || bean == null) continue;
-                    slot.skinInfo.handOverride = entry.hand;
                     if (slot.type == SkinType.Costume && !slot.skinInfo.keepBase) replacesBean = true;
                     yield return app.ApplySkinToBean(slot, bean).WrapToIl2Cpp();
                 }
@@ -977,7 +1018,12 @@ namespace BetterFG.Features.Replay
                 BeanAnimationUtil.DriveLocomotion(track.anim, track.bean.transform, vel);
 
                 int hash = frames[i].stateHash;
-                if (track.anim == null || hash == 0) continue;
+                if (track.anim == null) continue;
+                if (hash == 0)
+                {
+                    if (track.isPet) track.anim.Update(0f);
+                    continue;
+                }
 
                 float animTime = frames[i].animTime;
                 if (i + 1 < frames.Count && frames[i + 1].stateHash == hash)
@@ -1052,7 +1098,9 @@ namespace BetterFG.Features.Replay
                 bool shown = track.isGhost ? (kf == null || kf.showGhosts) : (kf == null || VisibleIn(mode, kf.onlyPlayers, track.player.playerId));
                 if (shown && track.player.outTime >= 0f && _time >= track.player.outTime) shown = false;
                 if (shown && track.isGhost && track.player.frames.Count > 0 && _time < track.player.frames[0].t) shown = false;
+                if (shown && track.isPet && _time < track.player.frames[0].t) shown = false;
                 if (track.bean.activeSelf != shown) track.bean.SetActive(shown);
+                if (track.isPet) continue;
 
                 bool nameShown = kf == null || VisibleIn(nameMode, kf.nameOnlyPlayers, track.player.playerId);
                 bool crownShown = kf == null || VisibleIn(crownMode, kf.crownOnlyPlayers, track.player.playerId);
@@ -1598,6 +1646,18 @@ namespace BetterFG.Features.Replay
         void Update()
         {
             if (_exiting || _exporting || _cam == null || _loading) return;
+
+            bool overlay = (BetterFGUIMan.Instance != null && BetterFGUIMan.Instance.IsVisible)
+                || (BetterFG.UI.SideWheel.SideWheelManager.Instance != null
+                    && BetterFG.UI.SideWheel.SideWheelManager.Instance.IsWheelVisible);
+            if (_overlayHidden != overlay)
+            {
+                _overlayHidden = overlay;
+                _canvas.enabled = !overlay;
+            }
+            // input too, not just the pixels — a click meant for the BettrFG panel would otherwise also
+            // land in the world behind it and yank the replay camera around
+            if (overlay) return;
 
             if (Cursor.lockState != CursorLockMode.None)
             {

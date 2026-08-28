@@ -65,6 +65,16 @@ namespace BetterFG.Utilities
             return killed;
         }
 
+        // PB_FallGuyBot is a real bot prefab kept loaded (inactive) the whole session - the one
+        // resident bean guaranteed to exist even with no live round and no local player bean built
+        // yet, so previews can clone off it instead of needing a live player to show anything.
+        public static GameObject FindDefaultBotBean()
+        {
+            foreach (var fgcc in Resources.FindObjectsOfTypeAll<global::FallGuysCharacterController>())
+                if (fgcc != null && fgcc.gameObject.name == "PB_FallGuyBot") return fgcc.gameObject;
+            return null;
+        }
+
         public static void SetLayerRecursively(GameObject obj, int layer)
         {
             if (obj == null) return;

@@ -161,6 +161,11 @@ namespace BetterFG.Customization.Menu
             SaveCustomPatterns(list);
         }
 
+        // the pattern image is "Circles" on every screen's Mask except FinalRoundBackground's Area,
+        // which names the same slot "Pattern" instead — confirmed live via FGRuntimeConsole.
+        public static Transform FindCirclesChild(Transform container) =>
+            container.Find("Circles") ?? container.Find("Pattern");
+
         private static float Get(string key, float def)
         {
             var ci = System.Globalization.CultureInfo.InvariantCulture;
@@ -196,7 +201,15 @@ namespace BetterFG.Customization.Menu
         private static readonly Dictionary<int, Sprite> _origBackdropSprite = new Dictionary<int, Sprite>();
         private static readonly Dictionary<int, Color> _origBackdropColor = new Dictionary<int, Color>();
         private static readonly Dictionary<int, Texture> _origPattern = new Dictionary<int, Texture>();
+        private static readonly Dictionary<int, Sprite> _origPatternSprite = new Dictionary<int, Sprite>();
+        private static readonly Dictionary<int, Image.Type> _origPatternType = new Dictionary<int, Image.Type>();
         private static readonly Dictionary<int, Color> _origCirclesColor = new Dictionary<int, Color>();
+
+        // FinalRoundBackground's sprite-driven "Pattern" node has no built-in tiling (it's a single
+        // "crown-tile" sprite stretched over the whole Area) — our season patterns are small repeating
+        // motifs, so a custom pattern needs Image.Tiled + a much lower PPU multiplier to read as a
+        // pattern instead of one giant stretched image. lower multiplier = bigger/fewer tiles.
+        public const float FinalRoundPatternTileScale = 0.25f;
         // Image.material does NOT auto-instance like Renderer.material — writing straight to it mutates
         // the shared Material asset every Circles instance (every screen) reads from. instance it once
         // per Circles Image and reuse that instance for apply/revert.
@@ -237,12 +250,13 @@ namespace BetterFG.Customization.Menu
             _screenDefaultSprite[s] = _origBackdropSprite.TryGetValue(id, out var os) ? os : img.sprite;
             _screenDefaultColor[s] = _origBackdropColor.TryGetValue(id, out var oc) ? oc : img.color;
 
-            var circles = container.Find("Circles");
+            var circles = FindCirclesChild(container);
             var cimg = circles != null ? circles.GetComponent<Image>() : null;
             if (cimg != null && cimg.material != null)
             {
                 int cid = cimg.GetInstanceID();
-                _screenDefaultPattern[s] = _origPattern.TryGetValue(cid, out var op) ? op : cimg.material.GetTexture("_Pattern");
+                if (cimg.material.HasProperty("_Pattern"))
+                    _screenDefaultPattern[s] = _origPattern.TryGetValue(cid, out var op) ? op : cimg.material.GetTexture("_Pattern");
                 _screenDefaultCirclesColor[s] = _origCirclesColor.TryGetValue(cid, out var occ) ? occ : cimg.color;
             }
         }
@@ -342,17 +356,39 @@ namespace BetterFG.Customization.Menu
                 }
             }
 
-            var circles = container.Find("Circles");
+            var circles = FindCirclesChild(container);
             var cimg = circles != null ? circles.GetComponent<Image>() : null;
             if (cimg != null && cimg.material != null)
             {
-                var mat = EnsureCirclesMaterialInstance(cimg);
                 int id = cimg.GetInstanceID();
-                if (!_origPattern.ContainsKey(id)) _origPattern[id] = mat.GetTexture("_Pattern");
                 if (!_origCirclesColor.ContainsKey(id)) _origCirclesColor[id] = cimg.color;
-
                 var ptex = LoadPatternTexture(SettingsService.Get(KeyPattern(s), ""));
-                if (ptex != null) mat.SetTexture("_Pattern", ptex);
+
+                // FinalRoundBackground's "Pattern" node uses UI/ScrollingSprite2.0 (no _Pattern property
+                // on its material at all) and paints the pattern via Image.sprite instead — confirmed live
+                // via FGRuntimeConsole (shader.GetPropertyCount dump). every other screen's "Circles" node
+                // is shader-driven through a _Pattern texture. branch on whichever this one actually has.
+                if (cimg.material.HasProperty("_Pattern"))
+                {
+                    var mat = EnsureCirclesMaterialInstance(cimg);
+                    if (!_origPattern.ContainsKey(id)) _origPattern[id] = mat.GetTexture("_Pattern");
+                    if (ptex != null) mat.SetTexture("_Pattern", ptex);
+                }
+                else
+                {
+                    if (!_origPatternSprite.ContainsKey(id)) _origPatternSprite[id] = cimg.sprite;
+                    if (!_origPatternType.ContainsKey(id)) _origPatternType[id] = cimg.type;
+                    if (ptex != null)
+                    {
+                        cimg.sprite = Sprite.Create(ptex, new Rect(0, 0, ptex.width, ptex.height), new Vector2(0.5f, 0.5f));
+                        cimg.type = Image.Type.Tiled;
+                        cimg.pixelsPerUnitMultiplier = FinalRoundPatternTileScale;
+                    }
+                    else
+                    {
+                        cimg.type = _origPatternType[id];
+                    }
+                }
                 cimg.color = PatternColor(s);
             }
         }
@@ -371,12 +407,20 @@ namespace BetterFG.Customization.Menu
                 if (_origBackdropColor.TryGetValue(id, out var col)) img.color = col;
             }
 
-            var circles = container.Find("Circles");
+            var circles = FindCirclesChild(container);
             var cimg = circles != null ? circles.GetComponent<Image>() : null;
             if (cimg != null && cimg.material != null)
             {
                 int id = cimg.GetInstanceID();
-                if (_origPattern.TryGetValue(id, out var tex)) EnsureCirclesMaterialInstance(cimg)?.SetTexture("_Pattern", tex);
+                if (cimg.material.HasProperty("_Pattern"))
+                {
+                    if (_origPattern.TryGetValue(id, out var tex)) EnsureCirclesMaterialInstance(cimg)?.SetTexture("_Pattern", tex);
+                }
+                else
+                {
+                    if (_origPatternSprite.TryGetValue(id, out var spr)) cimg.sprite = spr;
+                    if (_origPatternType.TryGetValue(id, out var otype)) cimg.type = otype;
+                }
                 if (_origCirclesColor.TryGetValue(id, out var col)) cimg.color = col;
             }
         }

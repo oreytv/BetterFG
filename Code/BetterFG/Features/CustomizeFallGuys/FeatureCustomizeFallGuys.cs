@@ -121,6 +121,9 @@ namespace BetterFG.Features.CustomizeFallGuys
             public Material wantMat;
             public InvisibilityVisualsController invis;
             public GameObject root;
+            // the preview clone is parked a thousand units under the map, so the distance cull and the
+            // isVisible skip would both throw its eyes away every frame
+            public bool preview;
             // each bean's own rig can be a different scale (PlayerScaleService, differently-built
             // clones, etc), so the rest pose has to be captured per-bean, not shared off whichever
             // bean happened to get tracked first.
@@ -177,11 +180,13 @@ namespace BetterFG.Features.CustomizeFallGuys
 
             var local = BeanMonitorService.LocalPlayerBean;
             var mm = UnityEngine.Object.FindObjectOfType<MainMenuManager>();
-            _previewBean = local != null && local.activeInHierarchy ? local
-                : mm == null ? null
-                : mm._menuFallGuy != null ? mm._menuFallGuy : mm._lobbyFallGuy;
+            // the preview shows a stock Fall Guy, not the live player - PB_FallGuyBot is always
+            // resident (HideAndDontSave), so unlike the local/menu bean it never leaves the preview
+            // blank
+            _previewBean = GameObjectHelper.FindDefaultBotBean();
 
-            EyePreview.Invalidate();
+            // the clone isn't in the scene sweep below (that's the point of it), so re-queue it by hand
+            Apply(EyePreview.Clone);
             if (!_work) return;
 
             if (_localOnly)
@@ -322,17 +327,20 @@ namespace BetterFG.Features.CustomizeFallGuys
                 return null;
             }
 
-            var tint = Color.white;
-            var fgch = bean.GetComponent<FallguyCustomisationHandler>();
-            var mat = fgch == null ? null : fgch._matInstance;
-            if (mat != null)
-            {
-                int eyes = FallguyCustomisationHandler.ShaderEyesColor;
-                if (mat.HasProperty(eyes)) tint = StockEyes(mat, eyes);
-            }
+            var attached = EyeGeometry.Attach(bean, shared, Color.white, out body);
+            if (attached == null) return null;
 
-            var attached = EyeGeometry.Attach(bean, shared, tint, out body);
-            if (attached != null) BlankStockEyes(mat, tint);
+            // the preview clone has no customisation handler by design, but it shares the bean's
+            // material instance, so the body renderer is the honest place to read the eye colour from
+            var fgch = bean.GetComponent<FallguyCustomisationHandler>();
+            var mat = fgch == null ? body.sharedMaterial : fgch._matInstance;
+            int eyes = FallguyCustomisationHandler.ShaderEyesColor;
+            if (mat != null && mat.HasProperty(eyes))
+            {
+                var tint = StockEyes(mat, eyes);
+                EyeGeometry.SetTint(attached.GetComponent<SkinnedMeshRenderer>(), tint);
+                BlankStockEyes(mat, tint);
+            }
             return attached;
         }
 
@@ -425,6 +433,10 @@ namespace BetterFG.Features.CustomizeFallGuys
             _eyes[_count].invisHidden = false;
             _eyes[_count].invis = root.GetComponentInChildren<InvisibilityVisualsController>();
             _eyes[_count].root = root;
+            // preview beans sit parked miles from any game camera - without this the distance/visibility
+            // cull in ApplyEyes disables the overlay renderer and freezes its blink/look, so the pet
+            // tab's render-texture shot shows only the blanked stock (faceplate-coloured) eyes
+            _eyes[_count].preview = root == EyePreview.Clone || root == BetterFG.Customization.Pets.PetPreview.Clone;
             _eyes[_count].l = eyeL;
             _eyes[_count].r = eyeR;
             _eyes[_count].restPosL = restPosL; _eyes[_count].restRotL = restRotL; _eyes[_count].restScaleL = restScaleL;
@@ -477,11 +489,7 @@ namespace BetterFG.Features.CustomizeFallGuys
                 int last = _pending.Count - 1;
                 var next = _pending[last];
                 _pending.RemoveAt(last);
-                if (next != null && _work)
-                {
-                    Track(next);
-                    EyePreview.Invalidate();
-                }
+                if (next != null && _work) Track(next);
             }
 
             ApplyEyes(dt);
@@ -528,7 +536,6 @@ namespace BetterFG.Features.CustomizeFallGuys
                 {
                     EyeGeometry.Detach(_eyes[i].eyeGo);
                     _eyes[i].eyeGo = null;
-                    EyePreview.Invalidate();
                     _count--;
                     _eyes[i] = _eyes[_count];
                     _eyes[_count].l = null;
@@ -547,7 +554,7 @@ namespace BetterFG.Features.CustomizeFallGuys
                     // runs on one bean in eight per frame (staggered, so the work is spread evenly) and
                     // reuses the last answer in between. get_position boxes its return through il2cpp;
                     // the paired getter writes straight into our locals.
-                    if (!hidden)
+                    if (!hidden && !_eyes[i].preview)
                     {
                         if (((i + frameStagger) & 7) == 0 || !_eyes[i].cullSet)
                         {
@@ -595,7 +602,7 @@ namespace BetterFG.Features.CustomizeFallGuys
                 // that comes back into view is already where it should be. the four writes below are
                 // the expensive part — every one boxes a struct through il2cpp — and nobody can see
                 // the eyes of a bean that isn't on screen.
-                if (hasRenderer && !eyeRenderer.isVisible) continue;
+                if (hasRenderer && !_eyes[i].preview && !eyeRenderer.isVisible) continue;
 
                 pl.x += glance - _dist;
                 pr.x += glance + _dist;
@@ -684,6 +691,8 @@ namespace BetterFG.Features.CustomizeFallGuys
                 yield return endOfFrame;
                 FeatureCustomizeFallGuys.TickPreview();
             }
+            // panel's gone, so is the reason to keep a whole spare bean skinning off-screen
+            EyePreview.Invalidate();
             _previewLoopRunning = false;
         }
     }

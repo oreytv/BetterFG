@@ -1,10 +1,15 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
+using FGClient;
 
 namespace BetterFG.Customization.Player
 {
     public class CostumePollerComponent : MonoBehaviour
     {
+        // set by GameStatePatches.NotifyLoadingFinishedPatch - the point a round is done loading and
+        // the bean's costume should have settled. out of a round it never moves, so the poll falls
+        // back to a fixed 5s window instead.
+        public static float LastLoadingFinished = -1f;
         public Transform beanGEO;
         public GameObject skinClone;
         public bool isRemote = false;
@@ -21,6 +26,12 @@ namespace BetterFG.Customization.Player
         private Dictionary<Renderer, RendererState> _savedMats = new Dictionary<Renderer, RendererState>();
         private float _nextCheck;
         private const float CHECK_INTERVAL = 1f;
+
+        // the per-second poll only matters while the bean's costume is still settling: until the
+        // round finishes loading, or 5s after this poller was made if no round is loading. after that
+        // the periodic Update check stops running entirely - an explicit Kick/PollNow re-arms it.
+        private float _bornAt;
+        private bool _pollDone;
 
         // one fully-transparent material shared across all invisible renderers
         private static Material _invisibleMat;
@@ -70,12 +81,14 @@ namespace BetterFG.Customization.Player
         // UGC costume + base bean both show for a beat on first menu entry.
         public void HideNow()
         {
+            _bornAt = Time.time;
             HideBeans();
             _nextCheck = Time.time + CHECK_INTERVAL;
         }
 
         void Start()
         {
+            if (_bornAt <= 0f) _bornAt = Time.time;
             HideBeans();
             _nextCheck = Time.time + CHECK_INTERVAL;
         }
@@ -83,16 +96,26 @@ namespace BetterFG.Customization.Player
         void Update()
         {
             if (beanGEO is null || beanGEO.m_CachedPtr == System.IntPtr.Zero) { Destroy(this); return; }
+            if (_pollDone) return;
+
+            // once the settle window has passed, the periodic poll is done - bail before any work.
+            // a round load is bounded by NotifyLoadingFinished; otherwise 5s of existence is plenty.
+            bool loading = GlobalGameStateClient.Instance?.IsShowingLoadingScreen ?? false;
+            if (loading ? LastLoadingFinished > _bornAt : Time.time - _bornAt >= 5f) { _pollDone = true; return; }
+
             if (Time.time < _nextCheck) return;
             _nextCheck = Time.time + CHECK_INTERVAL;
             HideBeans();
         }
 
         // returns true if this poll actually had something to hide (i.e. the bean isn't settled yet).
-        // the menu-entry kick uses this to stop hammering once there's nothing left to do.
+        // the menu-entry kick uses this to stop hammering once there's nothing left to do; it also
+        // re-arms the periodic poll in case the game re-shows base parts after we went quiet.
         public bool PollNow()
         {
             if (beanGEO == null) return false;
+            _pollDone = false;
+            _bornAt = Time.time;
             bool did = HideBeans();
             _nextCheck = Time.time + CHECK_INTERVAL;
             return did;
@@ -164,8 +187,6 @@ namespace BetterFG.Customization.Player
                         child.gameObject.SetActive(false);
                 }
             }
-
-            Plugin.Log.LogInfo($"CostumePoller: HideRemoteBeans chosen donor={ (boneDonor != null ? boneDonor.name : "(none)") }");
         }
 
         private void HideLocalBeans()

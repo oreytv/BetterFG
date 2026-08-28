@@ -13,7 +13,7 @@ namespace BetterFG.Features.Replay
         public const string PickerFilter = "BettrFG Replay\0*.bfgreplay\0";
         public const string FramesExtension = ".bfgframes";
         public const int ContainerMagic = unchecked((int)0xBF9E0001);
-        public const int FormatVersion = 21;
+        public const int FormatVersion = 22;
 
         public static string FramesPathFor(string path) => Path.ChangeExtension(path, FramesExtension);
 
@@ -59,6 +59,7 @@ namespace BetterFG.Features.Replay
                 WriteSpeech(bw, rec);
                 WriteGhosts(bw, rec);
                 WritePowerups(bw, rec);
+                WriteFrameList(bw, rec.petFrames);
             }
         }
 
@@ -317,6 +318,7 @@ namespace BetterFG.Features.Replay
             sb.Append(",\"duration\":").Append(rec.duration.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
             Float(sb, "trimStart", rec.trimStart);
             Float(sb, "trimEnd", rec.trimEnd);
+            Str(sb, "petId", rec.petId);
 
             sb.Append(",\"sets\":[");
             for (int i = 0; i < rec.sets.Count; i++)

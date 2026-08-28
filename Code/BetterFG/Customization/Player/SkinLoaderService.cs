@@ -204,7 +204,7 @@ namespace BetterFG.Customization.Player
         }
         // one entry off a profile -> a slot ready for ApplySkinToBean, riding the same disk cache
         // as the local loadout instead of refetching the bundle + info.json every round
-        public IEnumerator ResolveProfileSlot(RemoteSkinEntry entry, Action<ActiveSkinSlot> done)
+        public IEnumerator ResolveProfileSlot(RemoteSkinEntry entry, Action<ActiveSkinSlot> done, Dictionary<string, string> ownerSettings = null)
         {
             SkinType type = SkinTypeParser.FromString(entry.type);
             // plinths never bind to a bean (the profile plinth has its own path) — resolving one
@@ -242,6 +242,8 @@ namespace BetterFG.Customization.Player
                     skinInfo.isLocalImport = true;
                     skinInfo.localPath = entry.localPath;
 
+                    skinInfo.handOverride = entry.hand;
+                    skinInfo.ownerSettings = ownerSettings;
                     done(new ActiveSkinSlot { skinInfo = skinInfo, bundle = local, type = type });
                 }
                 yield break;
@@ -249,7 +251,7 @@ namespace BetterFG.Customization.Player
 
             string category = type == SkinType.Accessory ? "Accessories" : type == SkinType.Item ? "Items" : "Costumes";
             string repoRaw = RepoRegistry.ResolveRaw(entry.repoUrl);
-            string folder = $"{category}/{entry.file}";
+            string folder = !string.IsNullOrEmpty(entry.folder) ? entry.folder : $"{category}/{entry.file}";
 
             SkinInfo info = null;
             AssetBundle bundle = null;
@@ -259,14 +261,38 @@ namespace BetterFG.Customization.Player
             DownloadSkinWithInfo(entry.file, $"{repoRaw}/{folder}/{entry.file}", $"{repoRaw}/{folder}/info.json");
 
             float waited = 0f;
-            while (bundle == null && waited < 20f) { yield return null; waited += Time.deltaTime; }
+            while (bundle == null && waited < 20f)
+            {
+                if (skinApp != null && skinApp.TryGetLoadedBundle(entry.file, out var cached) && cached != null)
+                { bundle = cached; break; }
+                if (!_downloading.Contains(entry.file)) break;
+                yield return null;
+                waited += Time.deltaTime;
+            }
             OnSkinLoaded -= onLoaded;
 
-            if (bundle == null) { Plugin.Log.LogWarning($"profile skin '{entry.file}' never turned up"); yield break; }
+            if (bundle == null)
+            {
+                Plugin.Log.LogWarning($"profile skin '{entry.file}' never turned up — {repoRaw}/{folder} is probably a dead link, gave up after {waited:F1}s");
+                yield break;
+            }
+
+            if (info == null)
+            {
+                var infoReq = UnityWebRequest.Get($"{repoRaw}/{folder}/info.json");
+                yield return infoReq.SendWebRequest();
+                if (infoReq.result == UnityWebRequest.Result.Success)
+                    info = ParseSkinInfoWithOffsets(infoReq.downloadHandler.text);
+                infoReq.Dispose();
+                if (info == null) info = new SkinInfo { name = entry.file, file = entry.file };
+                info.infoFetched = true;
+            }
 
             info.type = entry.type;
             info.sourceRepo = repoRaw;
             info.repoFolder = folder;
+            info.handOverride = entry.hand;
+            info.ownerSettings = ownerSettings;
             done(new ActiveSkinSlot { skinInfo = info, bundle = bundle, type = type });
         }
 

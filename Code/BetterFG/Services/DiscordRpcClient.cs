@@ -160,6 +160,7 @@ namespace BetterFG.Services
                 _lastSent = activity;
                 _hasLastSent = true;
                 _lastSendTick = Environment.TickCount64;
+                Plugin.Log.LogInfo($"navprobe sent at {_lastSendTick}: {activity.Details}");
             }
 
             Teardown();

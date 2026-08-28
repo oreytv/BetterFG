@@ -17,10 +17,9 @@ _creator_deploy_test/
 .roundtemplate_pkg/
 *.md
 Code/BetterFG.Installer/payload_src
-Code/BetterFG/Customization/Profiles/
-Code/BetterFG/UI/Windows/ProfilesWindow.cs
 Code/BetterFG/build/
 Code/BetterFG/Features/Comp/
 Code/BetterFG/Patches/PatchEAC.cs
+Code/BetterFG/Patches/PatchAfkAllow.cs
 Code/BetterFG/build_prompt.state.json
 Code/BetterFG.SkinPackager/creator_deploy.txt

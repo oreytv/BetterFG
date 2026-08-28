@@ -238,7 +238,7 @@ namespace BetterFG.Utilities
                 string captured = path;
                 WinDialogs.Enqueue(() =>
                 {
-                    string name = ProfileService.ImportOverwriteByPlayerName(captured);
+                    string name = ProfileService.Import(captured);
                     Plugin.Log.LogInfo($"imported profile '{name}' from drop");
                     ProfilesWindow.RefreshOpen();
                 });

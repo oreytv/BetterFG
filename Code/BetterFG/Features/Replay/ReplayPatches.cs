@@ -119,7 +119,11 @@ namespace BetterFG.Features.Replay
                 var pos = Vector3.zero;
                 if (__instance.get3DAttributes(out var attributes) == RESULT.OK)
                     pos = new Vector3(attributes.position.x, attributes.position.y, attributes.position.z);
-                FeatureReplay.CaptureStrayAudio(key, pos);
+
+                // a looping event (not one-shot) needs its stop recorded or playback loops it forever
+                bool oneshot = true;
+                desc.isOneshot(out oneshot);
+                FeatureReplay.CaptureStrayAudio(key, pos, oneshot ? System.IntPtr.Zero : __instance.handle);
                 return;
             }
 
@@ -143,8 +147,9 @@ namespace BetterFG.Features.Replay
         public static void Prefix(EventInstance __instance)
         {
             if (FeatureReplay.Live == null) return;
-            if (!ReplaySlideEvent.Resolve(__instance, out _, out _, out bool slide) || !slide) return;
-            FeatureReplay.CloseSlideAudio(__instance.handle);
+            if (!ReplaySlideEvent.Resolve(__instance, out _, out _, out bool slide)) return;
+            if (slide) FeatureReplay.CloseSlideAudio(__instance.handle);
+            else FeatureReplay.CloseStrayAudio(__instance.handle);
         }
     }
 

@@ -27,6 +27,11 @@ namespace BetterFG.UI.Tabs
             return wizard;
         }
 
+        // null = the shared global catalog; non-null = some other owner's own list (a pet's
+        // PetData.skinTexEntries) - see SkinTextureWizardTab.TargetEntries
+        public List<SkinTexEntry> TargetEntries;
+        public Func<Tab> OwnerListTab;
+
         private static float ROW_H => 24f * UIScale.S;
 
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
@@ -309,8 +314,12 @@ namespace BetterFG.UI.Tabs
             Comp(3, (compW + gap) * 3f);
         }
 
+        // only the global catalog live-previews onto the local player's own beans - a pet's own
+        // material props have no live local-player bean to preview onto, they apply next time the
+        // pet is (re)spawned instead (PetBeanBuilder)
         private void ApplyLivePreview()
         {
+            if (TargetEntries != null) return;
             if (SkinApplicationService.Instance == null) return;
             if (_isOptionField)
             {

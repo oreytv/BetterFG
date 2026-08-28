@@ -100,7 +100,13 @@ namespace BetterFG
         private static Assembly ResolveNAudio(object _, ResolveEventArgs args)
         {
             string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string path = Path.Combine(dir, new AssemblyName(args.Name).Name + ".dll");
+            string name = new AssemblyName(args.Name).Name + ".dll";
+
+            string path = Path.Combine(dir, "Libs", name);
+            if (File.Exists(path)) return Assembly.LoadFrom(path);
+
+            // installs from before the vendored dlls moved into Libs\ still have them loose next to us
+            path = Path.Combine(dir, name);
             return File.Exists(path) ? Assembly.LoadFrom(path) : null;
         }
 
@@ -125,6 +131,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.CustomizeFallGuys.FallGuyEyeDriver>();
 
             ClassInjector.RegisterTypeInIl2Cpp<CustomEndzoneTrigger>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.CreativeGameMode.BfgGameModeRow>();
 
             // ui
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGUIMan>();
@@ -154,6 +161,10 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<MenuTab>();
             ClassInjector.RegisterTypeInIl2Cpp<MenuBackgroundImageWizardTab>();
             ClassInjector.RegisterTypeInIl2Cpp<NametagTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<NametagColourTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<NametagIconTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<NametagNameplateTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<NametagCrownTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UITab>();
             ClassInjector.RegisterTypeInIl2Cpp<UIForegroundDetailTab>();
             ClassInjector.RegisterTypeInIl2Cpp<UIFontTab>();
@@ -178,9 +189,18 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<PlinthsInGameTab>();
             ClassInjector.RegisterTypeInIl2Cpp<PlinthsUgcTab>();
             ClassInjector.RegisterTypeInIl2Cpp<RepoSelectorTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PetsTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PetWizardTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PetLookPickerTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PetSkinTextureTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<PetPhrasesTab>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Customization.Pets.PetService>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Customization.Pets.PetFollowComponent>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Customization.Pets.PetSpeechComponent>();
 
             // windows
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGWindow>();
+            ClassInjector.RegisterTypeInIl2Cpp<PartialWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGStartupWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGInfoWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFGUpdateWindow>();
@@ -196,8 +216,10 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.BatchEditWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.PublishThumbnailWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.CreativeSelectionWatcher>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.LevelPort.LevelBrowserPortPrompt>();
             ClassInjector.RegisterTypeInIl2Cpp<WindowDragHandle>();
             ClassInjector.RegisterTypeInIl2Cpp<TweaksWindow>();
+            ClassInjector.RegisterTypeInIl2Cpp<Background3dWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<OptionsWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<PresetsWindow>();
 #if PROFILES
@@ -267,9 +289,11 @@ namespace BetterFG
             Spawn<BetterFGUnityRounds>("BetterFG_UnityRounds", persist: true);
             Spawn<BetterFG.Features.UnityRound.Editor.CreativeRoundMemory>("BetterFG_CreativeRoundMemory", persist: true);
             Spawn<BetterFG.UI.Windows.Creative.CreativeSelectionWatcher>("BetterFG_CreativeSelectionWatcher", persist: true);
+            Spawn<BetterFG.Features.LevelPort.LevelBrowserPortPrompt>("BetterFG_LevelBrowserPortPrompt", persist: true);
             Spawn<BetterFG.Features.CustomizeFallGuys.FallGuyEyeDriver>("BetterFG_FallGuyEyes", persist: true);
 
             Spawn<BeanMonitorService>("BetterFG_BeanMonitor", persist: false);
+            Spawn<BetterFG.Customization.Pets.PetService>("BetterFG_PetService", persist: true);
 
             //Spawn<BetterFG.Features.WinStreakDebug.WinStreakDebugService>("BetterFG_WinStreakDebug", persist: true);
 
@@ -321,8 +345,13 @@ namespace BetterFG
             BetterFGTabRegistry.Register<PersonalBestTab>();
             BetterFGTabRegistry.Register<ReplaysTab>();
             BetterFGTabRegistry.Register<PlinthsInGameTab>();
+            BetterFGTabRegistry.Register<PetsTab>();
 
             BetterFGTabRegistry.RegisterPartialTab<UIBackgroundTab>();
+            BetterFGTabRegistry.RegisterPartialTab<PetWizardTab>();
+            BetterFGTabRegistry.RegisterPartialTab<PetLookPickerTab>();
+            BetterFGTabRegistry.RegisterPartialTab<PetSkinTextureTab>();
+            BetterFGTabRegistry.RegisterPartialTab<PetPhrasesTab>();
             BetterFGTabRegistry.RegisterPartialTab<UIFontTab>();
             BetterFGTabRegistry.RegisterPartialTab<UIScalingTab>();
             BetterFGTabRegistry.RegisterPartialTab<UIPatternPickerTab>();
@@ -333,6 +362,10 @@ namespace BetterFG
             BetterFGTabRegistry.RegisterPartialTab<SkinTextureMaterialPropsTab>();
             BetterFGTabRegistry.RegisterPartialTab<AllCosmeticsWizardTab>();
             BetterFGTabRegistry.RegisterPartialTab<UIFontWizardTab>();
+            BetterFGTabRegistry.RegisterPartialTab<NametagColourTab>();
+            BetterFGTabRegistry.RegisterPartialTab<NametagIconTab>();
+            BetterFGTabRegistry.RegisterPartialTab<NametagNameplateTab>();
+            BetterFGTabRegistry.RegisterPartialTab<NametagCrownTab>();
             BetterFGTabRegistry.RegisterPartialTab<MenuBackgroundImageWizardTab>();
 
             var uiManGo = new GameObject("BetterFG_UI");

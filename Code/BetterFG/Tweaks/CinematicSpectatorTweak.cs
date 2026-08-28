@@ -81,6 +81,8 @@ namespace BetterFG.Tweaks
 
         public override void DisableTweak() => Shutdown();
 
+        public override void EnableTweak() => OnSpectatorMode();
+
         public static void OnClientGameManagerShutdown()
         {
             if (Instance == null) return;

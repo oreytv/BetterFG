@@ -521,6 +521,7 @@ namespace BetterFG.Features.Replay
                             if (container.version >= 8) ReadSpeech(br, container);
                             if (container.version >= 16) ReadGhosts(br, container);
                             if (container.version >= 21) ReadPowerups(br, container);
+                            if (container.version >= 22) ReadFrameList(br, container.petFrames, container.version);
 
                             FixupMissingOutTimes(container);
                             container.sourcePath = path;
@@ -573,6 +574,7 @@ namespace BetterFG.Features.Replay
                 duration = RoundUpFrame(JsonUtil.GetFloat(json, "duration")),
                 trimStart = RoundUpFrame(JsonUtil.GetFloat(json, "trimStart")),
                 trimEnd = RoundUpFrame(JsonUtil.GetFloat(json, "trimEnd")),
+                petId = JsonUtil.GetValue(json, "petId"),
             };
 
             foreach (var entry in JsonUtil.GetArray(json, "sets"))

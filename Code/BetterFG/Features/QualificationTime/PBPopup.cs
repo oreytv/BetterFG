@@ -16,8 +16,12 @@ namespace BetterFG.Features.QualificationTime
     // popup did) and drop our content on top. lives on the game canvas so it ignores the UI scale.
     internal static class PBTabView
     {
-        public static bool IsOpen => _root != null;
+        public static bool IsOpen => _root != null || _opening;
         static GameObject _root;
+        // Show() navigates to the Customiser backdrop first, which pushes a presence update before our
+        // root exists — without this the RPC flashes "Customising their bean" for a beat.
+        static bool _opening;
+        static int _svIdxAtHide = -1;
 
         // position of our clone in the nav's _menuTabs (the last slot).
         public static int MenuTabIndex = -1;
@@ -44,6 +48,7 @@ namespace BetterFG.Features.QualificationTime
         public static void Show()
         {
             if (_root != null) return;
+            _opening = true;
 
             // Customiser view for its 3D scene backdrop, like the old popup. that leaves CurrentViewIndex
             // pointing at Customiser though, so the pad would navigate left/right around Customiser and
@@ -128,13 +133,18 @@ namespace BetterFG.Features.QualificationTime
             // our clone is in the tab ToggleGroup; turning it on makes it the sole lit tab. the handler
             // keeps the stock toggles off since none sits at our index.
             if (TabToggle != null) TabToggle.isOn = true;
+            _opening = false;
+            Plugin.Log.LogInfo("navprobe PB show done");
+            BetterFG.Services.DiscordPresenceService.Push();
         }
 
         public static void Hide()
         {
             if (_root == null) return;
+            _svIdxAtHide = _sv != null ? _sv.CurrentViewIndex : -1;
             UnityEngine.Object.Destroy(_root);
             _root = null;
+            _opening = false;
 
             // BetterFGUIMan force-frees the cursor every frame while we're open; once that stops the
             // cursor just freezes wherever it was. if we left on a pad, hide+lock it (nobody else does);
@@ -166,6 +176,8 @@ namespace BetterFG.Features.QualificationTime
             BetterFG.Customization.Menu.MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
 
             if (TabToggle != null) TabToggle.SetIsOnWithoutNotify(false);
+            Plugin.Log.LogInfo($"navprobe PB hide, sv idx {(_svIdxAtHide)}");
+            BetterFG.Services.DiscordPresenceService.Push();
         }
     }
 }

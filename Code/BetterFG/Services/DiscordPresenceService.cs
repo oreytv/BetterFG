@@ -271,6 +271,7 @@ namespace BetterFG.Services
                     _lastComposed = activity;
                     Plugin.Log.LogInfo($"presence -> {activity.Details} | {activity.State ?? "-"} | icon {activity.SmallImage ?? "none"}");
                 }
+                Plugin.Log.LogInfo($"navprobe queued at {Environment.TickCount64}: {activity.Details}");
                 DiscordRpcClient.Set(activity);
             }
             catch (Exception ex) { Plugin.Log.LogWarning($"couldn't work out what to tell discord: {ex.Message}"); }
@@ -286,6 +287,9 @@ namespace BetterFG.Services
                 string mb = (_replaySizeBytes / 1024f / 1024f).ToString("0.0") + " MB";
                 return Build($"Editing a replay ({mb})", _replayName, "replay");
             }
+
+            if (BetterFG.Features.QualificationTime.PBTabView.IsOpen)
+                return Build("Viewing personal bests", null, "tab_home");
 
             var ggsc = GlobalGameStateClient.Instance;
             if (ggsc == null) return Build("Booting up", null);
@@ -373,7 +377,13 @@ namespace BetterFG.Services
                 if (_showSelectorOpen)
                     return Build("Picking a show to play...", null, "tab_home");
 
-                switch (_mainMenu.CurrentNavigationView)
+                // CurrentNavigationView only catches up when the switch animation ends, so leaving the
+                // PB tab reported the Settings view it landed on positionally. the SwitchableView index
+                // is already the destination by the time we're pushing.
+                var sv = _mainMenu.MainMenuBuilder?.SwitchableView;
+                var view = sv != null ? _mainMenu.GetViewType(sv.CurrentViewIndex) : _mainMenu.CurrentNavigationView;
+                Plugin.Log.LogInfo($"navprobe compose: sv {(sv == null ? "null" : sv.CurrentViewIndex.ToString())} -> {view}, prop {_mainMenu.CurrentNavigationView}, prev {_mainMenu.PreviousNavigationView}, animating {MainMenuManager.IsSwitchableViewBeingAnimated}");
+                switch (view)
                 {
                     case MainMenuViews.Customiser:
                         return Build("Customising their bean", null, "tab_customize");

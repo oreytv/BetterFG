@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
@@ -110,11 +110,24 @@ namespace BetterFG.Nametag
             public Color main, highlight, outline;
         }
 
-        public static CrownCfg CfgFromSettings() => new CrownCfg
+        public static CrownCfg CfgFromSettings() => CfgFrom(SettingsService.Get);
+
+        public static CrownCfg CfgFrom(System.Func<string, string, string> get)
         {
-            enabled = Enabled, textOn = TextOn, recolourOn = RecolourOn, swapSide = SwapSide,
-            text = RankText, main = MainColour, highlight = HighlightColour, outline = OutlineColour,
-        };
+            float G(string k, float def) =>
+                float.TryParse(get(k, def.ToString(CI)), System.Globalization.NumberStyles.Float, CI, out float v) ? v : def;
+            return new CrownCfg
+            {
+                enabled = get(KEY_ENABLED, "false") == "true",
+                textOn = get(KEY_TEXT_ON, "false") == "true",
+                recolourOn = get(KEY_RECOLOUR_ON, "false") == "true",
+                swapSide = get(KEY_SWAP_SIDE, "false") == "true",
+                text = get(KEY_TEXT, ""),
+                main = new Color(G(KEY_MAIN_R, 1f), G(KEY_MAIN_G, 0.55f), G(KEY_MAIN_B, 0.1f)),
+                highlight = new Color(G(KEY_HI_R, 1f), G(KEY_HI_G, 0.92f), G(KEY_HI_B, 0.55f)),
+                outline = new Color(G(KEY_OUT_R, 0f), G(KEY_OUT_G, 0f), G(KEY_OUT_B, 0f)),
+            };
+        }
 
         // in-game entry: local display + saved settings. deferred re-pin allowed (it targets the live tag).
         // the ONLY surface the forced crown count/rank rides — the PlayerInfoDisplay badge (3D + canvas) that
@@ -212,7 +225,6 @@ namespace BetterFG.Nametag
                     if (tmp != null) tmp.fontMaterial = snap.tmpMat;
                 }
             }
-            Plugin.Log.LogInfo($"crownrank applied — text {(cfg.textOn && !string.IsNullOrEmpty(cfg.text) ? cfg.text : "(game)")}, main {ColorUtility.ToHtmlStringRGB(cfg.main)}");
             return true;
         }
 

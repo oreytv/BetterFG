@@ -96,13 +96,24 @@ if ($BuildOutput -and (Test-Path $BuildOutput)) {
         }
     }
 
+    $libsDest = Join-Path $pluginOnlyFolder "Libs"
     $libsSource = Join-Path $BuildOutput "Libs"
     if (Test-Path $libsSource) {
-        Copy-Item -Path (Join-Path $libsSource "*") -Destination $pluginOnlyFolder -Force
+        if (!(Test-Path $libsDest)) {
+            New-Item -ItemType Directory -Path $libsDest | Out-Null
+        }
+        Copy-Item -Path (Join-Path $libsSource "*") -Destination $libsDest -Force
     }
-    $staleLibs = Join-Path $pluginOnlyFolder "Libs"
-    if (Test-Path $staleLibs) {
-        Remove-Item -LiteralPath $staleLibs -Recurse -Force
+
+    # older builds dumped the vendored dlls loose in the plugin root next to BetterFG.dll. they live
+    # in Libs\ now, so clear any stragglers out of the stage or they ride along in the zip forever.
+    if (Test-Path $libsDest) {
+        Get-ChildItem -LiteralPath $libsDest -Filter *.dll | ForEach-Object {
+            $loose = Join-Path $pluginOnlyFolder $_.Name
+            if (Test-Path $loose) {
+                Remove-Item -LiteralPath $loose -Force
+            }
+        }
     }
 }
 

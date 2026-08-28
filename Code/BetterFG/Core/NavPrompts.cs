@@ -4,6 +4,7 @@ using FallGuysLib.UI;
 using FG.Common.CMS;
 using FG.Common.UI;
 using FGClient.UI.Core;
+using MPG.Utility;
 using Rewired;
 using UnityEngine;
 using Il2CppAemList = Il2CppSystem.Collections.Generic.List<Rewired.ActionElementMap>;
@@ -135,6 +136,10 @@ namespace BetterFG.Core
         internal bool RequireGameplayFocus = true;
         internal Func<string, bool> ElementNameFilter; // optional gate: only accept buttons whose Rewired name matches
         internal int[] PollActionIdOverride;    // poll these Rewired action ids instead of the NavigationPromptData's own
+        internal bool InGameOverlayParent;      // parent the button under the game's NavigationOverlay _navPromptsParent
+        internal KeyCode ExtraKey = KeyCode.None; // also fires on this key (read via the Rewired keyboard)
+        internal bool UseOwnGlyph;              // swap the button's glyph for BettrFG's own key/pad pair
+        internal bool JoystickPollOnly;         // PollActions: only the joystick element walk, not keyboard/any-device
 
         internal NavPromptBuilder(NavPrompt source) { Source = source; }
 
@@ -183,6 +188,27 @@ namespace BetterFG.Core
 
         public NavPromptBuilder AlsoAcceptEscape() { AcceptEscapeKey = true; return this; }
 
+        // parent the spawned button under the game's own NavigationOverlayManager._navPromptsParent
+        // (inside Prefab_UI_NavigationOverlay(Clone)), so it sits in the real prompt row instead of
+        // our floating CustomNavPrompt container. the game's layout group owns placement, so the
+        // anchor + auto-resize options are skipped in this mode.
+        public NavPromptBuilder InGameOverlay() { InGameOverlayParent = true; return this; }
+
+        // also fire when this key is pressed. read through the Rewired keyboard (KeybindService),
+        // never UnityEngine.Input — legacy Input goes deaf on us intermittently.
+        public NavPromptBuilder AlsoAcceptKey(KeyCode key) { ExtraKey = key; return this; }
+
+        // pull the glyph straight from the game's atlas by ELEMENT rather than by action: the O-key
+        // sprite (from AlsoAcceptKey) when on keyboard, the pad button bound to the first PollActions
+        // id when on a controller. use when the trigger action has no nav glyph of its own / resolves
+        // to the wrong key (Default_OpenInGameMenu is Escape on keyboard).
+        public NavPromptBuilder OwnGlyph() { UseOwnGlyph = true; return this; }
+
+        // with PollActions: only walk each joystick's button maps — skip the any-device
+        // GetButtonDown and the keyboard maps. needed when the polled action is bound to a keyboard
+        // key you don't want firing the prompt (Default_OpenInGameMenu is Escape on keyboard).
+        public NavPromptBuilder JoystickOnly() { JoystickPollOnly = true; return this; }
+
         // opt out of the default focus gate. only for prompts that must fire while another surface
         // has focus (loading-screen leave prompt etc).
         public NavPromptBuilder AllowWhileUnfocused() { RequireGameplayFocus = false; return this; }
@@ -218,7 +244,13 @@ namespace BetterFG.Core
             if (prefab == null) return null;
 
             Transform actualParent = parent;
-            if (OwnCanvas)
+            if (InGameOverlayParent)
+            {
+                var mgr = NavPromptCore.Manager;
+                actualParent = mgr != null ? mgr._navPromptsParent : null;
+                if (actualParent == null) return null;
+            }
+            else if (OwnCanvas)
             {
                 // sit under the game's own UICanvas so we inherit its scaleFactor (BettrFG canvas
                 // scaling lives there). A standalone overlay canvas would ignore that and stay at
@@ -231,9 +263,9 @@ namespace BetterFG.Core
             go.name = "BettrFG_NavPrompt_" + LabelKey;
 
             var rt = go.GetComponent<RectTransform>();
-            if (rt != null) ApplyAnchors(rt);
+            if (rt != null && !InGameOverlayParent) ApplyAnchors(rt);
 
-            if (ResizeForLongLabel && rt != null)
+            if (ResizeForLongLabel && rt != null && !InGameOverlayParent)
             {
                 rt.sizeDelta = new Vector2(Width, rt.sizeDelta.y);
                 foreach (var le in go.GetComponentsInChildren<UnityEngine.UI.LayoutElement>(true))
@@ -254,13 +286,85 @@ namespace BetterFG.Core
             // ALSO stash the button on the handle so IsPressed can read its live elementIdentifierId
             // and poll that raw controller button directly — needed for glyphs like LE_Down whose
             // NavigationPromptData has no InputActions so the callback never fires on its own.
-            var handle = new NavPromptHandle(go, data, OnPressed, AcceptEscapeKey, ElementNameFilter, PollActionIdOverride, RequireGameplayFocus);
+            var handle = new NavPromptHandle(go, data, OnPressed, AcceptEscapeKey, ElementNameFilter, PollActionIdOverride, RequireGameplayFocus, ExtraKey, JoystickPollOnly);
             var btn = go.GetComponent<NavigationPromptButton>();
             if (btn != null) btn.Init(data, (Il2CppSystem.Action)(() => handle.MarkGamePressed()));
             handle.AttachPromptButton(btn);
+
+            if (UseOwnGlyph && btn != null) ApplyOwnGlyph(btn);
+
             go.SetActive(true);
 
             return handle;
+        }
+
+        // resolve the real per-element glyphs from the game's SpriteManager atlas and pin them as
+        // the ActiveControllerUI's fixed (non-mappeable) sprites. _mappeable=false makes the ACU
+        // pick the keyboard vs joystick one by active device on its own.
+        private void ApplyOwnGlyph(NavigationPromptButton btn)
+        {
+            var ctrl = btn.TryCast<NavigationPromptButtonController>();
+            var acu = ctrl != null ? ctrl._activeControllerUI : null;
+            if (acu == null) return;
+
+            var sm = SingletonBehaviour<SpriteManager>.Instance;
+            if (sm == null) return;
+
+            var kbSprite = ResolveKeyboardGlyph(sm, ExtraKey);
+            var padSprite = ResolvePadGlyph(sm, PollActionIdOverride);
+
+            acu._mappeable = false;
+            if (kbSprite != null) acu._notMappeableKeyboardSprite = kbSprite;
+            if (padSprite != null) acu._notMappeableJoystickSprite = padSprite;
+            acu._notMappeableKeyboardGlyphText = "";
+            acu._notMappeableJoystickGlyphText = "";
+            if (acu._text != null) acu._text.text = "";
+            acu.UpdateGlyphsWithActiveController();
+        }
+
+        private static Sprite ResolveKeyboardGlyph(SpriteManager sm, KeyCode key)
+        {
+            if (key == KeyCode.None || !ReInput.isReady) return null;
+            var cg = sm._controllerGlyphs;
+            if (cg == null || cg.Keyboard == null) return null;
+            var kb = ReInput.controllers.Keyboard;
+            var ident = kb != null ? kb.GetElementIdentifierByKeyCode(key) : null;
+            if (ident == null) return null;
+            var info = cg.Keyboard.GetGlyph(ident.id, AxisRange.Full);
+            return info != null ? info.sprite : null;
+        }
+
+        // ask SpriteManager for the polled action's glyph ON EACH JOYSTICK explicitly. the overload
+        // without a Controller resolves for the ACTIVE device, so on keyboard it returns "Esc" and
+        // that gets pinned as the pad sprite — pass the joystick so it resolves the pad binding.
+        private static Sprite ResolvePadGlyph(SpriteManager sm, int[] actionIds)
+        {
+            if (actionIds == null || actionIds.Length == 0 || !ReInput.isReady || ReInput.players.playerCount == 0)
+                return null;
+            int actionId = actionIds[0];
+            var action = ReInput.mapping.GetAction(actionId);
+            if (action == null) return null;
+
+            var p = ReInput.players.GetPlayer(0);
+            var sticks = p.controllers.Joysticks;
+            int n = p.controllers.joystickCount;
+            var buf = new Il2CppAemList();
+            for (int i = 0; i < n; i++)
+            {
+                var j = sticks[i];
+                buf.Clear();
+                int got = p.controllers.maps.GetButtonMapsWithAction(j, actionId, false, buf);
+                if (got == 0) continue;
+                int layoutId = 0;
+                for (int k = 0; k < got; k++)
+                {
+                    var cm = buf[k] != null ? buf[k].controllerMap : null;
+                    if (cm != null) { layoutId = cm.layoutId; break; }
+                }
+                var info = sm.GetActionControllerSprite(j, action, layoutId, Pole.Positive, false);
+                if (info != null && info.sprite != null) return info.sprite;
+            }
+            return null;
         }
 
         private void ApplyAnchors(RectTransform rt)
@@ -303,13 +407,15 @@ namespace BetterFG.Core
         private readonly Func<string, bool> _elementFilter;
         private readonly int[] _pollActionIds;
         private readonly bool _requireGameplayFocus;
+        private readonly KeyCode _extraKey;
+        private readonly bool _joystickPollOnly;
 
         // shared per-handle to avoid allocating a fresh Il2Cpp list every poll
         private readonly Il2CppAemList _aemBuf = new Il2CppAemList();
 
         internal NavPromptHandle(GameObject go, NavigationPromptData data,
             Action onPressed, bool acceptEscape, Func<string, bool> elementFilter, int[] pollActionIds,
-            bool requireGameplayFocus)
+            bool requireGameplayFocus, KeyCode extraKey, bool joystickPollOnly)
         {
             GameObject = go;
             _data = data;
@@ -318,6 +424,8 @@ namespace BetterFG.Core
             _elementFilter = elementFilter;
             _pollActionIds = pollActionIds;
             _requireGameplayFocus = requireGameplayFocus;
+            _extraKey = extraKey;
+            _joystickPollOnly = joystickPollOnly;
         }
 
         // true when whatever surface currently owns input on the UI canvas is focused. shared
@@ -406,6 +514,7 @@ namespace BetterFG.Core
             if (_gamePressed) { _gamePressed = false; if (gated) return false; _onPressed?.Invoke(); return true; }
             if (gated) return false;
             if (_acceptEscape && Input.GetKeyDown(KeyCode.Escape)) { _onPressed?.Invoke(); return true; }
+            if (_extraKey != KeyCode.None && BetterFG.Services.KeybindService.KeyDown(_extraKey)) { _onPressed?.Invoke(); return true; }
             if (PollData()) { _onPressed?.Invoke(); return true; }
             return false;
         }
@@ -440,7 +549,7 @@ namespace BetterFG.Core
                 // GetButtonDown(actionId) only fires when the action's input category is enabled;
                 // during loading states the Menu category is disabled, so we fall through to the
                 // direct-poll path below if it returns false.
-                if (_elementFilter == null && p.GetButtonDown(actionId)) return true;
+                if (_elementFilter == null && !_joystickPollOnly && p.GetButtonDown(actionId)) return true;
 
                 var sticks = p.controllers.Joysticks;
                 int n = p.controllers.joystickCount;
@@ -471,7 +580,7 @@ namespace BetterFG.Core
                     }
                 }
 
-                var kb = p.controllers.Keyboard;
+                var kb = _joystickPollOnly ? null : p.controllers.Keyboard;
                 if (kb != null)
                 {
                     _aemBuf.Clear();

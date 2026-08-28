@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BetterFG.Core;
 using BetterFG.Features.MorePlatformIcon;
 using BetterFG.Features.TimePlacement;
@@ -24,12 +25,13 @@ namespace BetterFG.Patches
     // used to populate the row in the first place — and it's a plain Unity Component read, not an
     // IL2CPP struct marshal, so use that instead of touching the slot at all.
     //
-    // For qualify/eliminate rows specifically, don't even try to resolve identity from the fall feed
-    // side: the notification appears the instant the game despawns that player's bean, so any HUD-row
-    // scan (ResolveKeyByDisplayName) is chasing a row that's usually already gone. FeatureTimePlacement
-    // already resolves a reliable key for every qualify/eliminate the moment it happens (that's how the
-    // PB/roster time column works) — its progress messages land in the same order as the matching fall
-    // feed notification, so queue keys there and dequeue them here instead of re-deriving identity.
+    // For qualify/eliminate rows the notification appears the instant the game despawns that player's
+    // bean, so the HUD-row scan in ResolveKeyByDisplayName is chasing a row that's usually already
+    // gone. FeatureTimePlacement.OnServerPlayerProgress has the real key at the moment the server
+    // message lands, so it seeds name->key into NametagIconApplicator as each player finishes/dies
+    // and the lookup here just hits that cache. (An earlier version queued keys and dequeued one per
+    // notification, matching by arrival order — a single missing or extra notification, e.g. a
+    // survival round's end-of-round batch, shifted every later row onto the wrong player's profile.)
     internal static class FallFeedNameCore
     {
         // CreateNotification doesn't hand us the ViewModel it just populated, so find it. Body text
@@ -57,15 +59,18 @@ namespace BetterFG.Patches
             return best;
         }
 
-        internal static void RestyleSlot(TextMeshProUGUI iconText, TextMeshProUGUI nameText, string localKey, string queuedKey)
+        // fall-feed name TMPs we've actually styled — a pooled row we never touched keeps whatever
+        // material the game gave it, so a profile-less player never gets scrubbed to the shadow mat.
+        private static readonly HashSet<IntPtr> _styledRows = new HashSet<IntPtr>();
+
+        internal static void RestyleSlot(TextMeshProUGUI iconText, TextMeshProUGUI nameText, string localKey)
         {
             if (nameText == null) return;
             string displayName = nameText.text ?? "";
             if (string.IsNullOrEmpty(displayName)) return;
 
             bool isLocal = IsLocalDisplayName(displayName);
-            string fullKey = isLocal ? localKey
-                : (!string.IsNullOrEmpty(queuedKey) ? queuedKey : NametagIconApplicator.ResolveKeyByDisplayName(displayName));
+            string fullKey = isLocal ? localKey : NametagIconApplicator.ResolveKeyByDisplayName(displayName);
 
             string spriteName = FeatureMorePlatformIcon.SpriteNameForPlayerKey(fullKey);
             // outline sheet (not the plain one) — that's what fall feed used pre-update, since its
@@ -75,17 +80,30 @@ namespace BetterFG.Patches
             if (!string.IsNullOrEmpty(spriteName) && iconText != null && NametagIconApplicator.ApplyInlinePlatformAssetOutline(iconText))
                 NametagIconApplicator.ApplyInlinePlatform(iconText, spriteName, 0.6f);
 
+            var info = isLocal
+                ? FeatureMorePlatformIcon.LocalNametagInfo()
+                : (RemoteProfileStore.TryGet(fullKey)?.nametag ?? RemoteProfileStore.TryGet(displayName)?.nametag);
+
+            if (info == null)
+            {
+                // only undo our own styling if this exact row carried it — an untouched row is left
+                // exactly as the game rendered it, material included.
+                if (_styledRows.Remove(nameText.m_CachedPtr))
+                {
+                    nameText.enableVertexGradient = false;
+                    if (AssetManager.DefaultNameMaterial != null) nameText.fontSharedMaterial = AssetManager.DefaultNameMaterial;
+                    nameText.color = Color.white;
+                }
+                return;
+            }
+
             // rows are pooled — the game refreshes .text every show but never resets colour/gradient/
             // material, so whatever a previous occupant's row got styled to (gold gradient, custom
             // colour) sticks around for whoever reuses that TMP next: right name, someone else's look.
             nameText.enableVertexGradient = false;
             if (AssetManager.DefaultNameMaterial != null) nameText.fontSharedMaterial = AssetManager.DefaultNameMaterial;
             nameText.color = Color.white;
-
-            var info = isLocal
-                ? FeatureMorePlatformIcon.LocalNametagInfo()
-                : (RemoteProfileStore.TryGet(fullKey)?.nametag ?? RemoteProfileStore.TryGet(displayName)?.nametag);
-            if (info == null) return;
+            _styledRows.Add(nameText.m_CachedPtr);
 
             string fallback = displayName;
             if (StripSizeTagsTweak.Active) fallback = StripSizeTagsTweak.Strip(fallback);
@@ -114,19 +132,13 @@ namespace BetterFG.Patches
 
                 string localKey = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
 
-                // the primary slot is the one who qualified/was eliminated — dequeue the matching
-                // real key FeatureTimePlacement resolved for that same event, in the same order.
-                string queuedKey = null;
-                if (body.Contains("fallfeed-race")) FeatureTimePlacement.TryDequeueQualifyKey(out queuedKey);
-                else if (body.Contains("fallfeed-eliminate")) FeatureTimePlacement.TryDequeueEliminateKey(out queuedKey);
-
-                FallFeedNameCore.RestyleSlot(vm._platformIconText, vm._playerNameText, localKey, queuedKey);
-                FallFeedNameCore.RestyleSlot(vm._platformIconText2, vm._playerNameText2, localKey, null);
+                FallFeedNameCore.RestyleSlot(vm._platformIconText, vm._playerNameText, localKey);
+                FallFeedNameCore.RestyleSlot(vm._platformIconText2, vm._playerNameText2, localKey);
 
                 string primaryNameBefore = vm._playerNameText != null ? (vm._playerNameText.text ?? "") : "";
                 string primaryKey = FallFeedNameCore.IsLocalDisplayName(primaryNameBefore)
                     ? localKey
-                    : (!string.IsNullOrEmpty(queuedKey) ? queuedKey : NametagIconApplicator.ResolveKeyByDisplayName(primaryNameBefore));
+                    : NametagIconApplicator.ResolveKeyByDisplayName(primaryNameBefore);
                 FallFeedQualTimeTweak.Instance?.Apply(vm._messageBodyText, primaryKey);
 
                 // our text swap can change rendered width (custom name, colour tags, the qual-time

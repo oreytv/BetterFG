@@ -214,20 +214,6 @@ namespace BetterFG.Features.TimePlacement
         static readonly HashSet<string> _disconnectedKeys = new HashSet<string>();
         // keys who hit the level's skip button (Explore) — they chose to bail, not died/dc'd.
         static readonly HashSet<string> _skippedKeys = new HashSet<string>();
-        // fall feed's own PlayerSlot carries no usable key post-update, but its qualify/eliminate
-        // notification for a given player fires right after (same order as) the matching progress
-        // message here — so queue keys in that same order instead of trying to re-derive identity
-        // from a name. See FallfeedPatch.cs.
-        static readonly Queue<string> _recentQualifyKeys = new Queue<string>();
-        static readonly Queue<string> _recentEliminateKeys = new Queue<string>();
-
-        public static bool TryDequeueQualifyKey(out string key) => TryDequeue(_recentQualifyKeys, out key);
-        public static bool TryDequeueEliminateKey(out string key) => TryDequeue(_recentEliminateKeys, out key);
-        static bool TryDequeue(Queue<string> q, out string key)
-        {
-            key = q.Count > 0 ? q.Dequeue() : null;
-            return !string.IsNullOrEmpty(key);
-        }
         static int _lastTaCutoff = -1;                   // last logged time attack qualification cut
         static int _soloSig;                             // running hash of the current solo leaderboard
         static int _lastSoloSig;                         // last logged signature, to dedupe the spam
@@ -254,8 +240,7 @@ namespace BetterFG.Features.TimePlacement
             _deathTimes.Clear();
             _disconnectedKeys.Clear();
             _skippedKeys.Clear();
-            _recentQualifyKeys.Clear();
-            _recentEliminateKeys.Clear();
+            Nametag.NametagIconApplicator.ForgetRecentKeys();
             _nextPlace = 0;
             _lastTaCutoff = -1;
             _soloSig = 0;
@@ -802,7 +787,7 @@ namespace BetterFG.Features.TimePlacement
                 {
                     _skippedKeys.Add(pkey);
                     if (!_deathTimes.ContainsKey(pkey)) _deathTimes[pkey] = clock;
-                    _recentEliminateKeys.Enqueue(pkey);
+                    Nametag.NametagIconApplicator.SeedKeyForName(PlayerUtils.CleanPlayerName(pkey), pkey);
                 }
                 OnPlayerEliminated(progressMessage.playerId);
                 return;
@@ -816,7 +801,7 @@ namespace BetterFG.Features.TimePlacement
                 if (!string.IsNullOrEmpty(pkey))
                 {
                     if (!_qualTimes.ContainsKey(pkey)) _qualTimes[pkey] = clock;
-                    _recentQualifyKeys.Enqueue(pkey);
+                    Nametag.NametagIconApplicator.SeedKeyForName(PlayerUtils.CleanPlayerName(pkey), pkey);
                 }
                 OnPlayerFinished(progressMessage.playerId);
             }
@@ -833,7 +818,7 @@ namespace BetterFG.Features.TimePlacement
                         _deathTimes[pkey] = survived > 0 && Mathf.FloorToInt(clock) != survived ? survived : clock;
                         if (progressMessage.isDisconnected) _disconnectedKeys.Add(pkey);
                     }
-                    _recentEliminateKeys.Enqueue(pkey);
+                    Nametag.NametagIconApplicator.SeedKeyForName(PlayerUtils.CleanPlayerName(pkey), pkey);
                 }
                 OnPlayerEliminated(progressMessage.playerId);
             }
@@ -1756,7 +1741,9 @@ namespace BetterFG.Features.TimePlacement
         public static void OnSoloScoreChanged()
         {
             if (!_updating || !Enabled || _panels.Count == 0) return;
-            if (!IsScoringRound()) return;
+            // scoring squad rounds derive squad totals by summing solo scores, so a solo-score change
+            // has to repaint them too — not just the non-squad scoring path.
+            if (!GameRulesAreScoring()) return;
             QueueRepaint();
         }
 
@@ -2135,6 +2122,40 @@ namespace BetterFG.Features.TimePlacement
     // to notice, so it repaints on the message instead of a beat later.
     [HarmonyPatch(typeof(ClientGameManager), nameof(ClientGameManager.TryUpdateSquadScore))]
     internal static class Patch_TimePlacement_SquadScore
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => FeatureTimePlacement.QueueRepaint();
+    }
+
+    // ClientGameManager.UpdateSoloScore / TryUpdateSquadScore are only hit when the server routes a
+    // score through that hub. In a squads lobby the solo rounds get their points via the squads
+    // message handler instead, which never touches those two — so the board (RefreshSquadScoresFromSolo
+    // sums each member's solo score) went stale until a manual view toggle forced a repaint. Patch the
+    // score managers directly: every solo-point and squad-point mutation funnels through these four, so
+    // one of them always fires. QueueRepaint coalesces the burst and re-resolves the round type itself.
+    [HarmonyPatch(typeof(FG.Common.SoloScoreManager), nameof(FG.Common.SoloScoreManager.AwardSoloPoints))]
+    internal static class Patch_TimePlacement_AwardSoloPoints
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => FeatureTimePlacement.QueueRepaint();
+    }
+
+    [HarmonyPatch(typeof(FG.Common.SoloScoreManager), nameof(FG.Common.SoloScoreManager.SetSoloScore))]
+    internal static class Patch_TimePlacement_SetSoloScore
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => FeatureTimePlacement.QueueRepaint();
+    }
+
+    [HarmonyPatch(typeof(SquadManager), nameof(SquadManager.UpdateSquadScores))]
+    internal static class Patch_TimePlacement_SquadManagerUpdate
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => FeatureTimePlacement.QueueRepaint();
+    }
+
+    [HarmonyPatch(typeof(SquadManager), nameof(SquadManager.UpdateSquadScoresNow))]
+    internal static class Patch_TimePlacement_SquadManagerUpdateNow
     {
         [HarmonyPostfix]
         public static void Postfix() => FeatureTimePlacement.QueueRepaint();

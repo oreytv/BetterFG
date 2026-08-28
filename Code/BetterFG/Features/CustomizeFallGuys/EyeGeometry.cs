@@ -26,14 +26,17 @@ namespace BetterFG.Features.CustomizeFallGuys
         public static GameObject Attach(GameObject root, Material shared, Color tint, out SkinnedMeshRenderer source)
         {
             source = null;
-            var meshes = root.GetComponent<FG.Common.FallguyCustomisationHandler>()?.SkinnedMeshes;
-            if (meshes == null) return null;
+            // was the customisation handler's SkinnedMeshes list, but the preview clone deliberately
+            // has no handler on it. a plain child sweep is a superset and costs nothing extra: only a
+            // mesh that actually carries eye-weighted tris survives Carve anyway
+            var meshes = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
 
             for (int pass = 0; pass < 2; pass++)
-            for (int i = 0; i < meshes.Count; i++)
+            for (int i = 0; i < meshes.Length; i++)
             {
                 var body = meshes[i];
                 if (body == null || body.sharedMesh == null) continue;
+                if (body.gameObject.name == "BettrFG_Eyes") continue;
                 if (pass == 0 && !body.gameObject.activeInHierarchy) continue;
 
                 var bodyBones = body.bones;

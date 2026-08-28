@@ -116,6 +116,7 @@ namespace BetterFG.Customization.Player
             {
                 if (SlotDead(slot)) yield break;
                 if (bean == null || SkipMenuSkinAutoApplyForThisBean(bean)) continue;
+                if (profileBeanCostumes.ContainsKey(bean.GetInstanceID())) continue;
                 string key = MakeKey(bean, slot.id);
                 if (appliedSkins.ContainsKey(key) || pendingKeys.Contains(key)) continue;
                 pendingKeys.Add(key);

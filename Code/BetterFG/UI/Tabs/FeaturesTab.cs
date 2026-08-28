@@ -22,6 +22,7 @@ namespace BetterFG.UI.Tabs
 
 
         const float HEADER_H = 58f;
+        const float CAROUSEL_H = 30f;
         const float SETTING_H = 26f;
         const float TOGGLE_W = 54f;
         const float TOGGLE_H = 18f;
@@ -30,7 +31,8 @@ namespace BetterFG.UI.Tabs
 
         static readonly System.Collections.Generic.Dictionary<string, Sprite> _featurePics = new System.Collections.Generic.Dictionary<string, Sprite>();
         RectTransform _listRt;
-        float _viewportH;
+        Text _carouselLabel;
+        int _selected;
         float _contentW;
 
         protected override void BuildBackground(RectTransform root)
@@ -42,8 +44,25 @@ namespace BetterFG.UI.Tabs
 
         protected override void BuildContent(RectTransform contentRoot)
         {
-            var scrollRect = new Rect(PAD, VPAD, TabWidth - PAD * 2f, TabHeight - VPAD * 2f);
-            _viewportH = scrollRect.height;
+            var all = FeatureRegistry.all;
+            if (all.Count == 0) return;
+
+            _selected = Mathf.Clamp(_selected, 0, all.Count - 1);
+            var names = new string[all.Count];
+            for (int i = 0; i < all.Count; i++) names[i] = all[i].title;
+
+            _carouselLabel = UGUIShip.CreateCarousel(contentRoot,
+                new Rect(PAD, VPAD, TabWidth - PAD * 2f, CAROUSEL_H), names, _selected,
+                new Action<int>(step =>
+                {
+                    var list = FeatureRegistry.all;
+                    _selected = (_selected + step + list.Count) % list.Count;
+                    _carouselLabel.text = list[_selected].title;
+                    RefreshRows();
+                }), null, FS + 1);
+
+            float top = VPAD + CAROUSEL_H + 6f;
+            var scrollRect = new Rect(PAD, top, TabWidth - PAD * 2f, TabHeight - top - VPAD);
             _contentW = scrollRect.width - 26f;
             var scroll = UGUIShip.CreateScrollView(contentRoot, scrollRect);
             scroll.scrollRect.scrollSensitivity = 45f;
@@ -65,28 +84,7 @@ namespace BetterFG.UI.Tabs
             for (int i = _listRt.childCount - 1; i >= 0; i--)
                 Destroy(_listRt.GetChild(i).gameObject);
 
-            var all = FeatureRegistry.all;
-            for (int i = 0; i < all.Count; i++)
-                BuildFeature(i);
-
-            if (all.Count > 0)
-            {
-                var last = all[all.Count - 1];
-                int lastRows = (last.settings == null ? 0 : last.settings.Count)
-                    + (last.choices == null ? 0 : last.choices.Count)
-                    + (last.ranges == null ? 0 : last.ranges.Count);
-                float lastH = HEADER_H + lastRows * SETTING_H;
-                if (last.id == "customizefallguys") lastH += PREVIEW_H + PAD * 2f;
-                float padH = Mathf.Max(0f, _viewportH - lastH);
-
-                var spacer = new GameObject("BottomScrollPad");
-                spacer.transform.SetParent(_listRt, false);
-                spacer.AddComponent<RectTransform>();
-                var le = spacer.AddComponent<LayoutElement>();
-                le.preferredHeight = padH;
-                le.flexibleWidth = 1f;
-            }
-
+            BuildFeature(_selected);
             LayoutRebuilder.ForceRebuildLayoutImmediate(_listRt);
         }
 

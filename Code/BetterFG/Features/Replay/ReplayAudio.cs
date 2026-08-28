@@ -378,6 +378,9 @@ namespace BetterFG.Features.Replay
 
                 if (sound.end >= 0f) _held.Add(new HeldSound { instance = instance, end = sound.end, pos = sound.pos, flat = needsFalloff, range = range });
                 else if (needsFalloff) _flatOneShots.Add(new FlatOneShot { instance = instance, pos = sound.pos, range = range });
+                else if (desc.isValid() && desc.isOneshot(out bool oneshot) == RESULT.OK && !oneshot)
+                    // looping event whose stop never made it into the recording — cap it at the replay's end so it can't run on forever
+                    _held.Add(new HeldSound { instance = instance, end = _rec.duration, pos = sound.pos, flat = false, range = range });
                 else instance.release();
                 _fired++;
             }

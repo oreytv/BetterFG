@@ -111,7 +111,6 @@
 	  <ItemGroup>
 	    <BettrFGLib Include="$(MSBuildProjectDirectory)\Libs\*.dll" />
 	  </ItemGroup>
-	  <Copy SourceFiles="@(BettrFGLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
 	  <Copy SourceFiles="@(BettrFGLib)" DestinationFolder="$(OutDir)Libs" SkipUnchangedFiles="true" />
 	</Target>
 
@@ -162,7 +161,11 @@
   <Import Project="build\Comp.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Comp.targets')" />
   <Import Project="build\PlatformTag.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\PlatformTag.targets')" />
   <Import Project="build\Obfuscation.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Obfuscation.targets')" />
-  <Import Project="build\Profiles.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Profiles.targets')" />
+  <Import Project="build\Afk.targets" Condition="Exists('$(MSBuildProjectDirectory)\build\Afk.targets')" />
+
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);PROFILES</DefineConstants>
+  </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'EarlyAcesss'">
     <DefineConstants>$(DefineConstants);EARLYACESSS</DefineConstants>
@@ -193,7 +196,9 @@
   <!-- NAudio + Vortice/SharpGen are vendored under Libs\ instead of restored from NuGet, so what we
        compile against is byte-for-byte what CopyLibs ships. glob, so a new dll needs no csproj edit. -->
   <ItemGroup>
-    <Reference Include="Libs\*.dll" />
+    <Reference Include="Libs\*.dll">
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

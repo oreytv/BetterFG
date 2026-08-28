@@ -27,6 +27,10 @@ namespace BetterFG.UI
         protected override void BuildTitleExtras(Transform titleBar, Text title)
         {
             _titleText = title;
+            // an empty label still leaves a full-size invisible Button behind (CreateLinkText always
+            // makes one) sitting right next to the title text, over the title bar's own open/close
+            // button - eating clicks there for nothing since SwitchNow() is a no-op with no target
+            if (string.IsNullOrEmpty(SwitchLabel)) return;
             _switchLink = UGUIShip.CreateLinkText(titleBar, new Rect(0f, 0f, 90f, TITLE_H), SwitchLabel,
                 new Action(SwitchNow), LINK, UIScale.FS_SM);
             _switchLink.gameObject.SetActive(IsOpen);

@@ -56,6 +56,17 @@ namespace BetterFG.UI
         // validate + persist; return true to leave back to the list, false (with a SetStatus) to stay
         protected virtual bool Save() => false;
         protected virtual Tab MakeListTarget() => null;
+
+        // optional fixed-height region between the step header and the step panels, e.g. a live preview
+        // that should stay visible across every step (and every step change) instead of living inside
+        // one step. 0 (default) means no header - existing wizards are unaffected.
+        protected virtual float HeaderHeight => 0f;
+        protected virtual void BuildHeader(RectTransform contentRoot, Rect area) { }
+
+        // optional small button next to the step header, visible on every step - resets/clears this
+        // wizard's whole setting instead of saving it, then leaves to the list same as Save.
+        protected virtual bool HasRemove => false;
+        protected virtual void OnRemoveClicked() { }
         // called right before switching away to the list tab, on both save and cancel - a subclass
         // that live-previews edits before Save persists them can revert here
         protected virtual void OnLeave() { }
@@ -66,10 +77,26 @@ namespace BetterFG.UI
         protected override void BuildContent(RectTransform contentRoot)
         {
             float w = TabWidth - PAD * 2f;
-            _stepHeader = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, VPAD, w, LH), "", FS_SM, LABEL);
+            float headerLblW = w;
+            if (HasRemove)
+            {
+                float rmW = 64f * UIScale.S;
+                headerLblW = w - rmW - PAD;
+                UGUIShip.CreateButton(contentRoot, new Rect(PAD + headerLblW + PAD, VPAD, rmW, LH),
+                    "REMOVE", new Color(0.55f, 0.15f, 0.15f, 1f), WHITE, FS_SM, new Action(OnRemoveThenLeave));
+            }
+            _stepHeader = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, VPAD, headerLblW, LH), "", FS_SM, LABEL);
 
             float bodyY = VPAD + LH + SH;
             float bodyH = TabHeight - bodyY - BTN_H - LH - VPAD - SH * 2f;
+
+            float headerH = HeaderHeight;
+            if (headerH > 0f)
+            {
+                BuildHeader(contentRoot, new Rect(PAD, bodyY, w, headerH));
+                bodyY += headerH + SH;
+                bodyH -= headerH + SH;
+            }
 
             var titles = StepTitles;
             _panels = new GameObject[titles.Length];
@@ -104,6 +131,12 @@ namespace BetterFG.UI
             var rt = go.AddComponent<RectTransform>();
             UGUIShip.SetPixelRect(rt, new Rect(0f, y, TabWidth, h));
             return go;
+        }
+
+        private void OnRemoveThenLeave()
+        {
+            OnRemoveClicked();
+            LeaveToList();
         }
 
         private void OnBack()

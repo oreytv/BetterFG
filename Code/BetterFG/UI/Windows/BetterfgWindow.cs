@@ -57,6 +57,7 @@ namespace BetterFG.UI.Windows
         private RectTransform _rootRt;
         private RectTransform _bgRt;
         private RectTransform _titleLabelRt;
+        protected Text _titleText;
         protected RectTransform _contentRt;
         private Transform _titleRoot;
         private RawImage _hoverImage;
@@ -69,6 +70,15 @@ namespace BetterFG.UI.Windows
         public BetterFG.UI.Tab OwnerTab { get; set; }
 
         // ── API ───────────────────────────────────────────────────────────────
+
+        // every window lives on its own hidden, scene-persistent GameObject
+        public static T Spawn<T>() where T : BetterFGWindow
+        {
+            var go = new GameObject("BetterFG_" + typeof(T).Name);
+            UnityEngine.Object.DontDestroyOnLoad(go);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            return go.AddComponent<T>();
+        }
 
         public void SetRotation(float zDeg)
         {
@@ -364,6 +374,7 @@ namespace BetterFG.UI.Windows
             var t = UGUIShip.CreateLabel(titleGo.transform, default, WindowTitle.ToUpper(), FS_TITLE,
                 new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
             t.fontStyle = FontStyle.Bold;
+            _titleText = t;
             _titleLabelRt = t.rectTransform;
             _titleLabelRt.anchorMin = Vector2.zero;
             _titleLabelRt.anchorMax = Vector2.one;

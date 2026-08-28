@@ -554,15 +554,15 @@ namespace BetterFG.Customization.Player
 
             string hk = isLeft ? "l" : "r";
             var ci = System.Globalization.CultureInfo.InvariantCulture;
-            float ox = float.TryParse(SettingsService.Get($"item{hk}offset.{skinInfo.file}.x", "0"), System.Globalization.NumberStyles.Float, ci, out float _ox) ? _ox : 0f;
-            float oy = float.TryParse(SettingsService.Get($"item{hk}offset.{skinInfo.file}.y", "0"), System.Globalization.NumberStyles.Float, ci, out float _oy) ? _oy : 0f;
-            float oz = float.TryParse(SettingsService.Get($"item{hk}offset.{skinInfo.file}.z", "0"), System.Globalization.NumberStyles.Float, ci, out float _oz) ? _oz : 0f;
+            float ox = float.TryParse(skinInfo.OwnerSetting($"item{hk}offset.{skinInfo.file}.x", "0"), System.Globalization.NumberStyles.Float, ci, out float _ox) ? _ox : 0f;
+            float oy = float.TryParse(skinInfo.OwnerSetting($"item{hk}offset.{skinInfo.file}.y", "0"), System.Globalization.NumberStyles.Float, ci, out float _oy) ? _oy : 0f;
+            float oz = float.TryParse(skinInfo.OwnerSetting($"item{hk}offset.{skinInfo.file}.z", "0"), System.Globalization.NumberStyles.Float, ci, out float _oz) ? _oz : 0f;
             Vector3 basePos = new Vector3(handInfo.position[0], handInfo.position[1], handInfo.position[2]);
             clone.transform.localPosition = basePos + new Vector3(ox, oy, oz);
 
-            float rrx = float.TryParse(SettingsService.Get($"item{hk}rot.{skinInfo.file}.x", "0"), System.Globalization.NumberStyles.Float, ci, out float _rrx) ? _rrx : 0f;
-            float rry = float.TryParse(SettingsService.Get($"item{hk}rot.{skinInfo.file}.y", "0"), System.Globalization.NumberStyles.Float, ci, out float _rry) ? _rry : 0f;
-            float rrz = float.TryParse(SettingsService.Get($"item{hk}rot.{skinInfo.file}.z", "0"), System.Globalization.NumberStyles.Float, ci, out float _rrz) ? _rrz : 0f;
+            float rrx = float.TryParse(skinInfo.OwnerSetting($"item{hk}rot.{skinInfo.file}.x", "0"), System.Globalization.NumberStyles.Float, ci, out float _rrx) ? _rrx : 0f;
+            float rry = float.TryParse(skinInfo.OwnerSetting($"item{hk}rot.{skinInfo.file}.y", "0"), System.Globalization.NumberStyles.Float, ci, out float _rry) ? _rry : 0f;
+            float rrz = float.TryParse(skinInfo.OwnerSetting($"item{hk}rot.{skinInfo.file}.z", "0"), System.Globalization.NumberStyles.Float, ci, out float _rrz) ? _rrz : 0f;
             Vector3 baseRot = new Vector3(handInfo.rotation[0], handInfo.rotation[1], handInfo.rotation[2]);
             clone.transform.localEulerAngles = baseRot + new Vector3(rrx, rry, rrz);
 

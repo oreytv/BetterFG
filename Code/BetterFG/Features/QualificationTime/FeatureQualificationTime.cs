@@ -218,7 +218,7 @@ namespace BetterFG.Features.QualificationTime
             }
             if (string.IsNullOrEmpty(roundId)) roundId = "unknown";
             roundId = PBStore.CanonicalRoundId(roundId);
-            string roundName = _roundNameCache ?? cgmRoundName ?? roundId;
+            string roundName = _roundNameCache ?? cgmRoundName;
             bool isRealUgc = cgm != null ? cgm.IsUGCRound : roundId.StartsWith("ugc-");
             bool isUnityRound = !isRealUgc;
             string roundCacheId = (isUnityRound && !string.IsNullOrEmpty(roundName)) ? roundName : roundId;
@@ -230,7 +230,8 @@ namespace BetterFG.Features.QualificationTime
                 bool usePb = On("store");
                 float prevPb = 0f;
                 bool isPb = false;
-                bool canStorePb = usePb && roundId != "unknown" && !string.IsNullOrEmpty(roundCacheId) && (!isUnityRound || roundName != roundId);
+                bool canStorePb = usePb && roundId != "unknown" && !string.IsNullOrEmpty(roundCacheId)
+                    && !string.IsNullOrEmpty(roundName) && roundName != roundId;
                 // "Ask to save PB" means don't touch the store on qualify — just work out whether this
                 // run *would* be a new PB so the label/prompts read right, and let the Save prompt in
                 // WaitForFeatureInput do the actual TrySet + ghost. off = old behavior, save immediately.
@@ -253,8 +254,8 @@ namespace BetterFG.Features.QualificationTime
                 // PB so ShowPbLabel paints "Personal Best!" and the sound fires. prevPb was just
                 // read as the new slow time (we overwrote the store) — swap in the real previous.
                 if (_forceTreatAsPb) { isPb = true; _forceTreatAsPb = false; prevPb = _forcedPrevPb; _forcedPrevPb = 0f; }
-                else if (usePb)
-                    Plugin.Log.LogWarning("QualTime: no display name for Unity round, not saving PB as id");
+                else if (usePb && !canStorePb)
+                    Plugin.Log.LogWarning("QualTime: round has no display name, not saving a PB keyed by id");
                 if (canStorePb && isUnityRound) SplashCache.TryRename(roundId, roundCacheId);
                 Plugin.Log.LogInfo("QualTime: isPb=" + isPb);
                 if (canStorePb && clone != null)
@@ -974,7 +975,6 @@ namespace BetterFG.Features.QualificationTime
             roundName = _roundNameCache ?? cgm._round.DisplayNameUnindented;
             isUgc = cgm.IsUGCRound;
             cacheId = (!isUgc && !string.IsNullOrEmpty(roundName)) ? roundName : rid;
-            if (string.IsNullOrEmpty(roundName)) roundName = rid;
             return !string.IsNullOrEmpty(cacheId);
         }
 
@@ -1062,7 +1062,6 @@ namespace BetterFG.Features.QualificationTime
                 try { roundId2 = GlobalGameStateClient.Instance?.GameStateView?.CurrentGameLevelName; }
                 catch (Exception ex) { Plugin.Log.LogWarning("QualTime: live pb round lookup failed: " + ex.Message); }
             }
-            if (string.IsNullOrEmpty(roundName2)) roundName2 = roundId2;
             if (tmps.Length > 0 && !localSucceededLive && IsRaceRound() && On("play"))
             {
                 var pbGo = UnityEngine.Object.Instantiate(tmps[0].gameObject, clone.transform);
@@ -1543,24 +1542,9 @@ namespace BetterFG.Features.QualificationTime
             if (SettingsService.Get("nametag.enabled", "false") != "true") return;
             if (SettingsService.Get("nametag.ghost.enabled", "false") != "true") return;
 
-            var ci = System.Globalization.CultureInfo.InvariantCulture;
-            float F(string k, float d) => float.TryParse(SettingsService.Get(k, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : d;
-            var profile = new BetterFG.Network.PlayerRemoteProfile
-            {
-                nametag = new BetterFG.Network.RemoteNametagInfo
-                {
-                    r = F("nametag.color.r", 1f), g = F("nametag.color.g", 1f), b = F("nametag.color.b", 1f),
-                    bold = SettingsService.Get("nametag.bold", "false") == "true",
-                    italic = SettingsService.Get("nametag.italic", "false") == "true",
-                    nameStyle = SettingsService.Get("nametag.namestyle", "default"),
-                    iconMode = SettingsService.Get("nametag.icon.mode", "none"),
-                    iconCountry = SettingsService.Get("nametag.icon.country", ""),
-                    iconPath = SettingsService.Get("nametag.icon.path", ""),
-                    iconScale = F("nametag.icon.scale", 1f),
-                    iconOffX = F("nametag.icon.offset.x", 0f),
-                    iconOffY = F("nametag.icon.offset.y", 0f),
-                },
-            };
+            var profile = BetterFG.Customization.Player.BfgProfile.FromLocal();
+            if (profile.nametag == null) return;
+
             BetterFG.Network.RemoteProfileStore.Register(profile, ghostName);
         }
 
@@ -1809,6 +1793,9 @@ namespace BetterFG.Features.QualificationTime
 
             if (!TryGetLiveRoundIds(out string cacheId, out string roundName, out bool isUgc))
             { Plugin.Log.LogWarning("time attack time registered but the round has no id, dropping it"); return; }
+
+            if (string.IsNullOrEmpty(roundName))
+            { Plugin.Log.LogWarning("time attack time registered but the round has no display name, dropping it"); return; }
 
             bool isPb = On("store") && PBStore.TrySet(cacheId, roundName, PbType.TimeAttack, time, isUgc);
             Plugin.Log.LogInfo($"time attack lap {lapIndex} on {roundName}: {time:F3}s{(isPb ? " — new PB" : "")}");

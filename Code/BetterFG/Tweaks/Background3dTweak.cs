@@ -1,11 +1,19 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
-using FGClient;
+using BetterFG.Core;
+using BetterFG.Services;
+using BetterFG.Utilities;
+using FallGuysLib.UI;
+using FGClient.UI;
 using HarmonyLib;
 using UnityEngine;
-using UnityEngine.SceneManagement;
+using UnityEngine.AddressableAssets;
+using UnityEngine.Networking;
+using UnityEngine.Rendering;
+using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace BetterFG.Tweaks
 {
@@ -15,201 +23,496 @@ namespace BetterFG.Tweaks
 
         public override string TweakId => "background_3d";
         public override string TweakLabel => "2D To 3D Background";
-        public override bool DefaultEnabled => false;
+        public override string TweakTooltip => "Swaps the flat backdrop of a creative level for a 3D one";
+        public override bool DefaultEnabled => true;
+
+        private const string RELEASE_URL = "https://github.com/oreyre9000/BettrFG/releases/download/3dbackgrounds/";
+        private const string CATALOGUE_URL = RELEASE_URL + "backgrounds.json";
+        internal const string ASKED_KEY = "tweak.background_3d.asked";
+
+        internal static string BundleDir => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BettrFG", "Assets", "Bundles");
+
+        internal class BackgroundSwap
+        {
+            public string Bundle;
+            public string Sun;
+            public Vector3? SunRotation;
+            public float? SunIntensity;
+            public string Skybox;
+            public float? FogDensity;
+            public Color? FogColor;
+            public float? ProbeSize;
+            public string[] Hide;
+            public string[] Keep;
+        }
+
+        internal static readonly Dictionary<string, BackgroundSwap> SwapFor = new Dictionary<string, BackgroundSwap>
+        {
+            { "Vanilla", new BackgroundSwap { Bundle = "terrain_s1" } },
+            { "Medieval_Dusk", new BackgroundSwap { Bundle = "terrain_s2" } },
+            {
+                "Winter", new BackgroundSwap
+                {
+                    Bundle = "terrain_s3",
+                    Sun = "LIGHTING/Lights_Winter/SUN_RT_Winter",
+                    SunRotation = new Vector3(89.1542f, 347.1031f, 240.518f),
+                    Hide = new[] { "LIGHTING/Lights_Winter/DL_BL_RT_Winter" },
+                }
+            },
+            {
+                "S04", new BackgroundSwap
+                {
+                    Bundle = "terrain_s4",
+                    Sun = "LIGHTING/SUN_RT_Future",
+                    SunIntensity = 0.7f,
+                    Skybox = "Skybox/Materials/Skybox_Respawn_S04.mat",
+                    FogDensity = 0.0007f,
+                    FogColor = new Color(0.6008f, 0.3314f, 0.7263f, 1f),
+                    ProbeSize = 4000f,
+                }
+            },
+            {
+                "Halloween", new BackgroundSwap
+                {
+                    Bundle = "terrain_ss",
+                    Sun = "LIGHTING/SUN_RT_Halloween",
+                    FogColor = new Color(0.329f, 0.2553f, 0.4808f, 1),
+                    FogDensity = 0.001f,
+                    SunIntensity = 0.7f
+                }
+            },
+            {
+                "Junkyard", new BackgroundSwap
+                {
+                    Bundle = "terrain_sc",
+                    Sun = "LIGHTING/SUN_RT",
+                    FogColor = new Color(0.9132f, 0.6164f, 0.347f, 1),
+                    FogDensity = 0.001f,
+                    SunIntensity = 0.7f
+                }
+            },
+            {
+                "Night", new BackgroundSwap
+                {
+                    Bundle = "terrain_sn",
+                    Sun = "LIGHTING/SUN_RT_Halloween",
+                    SunIntensity = 0.6f
+                }
+            },
+            {
+                "Jungle", new BackgroundSwap
+                {
+                    Bundle = "terrain_s5",
+                    Keep = new[] { "LIGHTING/Reflection_Probe" },
+                    FogDensity = 0.0009f,
+                }
+            },
+        };
+
+        private static readonly string[] HideOnApply = { "CutoutSphere", "LIGHTING/Reflection_Probe" };
+
+        private static readonly Dictionary<string, AssetBundle> _bundles = new Dictionary<string, AssetBundle>();
 
         public static Background3dTweak Instance { get; private set; }
 
-        private static GameObject _spawnedTerrain;
+        // bundle -> 0..1 while it's coming down. absent means idle, which is also what the config
+        // window keys its per-row progress bar off.
+        internal static readonly Dictionary<string, float> Downloading = new Dictionary<string, float>();
+        // bumped whenever a bundle enters or leaves that table, so the config window can redraw its
+        // rows when FetchAll walks the list on its own with nothing of ours behind it
+        internal static int DownloadSeq;
+
+        // display name -> bundle filename, as listed by backgrounds.json on the release. seeded from
+        // SwapFor so the config window is never empty, then overwritten by whatever the release says.
+        internal static readonly List<KeyValuePair<string, string>> Catalogue = new List<KeyValuePair<string, string>>();
+
+        internal static IEnumerator FetchCatalogue(Action onDone = null)
+        {
+            Catalogue.Clear();
+            var seen = new HashSet<string>();
+            foreach (var kv in SwapFor)
+                if (seen.Add(kv.Value.Bundle))
+                    Catalogue.Add(new KeyValuePair<string, string>(kv.Key.Replace("_", " "), kv.Value.Bundle));
+
+            var req = UnityWebRequest.Get(CATALOGUE_URL);
+            yield return req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                Plugin.Log.LogWarning($"backgrounds.json wouldn't load ({req.error}) — showing the {Catalogue.Count} baked into this build");
+                req.Dispose();
+                onDone?.Invoke();
+                yield break;
+            }
+
+            string json = req.downloadHandler.text ?? "";
+            req.Dispose();
+
+            var listed = new List<KeyValuePair<string, string>>();
+            foreach (var entry in JsonUtil.GetRootArray(json))
+            {
+                string file = JsonUtil.GetValue(entry, "file");
+                if (!string.IsNullOrEmpty(file))
+                    listed.Add(new KeyValuePair<string, string>(JsonUtil.GetValue(entry, "name"), file));
+            }
+
+            if (listed.Count == 0) { Plugin.Log.LogWarning("backgrounds.json came down but parsed to nothing?"); onDone?.Invoke(); yield break; }
+
+            Catalogue.Clear();
+            Catalogue.AddRange(listed);
+            Plugin.Log.LogInfo($"backgrounds.json: {Catalogue.Count} backdrops on the release");
+            onDone?.Invoke();
+        }
+
+        public override List<TweakButton> GetCustomButtons() => new List<TweakButton>
+        {
+            new TweakButton { Label = "CFG", Width = 30f, OnClick = OpenConfig }
+        };
+
+        // the config window rides the Tweaks sidewheel slot, so its back link lands somewhere sane.
+        // going through OpenWindow covers the popup case too, where nothing's open to swap out of yet.
+        private void OpenConfig()
+        {
+            var wheel = BetterFG.UI.SideWheel.SideWheelManager.Instance;
+            if (wheel == null) return;
+            wheel.OpenWindow<BetterFG.UI.Windows.TweaksWindow>("Tweaks",
+                _ => wheel.SwapWindow(BetterFG.UI.Windows.BetterFGWindow.Spawn<BetterFG.UI.Windows.Background3dWindow>()));
+        }
+
+        private static GameObject _background;
+        private static BackgroundSwap _swap;
+        private static GameObject _spawned;
+        private static readonly List<GameObject> _hidden = new List<GameObject>();
+        private static Transform _sun;
+        private static Quaternion _sunRotation;
+        private static Light _sunLight;
+        private static float _sunIntensity;
+        private static bool _envSaved;
+        private static Material _prevSkybox;
+        private static float _prevFogDensity;
+        private static Color _prevFogColor;
         private static bool _busy;
 
         void Awake() => Instance = this;
 
-        public override void EnableTweak()
+        // no blanket top-up here — that would quietly pull back anything binned from the config
+        // window. Apply still fetches the one bundle a level actually needs.
+        public override void EnableTweak() => ApplyIfWanted();
+
+        internal static void Delete(string bundle)
         {
-            if (!_busy) StartCoroutine(Apply().WrapToIl2Cpp());
+            if (_spawned != null && _spawned.name == bundle) Instance?.DisableTweak();
+
+            if (_bundles.TryGetValue(bundle, out var loaded))
+            {
+                if (loaded != null) loaded.Unload(true);
+                _bundles.Remove(bundle);
+            }
+
+            try { File.Delete(Path.Combine(BundleDir, bundle)); Plugin.Log.LogInfo($"binned {bundle}"); }
+            catch (Exception ex) { Plugin.Log.LogWarning($"{bundle} wouldn't delete: {ex.Message}"); }
+        }
+
+        public override void OnMainMenuEntered()
+        {
+            if (SettingsService.Get(ASKED_KEY, "false") == "true") return;
+            if (!IsInvoking("AskConsent")) Invoke("AskConsent", 2f);
+        }
+
+        public void AskConsent()
+        {
+            NavPromptCore.RegisterCmsString("bfg_bg3d_title", "2D To 3D Background");
+            NavPromptCore.RegisterCmsString("bfg_bg3d_body",
+                "The \"2D To 3D Background\" tweak is automatically enabled and requires about 40-50 MB of files to be downloaded, would you like to proceed or disable the tweak for now?\n\nThe tweak turns the creative 2D backgrounds into 3D ones.");
+            NavPromptCore.RegisterCmsString("bfg_bg3d_install", "Install");
+            NavPromptCore.RegisterCmsString("bfg_bg3d_disable", "Disable");
+
+            PopUp.ShowPopup("bfg_bg3d_title", "bfg_bg3d_body",
+                PopupInteractionType.Query, UIModalMessage.ModalType.MT_OK_CANCEL, UIModalMessage.OKButtonType.CallToAction,
+                ok =>
+                {
+                    SettingsService.Set(ASKED_KEY, "true");
+                    if (ok) { StartCoroutine(FetchAll().WrapToIl2Cpp()); OpenConfig(); }
+                    else { SetEnabled(false); Plugin.Log.LogInfo("3d backdrops turned down, nothing downloaded"); }
+                },
+                "bfg_bg3d_install", "bfg_bg3d_disable");
+        }
+
+        private IEnumerator FetchAll()
+        {
+            var seen = new HashSet<string>();
+            foreach (var swap in SwapFor.Values)
+            {
+                if (!seen.Add(swap.Bundle)) continue;
+                yield return Fetch(swap.Bundle).WrapToIl2Cpp();
+            }
+            ApplyIfWanted();
+        }
+
+        internal static IEnumerator Fetch(string bundle)
+        {
+            string dir = BundleDir;
+            Directory.CreateDirectory(dir);
+
+            string path = Path.Combine(dir, bundle);
+            if (File.Exists(path) || Downloading.ContainsKey(bundle)) yield break;
+
+            Downloading[bundle] = 0f;
+            DownloadSeq++;
+            try
+            {
+                var req = UnityWebRequest.Get(RELEASE_URL + bundle);
+                var op = req.SendWebRequest();
+                while (!op.isDone)
+                {
+                    Downloading[bundle] = req.downloadProgress;
+                    yield return null;
+                }
+
+                var result = req.result;
+                byte[] data = result == UnityWebRequest.Result.Success ? req.downloadHandler.data : null;
+                req.Dispose();
+
+                if (data == null || data.Length == 0)
+                {
+                    Plugin.Log.LogWarning($"{bundle} wouldn't come down from the release ({result})");
+                    yield break;
+                }
+
+                Downloading[bundle] = 1f;
+                string tmp = path + ".dl";
+                var write = System.Threading.Tasks.Task.Run(() => { try { File.WriteAllBytes(tmp, data); return true; } catch { return false; } });
+                while (!write.IsCompleted) yield return null;
+
+                if (!write.Result) { Plugin.Log.LogWarning($"{bundle} downloaded but wouldn't write into {dir}"); yield break; }
+
+                try { if (File.Exists(path)) File.Delete(path); File.Move(tmp, path); } catch { }
+                Plugin.Log.LogInfo($"{bundle} down, {data.Length / 1048576f:0.#}MB");
+            }
+            finally { Downloading.Remove(bundle); DownloadSeq++; }
         }
 
         public override void DisableTweak()
         {
-            if (_spawnedTerrain != null)
+            if (_spawned != null) Destroy(_spawned);
+            _spawned = null;
+
+            foreach (var go in _hidden)
+                if (go != null) go.SetActive(true);
+            _hidden.Clear();
+
+            if (_sun != null) _sun.localRotation = _sunRotation;
+            _sun = null;
+
+            if (_sunLight != null) _sunLight.intensity = _sunIntensity;
+            _sunLight = null;
+
+            if (!_envSaved) return;
+            RenderSettings.skybox = _prevSkybox;
+            RenderSettings.fogDensity = _prevFogDensity;
+            RenderSettings.fogColor = _prevFogColor;
+            _prevSkybox = null;
+            _envSaved = false;
+        }
+
+        private static bool Resolve(GameObject root)
+        {
+            if (root == null) return false;
+
+            string bgName = root.name.Replace("(Clone)", "");
+            if (!bgName.StartsWith("Background_")) return false;
+
+            var tokens = bgName.Substring("Background_".Length).Split('_');
+
+            _swap = null;
+            int best = 0;
+            foreach (var kv in SwapFor)
             {
-                Destroy(_spawnedTerrain);
-                _spawnedTerrain = null;
+                var want = kv.Key.Split('_');
+                int hits = 0;
+                foreach (var w in want) if (Array.IndexOf(tokens, w) >= 0) hits++;
+                if (hits == want.Length && hits > best) { best = hits; _swap = kv.Value; }
             }
+
+            if (_swap == null)
+            {
+                Plugin.Log.LogInfo($"no 3d backdrop mapped for {bgName}");
+                return false;
+            }
+
+            _background = root;
+            return true;
+        }
+
+        internal static void OnThemeLighting(LevelEditorThemeLighting settings)
+        {
+            if (!Resolve(settings.transform.root.gameObject)) return;
+
+            _envSaved = false;
+            _prevSkybox = null;
+            Instance?.DisableTweak();
+            ApplyIfWanted();
         }
 
         internal static void ApplyIfWanted()
         {
             var inst = Instance;
-            if (inst == null || !inst.IsEnabled) return;
-            if (!_busy) inst.StartCoroutine(inst.Apply().WrapToIl2Cpp());
+            if (inst == null || !inst.IsEnabled || _busy || _spawned != null) return;
+            if (_background == null && !Resolve(ThemeManager._sceneBackgroundAndLighting)) return;
+
+            inst.StartCoroutine(inst.Apply().WrapToIl2Cpp());
         }
 
-        private System.Collections.IEnumerator Apply()
+        private IEnumerator Apply()
         {
             _busy = true;
 
-            int sceneCount = SceneManager.sceneCount;
-            for (int si = 0; si < sceneCount; si++)
+            var background = _background;
+            var swap = _swap;
+
+            if (!_bundles.TryGetValue(swap.Bundle, out var bundle) || bundle == null)
             {
-                var gameplayScene = SceneManager.GetSceneAt(si);
-                if (!gameplayScene.isLoaded) continue;
-
-                foreach (var root in gameplayScene.GetRootGameObjects())
+                string path = Path.Combine(BundleDir, swap.Bundle);
+                if (!File.Exists(path)) yield return Fetch(swap.Bundle).WrapToIl2Cpp();
+                if (!File.Exists(path))
                 {
-                    if (root == null || !root.activeInHierarchy || !root.name.StartsWith("Background_")) continue;
+                    Plugin.Log.LogWarning($"no {swap.Bundle} in {BundleDir} and the download didn't land, backdrop stays flat");
+                    _busy = false;
+                    yield break;
+                }
 
-                    string bundleName = null;
-                    string prefabName = null;
-                    Vector3 spawnPosition = Vector3.zero;
+                var bundleReq = AssetBundle.LoadFromFileAsync(path);
+                yield return bundleReq;
 
-                    switch (root.name)
+                bundle = bundleReq.assetBundle;
+                if (bundle == null)
+                {
+                    Plugin.Log.LogWarning($"Background3dTweak: '{swap.Bundle}' didn't load as a bundle");
+                    _busy = false;
+                    yield break;
+                }
+                _bundles[swap.Bundle] = bundle;
+            }
+
+            string prefabPath = null;
+            foreach (string name in bundle.GetAllAssetNames())
+                if (name.EndsWith(".prefab")) { prefabPath = name; break; }
+
+            if (prefabPath == null)
+            {
+                Plugin.Log.LogWarning($"Background3dTweak: '{swap.Bundle}' holds no prefab");
+                _busy = false;
+                yield break;
+            }
+
+            var assetReq = bundle.LoadAssetAsync(prefabPath);
+            yield return assetReq;
+
+            var prefab = assetReq.asset != null ? assetReq.asset.TryCast<GameObject>() : null;
+            if (prefab == null)
+            {
+                Plugin.Log.LogWarning($"Background3dTweak: '{prefabPath}' isn't a prefab");
+                _busy = false;
+                yield break;
+            }
+
+            if (background == null || _spawned != null) { _busy = false; yield break; }
+
+            _hidden.Clear();
+            foreach (var paths in new[] { HideOnApply, swap.Hide })
+            {
+                if (paths == null) continue;
+                foreach (var path in paths)
+                {
+                    if (swap.Keep != null && Array.IndexOf(swap.Keep, path) >= 0) continue;
+
+                    var child = background.transform.Find(path);
+                    if (child == null || !child.gameObject.activeSelf) continue;
+                    child.gameObject.SetActive(false);
+                    _hidden.Add(child.gameObject);
+                }
+            }
+
+            if (swap.Sun != null)
+            {
+                _sun = background.transform.Find(swap.Sun);
+                if (_sun == null) Plugin.Log.LogWarning($"no {swap.Sun} under {background.name}, leaving the sun where it is");
+                else
+                {
+                    _sunRotation = _sun.localRotation;
+                    if (swap.SunRotation.HasValue) _sun.localEulerAngles = swap.SunRotation.Value;
+
+                    if (swap.SunIntensity.HasValue)
                     {
-                        case "Background_Vanilla_Sunny_GroundNoLake(Clone)":
-                            foreach (var t in root.GetComponentsInChildren<Transform>(true))
-                            {
-                                if (t == null || t.name != "CutoutSphere") continue;
-                                t.gameObject.SetActive(false);
-                                break;
-                            }
-                            bundleName = "23b2b3e76cd0c7d9f363ddc075be5755.bundle";
-                            prefabName = "PB_FallGuy_BackGround_Terrain";
-                            spawnPosition = new Vector3(0f, 136f, 0f);
-                            break;
-                        case "Background_Medieval_Dusk_GroundNoLake(Clone)":
-                            bundleName = "74696ab4dbdf29bbe8804025b4eca82c.bundle";
-                            prefabName = "PB_FallGuy_BackGround_Terrain_S02";
-                            spawnPosition = new Vector3(0f, -70f, 0f);
-                            break;
-                    }
-
-                    if (string.IsNullOrEmpty(bundleName) || string.IsNullOrEmpty(prefabName)) continue;
-                    if (_spawnedTerrain != null) continue;
-
-                    string path = Path.Combine(Application.streamingAssetsPath, "aa", "StandaloneWindows64", bundleName);
-                    if (!File.Exists(path))
-                        path = Path.Combine(Application.streamingAssetsPath, "aa", bundleName);
-                    if (!File.Exists(path))
-                    {
-                        Plugin.Log?.LogWarning("Background3dTweak: bundle missing: " + path);
-                        continue;
-                    }
-
-                    AssetBundle bundle = null;
-                    try { bundle = AssetBundle.LoadFromFile(path); }
-                    catch (Exception ex) { Plugin.Log?.LogWarning("Background3dTweak: bundle load failed: " + ex.Message); }
-                    if (bundle == null) continue;
-
-                    string scenePath = null;
-                    try
-                    {
-                        var scenes = bundle.GetAllScenePaths();
-                        if (scenes != null && scenes.Length > 0) scenePath = scenes[0];
-                    }
-                    catch { }
-                    if (string.IsNullOrEmpty(scenePath))
-                    {
-                        Plugin.Log?.LogWarning("Background3dTweak: no scene in bundle " + bundleName);
-                        continue;
-                    }
-
-                    // The gameplay scene can share this scene's name, so snapshot existing scene
-                    // handles and pick out the one that gets added by the additive load.
-                    var existing = new HashSet<int>();
-                    int before = SceneManager.sceneCount;
-                    for (int x = 0; x < before; x++)
-                        existing.Add(SceneManager.GetSceneAt(x).handle);
-
-                    var load = SceneManager.LoadSceneAsync(scenePath, LoadSceneMode.Additive);
-                    if (load != null) yield return load;
-
-                    Scene addedScene = default;
-                    int after = SceneManager.sceneCount;
-                    for (int x = 0; x < after; x++)
-                    {
-                        var s = SceneManager.GetSceneAt(x);
-                        if (!existing.Contains(s.handle)) { addedScene = s; break; }
-                    }
-
-                    if (!addedScene.IsValid() || !addedScene.isLoaded)
-                    {
-                        Plugin.Log?.LogWarning("Background3dTweak: additive scene not found for " + bundleName);
-                        continue;
-                    }
-
-                    // Find the terrain GameObject inside the additive scene and clone it while it's
-                    // still active so it instantiates active (this is what keeps lighting correct).
-                    GameObject source = FindInScene(addedScene, prefabName);
-                    if (source != null)
-                    {
-                        _spawnedTerrain = Instantiate(source);
-                        _spawnedTerrain.name = prefabName;
-                        foreach (var t in _spawnedTerrain.GetComponentsInChildren<Transform>(true))
-                            if (t != null) t.position += spawnPosition;
-                        SceneManager.MoveGameObjectToScene(_spawnedTerrain, gameplayScene);
-                        _spawnedTerrain.SetActive(true);
-                        Plugin.Log?.LogInfo("Background3dTweak: spawned " + prefabName);
-                    }
-                    else
-                    {
-                        Plugin.Log?.LogWarning("Background3dTweak: " + prefabName + " not found in scene");
-                    }
-
-                    // Wait a moment, then disable every root in the additive scene. Something in the
-                    // scene re-activates roots on load, so disabling immediately doesn't stick — the
-                    // delay lets that settle first. The scene stays loaded for its baked lighting.
-                    int targetHandle = addedScene.handle;
-                    yield return new WaitForSeconds(1f);
-
-                    Scene target = default;
-                    int sc = SceneManager.sceneCount;
-                    for (int x = 0; x < sc; x++)
-                    {
-                        var s = SceneManager.GetSceneAt(x);
-                        if (s.handle == targetHandle) { target = s; break; }
-                    }
-
-                    if (target.IsValid() && target.isLoaded)
-                    {
-                        var roots = target.GetRootGameObjects();
-                        int disabled = 0;
-                        for (int r = 0; r < roots.Length; r++)
+                        _sunLight = _sun.GetComponent<Light>();
+                        if (_sunLight != null)
                         {
-                            var sceneRoot = roots[r];
-                            if (sceneRoot == null) continue;
-                            sceneRoot.SetActive(false);
-                            disabled++;
+                            _sunIntensity = _sunLight.intensity;
+                            _sunLight.intensity = swap.SunIntensity.Value;
                         }
-                        Plugin.Log?.LogInfo("Background3dTweak: disabled " + disabled + " roots in additive scene '" + target.name + "' (handle " + targetHandle + ")");
                     }
                 }
             }
 
-            _busy = false;
-        }
-
-        private static GameObject FindInScene(Scene scene, string name)
-        {
-            foreach (var sceneRoot in scene.GetRootGameObjects())
+            if (swap.FogDensity.HasValue || swap.FogColor.HasValue || swap.Skybox != null)
             {
-                if (sceneRoot == null) continue;
-                foreach (var t in sceneRoot.GetComponentsInChildren<Transform>(true))
+                if (!_envSaved)
                 {
-                    if (t != null && t.name == name) return t.gameObject;
+                    _prevSkybox = RenderSettings.skybox;
+                    _prevFogDensity = RenderSettings.fogDensity;
+                    _prevFogColor = RenderSettings.fogColor;
+                    _envSaved = true;
+                }
+
+                if (swap.FogDensity.HasValue) RenderSettings.fogDensity = swap.FogDensity.Value;
+                if (swap.FogColor.HasValue) RenderSettings.fogColor = swap.FogColor.Value;
+
+                if (swap.Skybox != null)
+                {
+                    var handle = Addressables.LoadAssetAsync<Material>(swap.Skybox);
+                    while (!handle.IsDone) yield return null;
+
+                    if (handle.Status == AsyncOperationStatus.Succeeded && handle.Result != null)
+                        RenderSettings.skybox = handle.Result;
+                    else
+                        Plugin.Log.LogWarning($"addressables wouldn't hand over {swap.Skybox} ({handle.Status}), keeping the old skybox");
                 }
             }
-            return null;
+
+            _spawned = Instantiate(prefab);
+            _spawned.name = swap.Bundle;
+            _spawned.transform.SetParent(background.transform, false);
+            _spawned.transform.localPosition = Vector3.zero;
+            _spawned.SetActive(true);
+
+            if (swap.ProbeSize.HasValue)
+            {
+                var probeGo = new GameObject("BFG_Probe");
+                probeGo.transform.SetParent(_spawned.transform, false);
+
+                var probe = probeGo.AddComponent<ReflectionProbe>();
+                probe.mode = ReflectionProbeMode.Realtime;
+                probe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
+                probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.NoTimeSlicing;
+                probe.clearFlags = ReflectionProbeClearFlags.Skybox;
+                probe.resolution = 256;
+                probe.size = Vector3.one * swap.ProbeSize.Value;
+                probe.RenderProbe();
+
+                Plugin.Log.LogInfo($"baked a {swap.ProbeSize.Value} probe off the new skybox, texture {(probe.texture != null ? probe.texture.name : "null")}");
+            }
+
+            Plugin.Log.LogInfo($"Background3dTweak: {swap.Bundle} in for {background.name}");
+            _busy = false;
         }
     }
 
-    // 2D To 3D Background — disabled until custom bundles are available.
-    // [HarmonyPatch(typeof(RoundLoader), nameof(RoundLoader.NotifyLoadingFinished))]
-    public class Background3dNotifyLoadingFinishedPatch
+    [Utilities.BfgPatchGate("tweak.background_3d", defaultOn: true)]
+    [HarmonyPatch(typeof(LevelEditorThemeLighting), nameof(LevelEditorThemeLighting.Start))]
+    public class Background3dThemeLightingPatch
     {
         [HarmonyPostfix]
-        public static void Postfix()
-        {
-            Background3dTweak.ApplyIfWanted();
-        }
+        public static void Postfix(LevelEditorThemeLighting __instance) => Background3dTweak.OnThemeLighting(__instance);
     }
 }

@@ -107,7 +107,7 @@ namespace BetterFG.Tweaks
             // ── Misc ── cosmetic / everything else
             Add<ChangeFallGuysLogo>(TweakCategory.Misc);
             Add<ChangeSplashScreenTweak>(TweakCategory.Misc);
-            // Add<Background3dTweak>(TweakCategory.Misc); // 2D To 3D Background � disabled until custom bundles are available
+            Add<Background3dTweak>(TweakCategory.Misc);
             //Add<AlwaysShowTimerTweak>(TweakCategory.Misc);
             //Add<RefocusGame>(TweakCategory.Misc);
         }

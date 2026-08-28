@@ -23,7 +23,8 @@ namespace BetterFG.UI.Tabs
 
         // builds 3 stacked sound rows (Sound button + filename + red X to clear) for an entry that
         // has a string[3] soundPaths. onChanged is called after any pick/clear so the caller can save.
-        private void BuildSoundRows(Transform parent, string[] soundPaths, float startY, float leftW,
+        // internal static (no instance state used) so PetPhrasesTab can reuse it instead of a copy.
+        internal static void BuildSoundRows(Transform parent, string[] soundPaths, float startY, float leftW,
             Action onChanged)
         {
             float gap = PAD * 0.5f;

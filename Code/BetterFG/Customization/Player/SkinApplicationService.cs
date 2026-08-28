@@ -183,6 +183,8 @@ namespace BetterFG.Customization.Player
                 else if (!string.IsNullOrEmpty(entry.repoUrl))
                     skinInfo.sourceRepo = entry.repoUrl;
 
+                if (!string.IsNullOrEmpty(entry.folder)) skinInfo.repoFolder = entry.folder;
+
                 skinInfo.handOverride = entry.hand;
                 RestoreOneSkin(skinInfo, loader, plinthApp);
             }
@@ -205,7 +207,7 @@ namespace BetterFG.Customization.Player
             {
                 if (SkinTypeParser.FromString(entry.type) != SkinType.Plinth || string.IsNullOrEmpty(entry.file)) continue;
                 if (entry.source == "game") ApplySavedGamePlinth(entry.file, plinthApp);
-                else RestoreOneSkin(new SkinInfo { file = entry.file, name = entry.file, sourceRepo = entry.repoUrl, type = entry.type }, loader, plinthApp);
+                else RestoreOneSkin(new SkinInfo { file = entry.file, name = entry.file, sourceRepo = entry.repoUrl, type = entry.type, repoFolder = entry.folder }, loader, plinthApp);
                 return;
             }
         }

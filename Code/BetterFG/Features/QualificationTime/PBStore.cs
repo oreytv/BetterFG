@@ -477,6 +477,18 @@ namespace BetterFG.Features.QualificationTime
                     if (t.HasValue) { time = t.Value; displayName = entry.displayName; return true; }
                 }
             }
+            // TrySet keys by display name, so a caller holding only the round id (every UGC round,
+            // where the cacheId IS the id) misses both lookups above. rawId is the id TrySet stored.
+            string cid = CanonicalRoundId(id);
+            if (!string.IsNullOrEmpty(cid))
+            {
+                foreach (var kv in _cache)
+                {
+                    if (CanonicalRoundId(kv.Value.rawId) != cid) continue;
+                    var t = kv.Value.Get(type);
+                    if (t.HasValue) { time = t.Value; displayName = kv.Value.displayName; return true; }
+                }
+            }
             time = 0f;
             displayName = null;
             return false;

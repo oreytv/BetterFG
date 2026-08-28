@@ -129,56 +129,61 @@ namespace BetterFG.Customization.Player
             new Dictionary<string, (long, Texture2D)>(StringComparer.OrdinalIgnoreCase);
 
         const string KEY_ENTRY_COUNT = "skintex.entryCount";
-        private static string EK(int i, string f) => $"skintex.entry.{i}.{f}";
 
         public static int EntryCount
             => int.TryParse(SettingsService.Get(KEY_ENTRY_COUNT, "0"), out int c) ? c : 0;
 
-        public static List<SkinTexEntry> LoadEntries()
+        public static List<SkinTexEntry> LoadEntries() => ReadTexEntries(SettingsService.Get);
+
+        // keyPrefix/countKey are pluggable so a non-global owner (a pet's own skin textures) can
+        // reuse this exact serialization shape under its own settings keys instead of the shared
+        // "skintex.entry.*" catalog
+        public static List<SkinTexEntry> ReadTexEntries(System.Func<string, string, string> get, string keyPrefix = "skintex.entry.", string countKey = KEY_ENTRY_COUNT)
         {
+            string EK(int i, string f) => $"{keyPrefix}{i}.{f}";
             var entries = new List<SkinTexEntry>();
-            int count = EntryCount;
+            int count = int.TryParse(get(countKey, "0"), out int ec) ? ec : 0;
             for (int i = 0; i < count; i++)
             {
                 var e = new SkinTexEntry
                 {
-                    entryName = SettingsService.Get(EK(i, "name"), "entry " + i),
-                    enabled = SettingsService.Get(EK(i, "enabled"), "1") == "1",
-                    category = SettingsService.Get(EK(i, "category"), SkinTexCategory.Upper),
-                    costumeName = SettingsService.Get(EK(i, "costume"), "")
+                    entryName = get(EK(i, "name"), "entry " + i),
+                    enabled = get(EK(i, "enabled"), "1") == "1",
+                    category = get(EK(i, "category"), SkinTexCategory.Upper),
+                    costumeName = get(EK(i, "costume"), "")
                 };
 
                 // matNames come back pipe-joined so match building works without recaching the costume
-                foreach (var n in SettingsService.Get(EK(i, "matNames"), "").Split('|'))
+                foreach (var n in get(EK(i, "matNames"), "").Split('|'))
                     if (!string.IsNullOrEmpty(n)) e.matNames.Add(n);
 
-                int ovCount = int.TryParse(SettingsService.Get(EK(i, "overrideCount"), "0"), out int oc) ? oc : 0;
+                int ovCount = int.TryParse(get(EK(i, "overrideCount"), "0"), out int oc) ? oc : 0;
                 for (int j = 0; j < ovCount; j++)
                 {
-                    string texName = SettingsService.Get(EK(i, $"override.{j}.texName"), "");
-                    string texPath = SettingsService.Get(EK(i, $"override.{j}.texPath"), "");
+                    string texName = get(EK(i, $"override.{j}.texName"), "");
+                    string texPath = get(EK(i, $"override.{j}.texPath"), "");
                     if (string.IsNullOrEmpty(texName)) continue;
                     e.overrides.Add(new SkinTexOverride { texName = texName, texPath = texPath });
                 }
 
-                int propCount = int.TryParse(SettingsService.Get(EK(i, "propCount"), "0"), out int pc) ? pc : 0;
+                int propCount = int.TryParse(get(EK(i, "propCount"), "0"), out int pc) ? pc : 0;
                 for (int k = 0; k < propCount; k++)
                 {
-                    string matName = SettingsService.Get(EK(i, $"prop.{k}.matName"), "");
-                    string propName = SettingsService.Get(EK(i, $"prop.{k}.name"), "");
-                    string kind = SettingsService.Get(EK(i, $"prop.{k}.kind"), "");
+                    string matName = get(EK(i, $"prop.{k}.matName"), "");
+                    string propName = get(EK(i, $"prop.{k}.name"), "");
+                    string kind = get(EK(i, $"prop.{k}.kind"), "");
                     if (string.IsNullOrEmpty(matName) || string.IsNullOrEmpty(propName) || string.IsNullOrEmpty(kind)) continue;
                     var po = new MatPropOverride { matName = matName, prop = propName, kind = kind };
                     if (kind == "float")
                     {
-                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.f"), "0"), out po.f);
+                        float.TryParse(get(EK(i, $"prop.{k}.f"), "0"), out po.f);
                     }
                     else
                     {
-                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.x"), "0"), out po.x);
-                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.y"), "0"), out po.y);
-                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.z"), "0"), out po.z);
-                        float.TryParse(SettingsService.Get(EK(i, $"prop.{k}.w"), "1"), out po.w);
+                        float.TryParse(get(EK(i, $"prop.{k}.x"), "0"), out po.x);
+                        float.TryParse(get(EK(i, $"prop.{k}.y"), "0"), out po.y);
+                        float.TryParse(get(EK(i, $"prop.{k}.z"), "0"), out po.z);
+                        float.TryParse(get(EK(i, $"prop.{k}.w"), "1"), out po.w);
                     }
                     e.matProps.Add(po);
                 }
@@ -188,9 +193,10 @@ namespace BetterFG.Customization.Player
             return entries;
         }
 
-        public static void SaveEntries(List<SkinTexEntry> entries)
+        public static void SaveEntries(List<SkinTexEntry> entries, string keyPrefix = "skintex.entry.", string countKey = KEY_ENTRY_COUNT)
         {
-            SettingsService.Set(KEY_ENTRY_COUNT, entries.Count.ToString());
+            string EK(int i, string f) => $"{keyPrefix}{i}.{f}";
+            SettingsService.Set(countKey, entries.Count.ToString());
             for (int i = 0; i < entries.Count; i++)
             {
                 var e = entries[i];
@@ -569,6 +575,7 @@ namespace BetterFG.Customization.Player
             if (category == SkinTexCategory.Colour) t = Il2CppInterop.Runtime.Il2CppType.Of<ColourOption>();
             else if (category == SkinTexCategory.Faceplate) t = Il2CppInterop.Runtime.Il2CppType.Of<FaceplateOption>();
             else if (category == SkinTexCategory.Pattern) t = Il2CppInterop.Runtime.Il2CppType.Of<SkinPatternOption>();
+            else if (category == SkinTexCategory.Upper || category == SkinTexCategory.Lower) t = Il2CppInterop.Runtime.Il2CppType.Of<CostumeOption>();
             else return null;
 
             var raw = Resources.FindObjectsOfTypeAll(t);
@@ -717,6 +724,16 @@ namespace BetterFG.Customization.Player
         {
             s.hideFlags = HideFlags.HideAndDontSave;
             if (s.texture != null) s.texture.hideFlags = HideFlags.HideAndDontSave;
+        }
+
+        // display name for an option's stored internal name (CostumeOption/SkinPatternOption/etc
+        // asset name) - never show that raw name in UI, always resolve it through here first
+        public static string ResolveOptionDisplayName(string optionName)
+        {
+            if (string.IsNullOrEmpty(optionName)) return "";
+            return GetOptionByName().TryGetValue(optionName, out var opt) && opt != null
+                ? GetOptionDisplayName(opt)
+                : optionName;
         }
 
         public static Texture2D ResolveOptionIconTexture(string category, string optionName)

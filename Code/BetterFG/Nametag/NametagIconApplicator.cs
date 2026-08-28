@@ -86,6 +86,14 @@ namespace BetterFG.Nametag
             };
         }
 
+        public static bool PlatformHideFromSettings()
+        {
+            string s = SettingsService.Get(KEY_PLATFORM_HIDE, "none");
+            return s == "self" || s == "everyone";
+        }
+
+        public static string PlatformCustomFromSettings() => SettingsService.Get(KEY_PLATFORM_CUSTOM, "");
+
         private static readonly Dictionary<int, SpriteRenderer> _icon3d = new Dictionary<int, SpriteRenderer>();
         private static readonly Dictionary<int, UnityEngine.UI.Image> _iconUI = new Dictionary<int, UnityEngine.UI.Image>();
         private static readonly Dictionary<int, Sprite> _knownPlatform3dOriginals = new Dictionary<int, Sprite>();
@@ -645,14 +653,23 @@ namespace BetterFG.Nametag
         }
 
         // fall feed's own PlayerSlot stopped carrying a usable key post-update (empty PlayerKey,
-        // and StaticDisplayName crashes the process to even read — see FallfeedPatch.cs). For
-        // qualify/eliminate messages, FallfeedPatch.cs gets the real key straight from
-        // FeatureTimePlacement's own progress-message queue instead (order-matched, no scanning
-        // needed) — a qualify notification shows up the instant the game despawns that player's
-        // bean, too late for any HUD-row scan to find them anyway (confirmed live, even while
-        // spectating: the row is already gone). This scan is the fallback for message types with no
-        // queue (phrase, tail-stolen, disconnect), where the target's bean is usually still live.
+        // and StaticDisplayName crashes the process to even read — see FallfeedPatch.cs). A qualify/
+        // eliminate notification shows up the instant the game despawns that player's bean, too late
+        // for the HUD-row scan below to find them. FeatureTimePlacement.OnServerPlayerProgress has
+        // the real key at the moment the server message lands, so it seeds name->key here as each
+        // player finishes/dies — fall feed then just looks the name up. Keyed by name, not by
+        // arrival order, so a missing or extra notification can't shift every later row onto the
+        // wrong player.
         private static readonly Dictionary<string, string> _recentKeyByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        public static void SeedKeyForName(string displayName, string playerKey)
+        {
+            if (string.IsNullOrEmpty(displayName) || string.IsNullOrEmpty(playerKey)) return;
+            _recentKeyByName[StripRichText(displayName).Trim()] = playerKey;
+        }
+
+        // stale keys from a previous lobby would otherwise stick to a returning name — clear at round start.
+        public static void ForgetRecentKeys() => _recentKeyByName.Clear();
 
         public static string ResolveKeyByDisplayName(string displayName)
         {
@@ -863,6 +880,12 @@ namespace BetterFG.Nametag
                 Plugin.Log.LogError($"NametagIcon: BuildBackingSprite {path}: {ex.Message}");
                 return null;
             }
+        }
+
+        public static Vector2Int BackingCanvasSize()
+        {
+            var fill = LoadEmbeddedReadable(BACKING_FILL_RES, ref _backingFillTex);
+            return fill != null ? new Vector2Int(fill.width, fill.height) : new Vector2Int(606, 166);
         }
 
         public static Sprite GetBackingPreviewSprite(string path, float offX, float offY, float scale)

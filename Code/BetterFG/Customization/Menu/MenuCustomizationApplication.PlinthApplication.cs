@@ -68,7 +68,7 @@ namespace BetterFG.Customization.Menu
             new GamePlinth("column", "Column", "353f01cad79ee11488d6103e1959c14c"),
             new GamePlinth("s03", "Season 3", "59d770256b43eb54e81d3dd1649c94c7", true, 0.1454f),
             new GamePlinth("s04", "Season 4", "0d438f5fff82cfd44a0f6d7c4ce893e0", true, 0.3906f),
-            new GamePlinth("s05", "Season 5", "8d0beb020d0a6bf46817a5d217f2f915", true),
+            new GamePlinth("s05", "Season 5", "8d0beb020d0a6bf46817a5d217f2f915", true, 1.133f),
             new GamePlinth("s06", "Season 6", "a23952441489f6244a03351d53691b87", true),
             new GamePlinth("sy02", "SS2", "8214da4674a969c4c8010bdd90fc218b", true, 2.0233f),
             new GamePlinth("s09", "SS3", "956bbcfcbfa1edd429897709956a8486", true, 0.751f),
@@ -78,26 +78,29 @@ namespace BetterFG.Customization.Menu
 
         public string ActiveGameId => _appliedGame?.Id;
 
-        private Vector3 GameOffset
+        private Vector3 GameOffsetFor(GamePlinth gp)
         {
-            get
-            {
-                var o = _appliedGame.Season ? internaloffsetGameSeason : internaloffsetGame;
-                if (_appliedGame.OffsetY.HasValue) o.y = _appliedGame.OffsetY.Value;
-                return o;
-            }
+            var o = gp.Season ? internaloffsetGameSeason : internaloffsetGame;
+            if (gp.OffsetY.HasValue) o.y = gp.OffsetY.Value;
+            return o;
         }
 
-        private Vector3 GameScale => _appliedGame.Season ? internalscaleGameSeason : internalscaleGame;
+        private Vector3 GameScaleFor(GamePlinth gp) => gp.Season ? internalscaleGameSeason : internalscaleGame;
 
-        public static bool TryGetSavedPlinthEntry(out string file, out string source, out string localPath, out string repoUrl)
+        private Vector3 GameOffset => GameOffsetFor(_appliedGame);
+
+        private Vector3 GameScale => GameScaleFor(_appliedGame);
+
+        public static bool TryGetSavedPlinthEntry(out string file, out string source, out string localPath, out string repoUrl,
+            out string folder)
         {
-            file = source = localPath = repoUrl = "";
+            file = source = localPath = repoUrl = folder = "";
             var files = SettingsService.Get("skin.multi.files", "").Split(',');
             var sources = SettingsService.Get("skin.multi.sources", "").Split(',');
             var paths = SettingsService.Get("skin.multi.paths", "").Split(',');
             var repos = SettingsService.Get("skin.multi.repos", "").Split(',');
             var types = SettingsService.Get("skin.multi.types", "").Split(',');
+            var folders = SettingsService.Get("skin.multi.folders", "").Split(',');
 
             for (int i = 0; i < files.Length; i++)
             {
@@ -107,18 +110,20 @@ namespace BetterFG.Customization.Menu
                 source = i < sources.Length ? sources[i].Trim() : "";
                 localPath = i < paths.Length ? paths[i].Trim() : "";
                 repoUrl = i < repos.Length ? repos[i].Trim() : "";
+                folder = i < folders.Length ? folders[i].Trim() : "";
                 return true;
             }
             return false;
         }
 
-        public static void SavePlinthEntry(string file, string source, string localPath, string repoUrl)
+        public static void SavePlinthEntry(string file, string source, string localPath, string repoUrl, string folder)
         {
             var files = new List<string>(SettingsService.Get("skin.multi.files", "").Split(','));
             var sources = new List<string>(SettingsService.Get("skin.multi.sources", "").Split(','));
             var paths = new List<string>(SettingsService.Get("skin.multi.paths", "").Split(','));
             var repos = new List<string>(SettingsService.Get("skin.multi.repos", "").Split(','));
             var types = new List<string>(SettingsService.Get("skin.multi.types", "").Split(','));
+            var folders = new List<string>(SettingsService.Get("skin.multi.folders", "").Split(','));
 
             string At(List<string> list, int i) => i < list.Count ? list[i].Trim() : "";
 
@@ -127,6 +132,7 @@ namespace BetterFG.Customization.Menu
             var np = new List<string>();
             var nr = new List<string>();
             var nt = new List<string>();
+            var nfo = new List<string>();
 
             for (int i = 0; i < files.Count; i++)
             {
@@ -137,6 +143,7 @@ namespace BetterFG.Customization.Menu
                 np.Add(At(paths, i));
                 nr.Add(At(repos, i));
                 nt.Add(At(types, i));
+                nfo.Add(At(folders, i));
             }
 
             if (!string.IsNullOrEmpty(file))
@@ -146,6 +153,7 @@ namespace BetterFG.Customization.Menu
                 np.Add(localPath ?? "");
                 nr.Add(repoUrl ?? "");
                 nt.Add("Plinth");
+                nfo.Add(folder ?? "");
             }
 
             SettingsService.Set("skin.multi.files", string.Join(",", nf));
@@ -153,6 +161,7 @@ namespace BetterFG.Customization.Menu
             SettingsService.Set("skin.multi.paths", string.Join(",", np));
             SettingsService.Set("skin.multi.repos", string.Join(",", nr));
             SettingsService.Set("skin.multi.types", string.Join(",", nt));
+            SettingsService.Set("skin.multi.folders", string.Join(",", nfo));
         }
 
         // ── Bundle registry ───────────────────────────────────────────────────
@@ -207,7 +216,7 @@ namespace BetterFG.Customization.Menu
             _appliedGame = null;
             SavePlinthEntry(info.file, info.isLocalImport ? "local" : "remote",
                 info.isLocalImport && !string.IsNullOrEmpty(info.localPath) ? System.IO.Path.GetDirectoryName(info.localPath) : "",
-                info.sourceRepo);
+                info.sourceRepo, info.repoFolder);
             // commit the active file NOW (not at the end of the async coroutine) so a second Apply
             // press while this one is still loading sees ActiveFile==file and skips re-applying
             _appliedFile = info.file;
@@ -282,7 +291,7 @@ namespace BetterFG.Customization.Menu
             _appliedGame = null;
             _appliedFile = null;
             _origActive = true;
-            SavePlinthEntry(null, "", "", "");
+            SavePlinthEntry(null, "", "", "", "");
         }
 
         public bool HasPlinthApplied => _appliedPlinth != null || _lastInfo != null || _appliedGame != null;
@@ -482,7 +491,7 @@ namespace BetterFG.Customization.Menu
 
             _lastGamePrefab = prefab;
             _appliedGame = gp;
-            SavePlinthEntry(gp.Id, "game", "", "");
+            SavePlinthEntry(gp.Id, "game", "", "", "");
             _lastInfo = null;
             _lastBundle = null;
             _appliedFile = null;
@@ -513,9 +522,32 @@ namespace BetterFG.Customization.Menu
             OnStatus?.Invoke($"Plinth: {gp.Label}");
         }
 
-        private void PlaceGamePrefabOnSlot(PlinthSlot slot, GameObject prefab)
+        public void ApplyProfileGamePlinthToSlot(string gameId, PlinthSlot slot)
+        {
+            if (string.IsNullOrEmpty(gameId) || slot == null) return;
+
+            GamePlinth gp = null;
+            foreach (var g in GamePlinths)
+                if (g.Id == gameId) { gp = g; break; }
+
+            if (gp == null) { Plugin.Log.LogWarning($"profile asked for game plinth '{gameId}', not in our table"); return; }
+
+            GameObject prefab = null;
+            try { prefab = Addressables.LoadAssetAsync<GameObject>(gp.Guid).WaitForCompletion(); }
+            catch (Exception ex) { Plugin.Log.LogWarning($"{gp.Label} wouldn't come out of addressables: {ex.Message}"); }
+
+            if (prefab == null) { Plugin.Log.LogWarning($"no prefab behind {gp.Label} ({gp.Guid})"); return; }
+
+            PlaceGamePrefabOnSlot(slot, prefab, gp);
+            Plugin.Log.LogInfo($"{gp.Label} plinth onto a party holder");
+        }
+
+        private void PlaceGamePrefabOnSlot(PlinthSlot slot, GameObject prefab, GamePlinth gp = null)
         {
             if (slot?.holderGO == null || slot.meshGO == null) return;
+
+            gp = gp ?? _appliedGame;
+            if (gp == null) return;
 
             int id = slot.holderGO.GetInstanceID();
             if (_extraApplied.TryGetValue(id, out var existing) && existing != null)
@@ -528,8 +560,8 @@ namespace BetterFG.Customization.Menu
                 _extraOrigActive[id] = slot.meshGO.activeSelf;
             slot.meshGO.SetActive(false);
 
-            var clone = SpawnClone(prefab, slot.holderGO.transform, GameOffset);
-            clone.transform.localScale = GameScale;
+            var clone = SpawnClone(prefab, slot.holderGO.transform, GameOffsetFor(gp));
+            clone.transform.localScale = GameScaleFor(gp);
             SkinApplicationService.SetRenderQueue(clone, 3000);
             _extraApplied[id] = clone;
         }

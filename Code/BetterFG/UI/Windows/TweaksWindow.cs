@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Tweaks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,6 +15,11 @@ namespace BetterFG.UI.Windows
         protected override float WindowHeight => 220f;
         protected override string WindowTitle => "Tweaks";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
+
+        // survives the window being destroyed, so backing out of a tweak's config window (or just
+        // reopening Tweaks) drops you where you left off instead of back at the top
+        private static float _scrollPos = 1f;
+        private static string _query = "";
 
         protected override void BuildContent(RectTransform contentRoot)
         {
@@ -32,6 +39,7 @@ namespace BetterFG.UI.Windows
             var searchField = UGUIShip.CreateInputField(contentRoot,
                 new Rect(0f, 0f, 100f, SEARCH_H),
                 "search tweaks...", new Color(0f, 0f, 0f, 0.75f), Color.white, 12);
+            UGUIShip.SetInputText(searchField, _query);
             var sfRt = searchField.GetComponent<RectTransform>();
             sfRt.anchorMin = new Vector2(0f, 1f);
             sfRt.anchorMax = new Vector2(1f, 1f);
@@ -59,15 +67,28 @@ namespace BetterFG.UI.Windows
             var csf = listRt.gameObject.AddComponent<ContentSizeFitter>();
             csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            TweaksWindowBuilder.BuildRows(listRt, "");
+            TweaksWindowBuilder.BuildRows(listRt, _query);
+            StartCoroutine(RestoreScroll(scroll.scrollRect, _scrollPos).WrapToIl2Cpp());
 
             var listCapture = listRt;
             searchField.onValueChanged.AddListener(new Action<string>(q =>
             {
                 for (int i = listCapture.childCount - 1; i >= 0; i--)
                     GameObject.Destroy(listCapture.GetChild(i).gameObject);
-                TweaksWindowBuilder.BuildRows(listCapture, q ?? "");
+                _query = q ?? "";
+                TweaksWindowBuilder.BuildRows(listCapture, _query);
             }));
+        }
+
+        // the fitter needs a frame to size the content before a normalised position means anything.
+        // the listener only goes on after the restore, or the layout pass settling at the top would
+        // overwrite the value we're about to put back.
+        private IEnumerator RestoreScroll(ScrollRect sr, float pos)
+        {
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+            sr.verticalNormalizedPosition = pos;
+            sr.onValueChanged.AddListener(new Action<Vector2>(v => _scrollPos = Mathf.Clamp01(v.y)));
         }
     }
 
