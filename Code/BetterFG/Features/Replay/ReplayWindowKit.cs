@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using BetterFG.UI;
 using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.Replay
 {

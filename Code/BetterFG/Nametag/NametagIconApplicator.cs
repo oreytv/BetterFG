@@ -674,6 +674,7 @@ namespace BetterFG.Nametag
         public static string ResolveKeyByDisplayName(string displayName)
         {
             if (string.IsNullOrEmpty(displayName)) return "";
+            displayName = StripRichText(displayName).Trim();
             if (_recentKeyByName.TryGetValue(displayName, out var cached) && !string.IsNullOrEmpty(cached))
                 return cached;
 
@@ -1688,6 +1689,10 @@ namespace BetterFG.Nametag
             if (string.IsNullOrEmpty(s)) return s;
             return System.Text.RegularExpressions.Regex.Replace(s, "<[^>]*>", "").Trim();
         }
+
+        // public seam for callers outside this file that need to strip an inline UI icon off a
+        // reverted/pooled row without going through a full ApplyRemoteToNameplate pass.
+        public static void RemoveInlineUIIcon(Transform t) => RemoveUIIcon(t);
 
         private static void RemoveUIIcon(Transform t)
         {

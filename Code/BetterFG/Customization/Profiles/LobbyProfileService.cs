@@ -29,6 +29,7 @@ namespace BetterFG.Customization.Profiles
             var rp = ProfileService.GetRemoteProfileForName(cleanName);
             if (rp == null)
             {
+                BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ClearProfileOverride(fg.gameObject);
                 Plugin.Log.LogInfo($"party member '{cleanName}' (tag reads '{tmp.text}') has no profile — loaded keys: {ProfileService.LoadedKeys()}");
                 return;
             }
@@ -147,7 +148,11 @@ namespace BetterFG.Customization.Profiles
                 if (string.IsNullOrEmpty(cleanName)) continue;
 
                 var rp = ProfileService.GetRemoteProfileForName(cleanName);
-                if (rp == null) continue;
+                if (rp == null)
+                {
+                    BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ClearProfileOverride(charT.gameObject);
+                    continue;
+                }
 
                 ApplyToHolder(cleanName, rp, charT.gameObject, holder, tmp, fg.partyNameTag.transform);
             }

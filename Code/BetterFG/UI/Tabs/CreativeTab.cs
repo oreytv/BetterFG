@@ -4,6 +4,7 @@ using BetterFG.Features.UnityRound.Editor;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -20,11 +21,11 @@ namespace BetterFG.UI.Tabs
         private static float subTabH => BTN_H * 0.9f;
 
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
         private static readonly Color OK = new Color(0.55f, 0.85f, 0.55f, 1f);
         private static readonly Color ERR = new Color(0.9f, 0.45f, 0.45f, 1f);
         private static readonly Color SEL_COLOR = new Color(0.25f, 0.5f, 0.25f, 1f);
-        private static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        private static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
         private static readonly Color BTN_BLUE = new Color(0.22f, 0.34f, 0.55f, 1f);
         private static readonly Color BTN_GREEN = new Color(0.25f, 0.5f, 0.25f, 1f);
         private static readonly Color BTN_RED = new Color(0.45f, 0.25f, 0.25f, 1f);

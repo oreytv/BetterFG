@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEngine.UI;
 using BetterFG.Utilities;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {

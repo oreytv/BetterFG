@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Tweaks;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
@@ -67,16 +69,14 @@ namespace BetterFG.UI.Windows
             var csf = listRt.gameObject.AddComponent<ContentSizeFitter>();
             csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            TweaksWindowBuilder.BuildRows(listRt, _query);
+            TweaksWindowBuilder.BuildRows(listRt);
+            TweaksWindowBuilder.Filter(_query);
             StartCoroutine(RestoreScroll(scroll.scrollRect, _scrollPos).WrapToIl2Cpp());
 
-            var listCapture = listRt;
             searchField.onValueChanged.AddListener(new Action<string>(q =>
             {
-                for (int i = listCapture.childCount - 1; i >= 0; i--)
-                    GameObject.Destroy(listCapture.GetChild(i).gameObject);
                 _query = q ?? "";
-                TweaksWindowBuilder.BuildRows(listCapture, _query);
+                TweaksWindowBuilder.Filter(_query);
             }));
         }
 
@@ -107,46 +107,90 @@ namespace BetterFG.UI.Windows
         private static readonly Color OFF_COL = new Color(0.55f, 0.55f, 0.55f, 1f);
         private static readonly Color HEADER_COL = Color.white;
 
-        // last list root we built into + the query it was built with, so a custom button that
-        // flips a tweak's own state (e.g. skip-rewards requeue mode) can redraw the rows and have
-        // its label reflect the new state without the user reopening the window.
+        // last list root we built into, so a custom button that flips a tweak's own state (e.g.
+        // skip-rewards requeue mode) can redraw the rows and have its label reflect the new state
+        // without the user reopening the window.
         private static RectTransform _lastRoot;
         private static string _lastQuery = "";
+
+        // one entry per tweak row (+ its expanded settings/sliders/increments sub-rows, which
+        // live and die with it) so Filter can show/hide instantly without rebuilding GameObjects.
+        private struct TweakUnit
+        {
+            public List<GameObject> Gos;
+            public string Hay;
+        }
+        private struct CategoryGroup
+        {
+            public GameObject Header;
+            public string Hay;
+            public List<TweakUnit> Units;
+        }
+        private static readonly List<CategoryGroup> _groups = new List<CategoryGroup>();
 
         public static void Refresh()
         {
             if (_lastRoot == null) return;
             for (int i = _lastRoot.childCount - 1; i >= 0; i--)
                 GameObject.Destroy(_lastRoot.GetChild(i).gameObject);
-            BuildRows(_lastRoot, _lastQuery);
+            BuildRows(_lastRoot);
+            Filter(_lastQuery);
         }
 
-        public static void BuildRows(RectTransform parent, string query = "")
+        public static void BuildRows(RectTransform parent)
         {
             _lastRoot = parent;
-            _lastQuery = query ?? "";
-            string q = (query ?? "").Trim().ToLowerInvariant();
-            // section per category, header on top, then its tweaks. zebra resets each section.
+            _groups.Clear();
+            // section per category, header on top, then its tweaks. built in full every time —
+            // Filter() is what handles the search box, purely by toggling activeSelf.
             foreach (var cat in TweakRegistry.CategoryOrder)
             {
-                // a category-name match shows the whole section; else filter tweaks individually.
-                bool catMatch = q.Length > 0 && cat.ToString().ToLowerInvariant().IndexOf(q, StringComparison.Ordinal) >= 0;
-                int i = 0;
+                var tweaks = TweakRegistry.InCategory(cat);
                 bool any = false;
-                foreach (var tweak in TweakRegistry.InCategory(cat))
+                var group = new CategoryGroup
                 {
-                    if (!catMatch && q.Length > 0
-                        && (tweak.TweakLabel ?? "").ToLowerInvariant().IndexOf(q, StringComparison.Ordinal) < 0
-                        && (tweak.TweakId ?? "").ToLowerInvariant().IndexOf(q, StringComparison.Ordinal) < 0)
-                        continue;
-                    if (!any) { BuildHeader(parent, cat.ToString().ToUpperInvariant()); any = true; }
-                    BuildRow(parent, tweak, i % 2 == 0 ? ROW_EVEN : ROW_ODD);
+                    Hay = cat.ToString().ToLowerInvariant(),
+                    Units = new List<TweakUnit>()
+                };
+                int i = 0;
+                foreach (var tweak in tweaks)
+                {
+                    if (!any) { group.Header = BuildHeader(parent, cat.ToString().ToUpperInvariant()); any = true; }
+                    var gos = new List<GameObject>();
+                    BuildRow(parent, tweak, i % 2 == 0 ? ROW_EVEN : ROW_ODD, gos);
+                    group.Units.Add(new TweakUnit
+                    {
+                        Gos = gos,
+                        Hay = ((tweak.TweakLabel ?? "") + " " + (tweak.TweakId ?? "")).ToLowerInvariant()
+                    });
                     i++;
                 }
+                if (any) _groups.Add(group);
             }
         }
 
-        private static void BuildHeader(RectTransform parent, string title)
+        // toggles visibility of every built row against the query — no rebuild, so typing stays cheap
+        // no matter how many tweaks exist. a category-name match shows the whole section.
+        public static void Filter(string query)
+        {
+            _lastQuery = query ?? "";
+            string q = _lastQuery.Trim().ToLowerInvariant();
+            foreach (var g in _groups)
+            {
+                bool catMatch = q.Length > 0 && g.Hay.IndexOf(q, StringComparison.Ordinal) >= 0;
+                bool anyShown = false;
+                foreach (var unit in g.Units)
+                {
+                    bool show = q.Length == 0 || catMatch || unit.Hay.IndexOf(q, StringComparison.Ordinal) >= 0;
+                    foreach (var go in unit.Gos)
+                        if (go != null) go.SetActive(show);
+                    if (show) anyShown = true;
+                }
+                if (g.Header != null) g.Header.SetActive(q.Length == 0 || anyShown);
+            }
+        }
+
+        private static GameObject BuildHeader(RectTransform parent, string title)
         {
             var rowGo = new GameObject("Header_" + title);
             rowGo.transform.SetParent(parent, false);
@@ -168,16 +212,18 @@ namespace BetterFG.UI.Windows
             rt.pivot = new Vector2(0f, 0.5f);
             rt.anchoredPosition = new Vector2(HEADER_LEFT, 0f);
             rt.localScale = new Vector3(HEADER_SCALE, HEADER_SCALE, 1f);
+            return rowGo;
         }
 
-        private static void BuildRow(RectTransform parent, BfgTweak tweak, Color bg)
+        private static void BuildRow(RectTransform parent, BfgTweak tweak, Color bg, List<GameObject> unitGos)
         {
             var rowGo = new GameObject("Row_" + tweak.TweakId);
+            unitGos.Add(rowGo);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             // label — stretch fill minus toggle area
             const float LABEL_X = PAD + 20f;
@@ -301,30 +347,30 @@ namespace BetterFG.UI.Windows
                 var settings = tweak.GetSettings();
                 if (settings != null)
                     foreach (var s in settings)
-                        BuildSettingRow(parent, tweak, s, bg);
+                        unitGos.Add(BuildSettingRow(parent, tweak, s, bg));
 
                 var incs = tweak.GetIncrements();
                 if (incs != null)
                     foreach (var inc in incs)
-                        BuildIncrementRow(parent, tweak, inc, bg);
+                        unitGos.Add(BuildIncrementRow(parent, tweak, inc, bg));
 
                 var sliders = tweak.GetSliders();
                 if (sliders != null)
                     foreach (var sl in sliders)
-                        BuildSliderRow(parent, sl, bg);
+                        unitGos.Add(BuildSliderRow(parent, sl, bg));
             }
         }
 
         // slider as a sub-row in the expanded panel: label on the left (indented, like a setting),
         // slider + value readout on the right where the toggle sits on the parent row.
-        private static void BuildSliderRow(RectTransform parent, TweakSlider sl, Color bg)
+        private static GameObject BuildSliderRow(RectTransform parent, TweakSlider sl, Color bg)
         {
             var rowGo = new GameObject("Slider_" + sl.Label);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             const float SET_LABEL_X = PAD + 34f;
             UGUIShip.CreateLabel(rowGo.transform,
@@ -362,19 +408,20 @@ namespace BetterFG.UI.Windows
                     readout.text = Fmt(v);
                 }),
                 null, null, false);
+            return rowGo;
         }
 
         // increment as a sub-row in the expanded panel: label on the left (indented, like a setting),
         // [-] value [+] on the right where the toggle sits on the parent row. gives the tweak a
         // two-line-tall look — toggle row on top, the stepper on its own line under it.
-        private static void BuildIncrementRow(RectTransform parent, BfgTweak tweak, TweakIncrement inc, Color bg)
+        private static GameObject BuildIncrementRow(RectTransform parent, BfgTweak tweak, TweakIncrement inc, Color bg)
         {
             var rowGo = new GameObject("Inc_" + tweak.TweakId);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             const float SET_LABEL_X = PAD + 34f;
             UGUIShip.CreateLabel(rowGo.transform,
@@ -395,16 +442,17 @@ namespace BetterFG.UI.Windows
             UGUIShip.CreateIncrement(incGo.transform, new Rect(0f, 0f, w, TOGGLE_H),
                 (float)inc.Min, (float)inc.Max, () => inc.Get(), v => inc.Set(Mathf.RoundToInt(v)),
                 inc.Step > 0 ? inc.Step : 1f, false, inc.Wrap, 11);
+            return rowGo;
         }
 
-        private static void BuildSettingRow(RectTransform parent, BfgTweak tweak, TweakSetting setting, Color bg)
+        private static GameObject BuildSettingRow(RectTransform parent, BfgTweak tweak, TweakSetting setting, Color bg)
         {
             var rowGo = new GameObject("Setting_" + tweak.TweakId + "_" + setting.Label);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             // label, indented past where the toggle icon sits so it reads as a child setting
             const float SET_LABEL_X = PAD + 34f;
@@ -444,6 +492,7 @@ namespace BetterFG.UI.Windows
                 capturedSetting.OnPick?.Invoke(next);
                 if (capturedLbl != null) capturedLbl.text = capturedSetting.Options[next];
             }));
+            return rowGo;
         }
     }
 }

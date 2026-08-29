@@ -25,6 +25,8 @@ namespace BetterFG.Utilities
                 Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 tex.LoadImage(data);
                 tex.filterMode = FilterMode.Bilinear;
+                // default Repeat wrap bleeds a 1px sliver of the opposite edge into bilinear-sampled UVs
+                tex.wrapMode = TextureWrapMode.Clamp;
                 tex.Apply();
                 // keep it alive across scene unloads so cached references don't go dead between rounds
                 tex.hideFlags = HideFlags.HideAndDontSave;

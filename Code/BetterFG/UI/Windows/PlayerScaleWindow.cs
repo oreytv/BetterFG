@@ -2,6 +2,7 @@
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {

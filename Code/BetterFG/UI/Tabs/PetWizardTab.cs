@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Pets;
 using BetterFG.Customization.Player;
 using BetterFG.Customization.Social;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -15,7 +16,7 @@ namespace BetterFG.UI.Tabs
         public override string TabTitle => EditIndex >= 0 ? "Pet - Edit" : "Pet - New";
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
 
-        static readonly Color BTN_REMOVE = new Color(0.55f, 0.15f, 0.15f, 1f);
+        static readonly Color BTN_REMOVE = UGUIShip.BTN_REMOVE;
 
         enum WizardStep { Name, Cosmetics, Scale, SkinTexture, UgcCustomization, Phrases }
         protected override string[] StepTitles => new[]

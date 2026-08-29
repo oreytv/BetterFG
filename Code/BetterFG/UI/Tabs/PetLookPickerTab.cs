@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -8,6 +8,7 @@ using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -26,12 +27,12 @@ namespace BetterFG.UI.Tabs
         public PetData Snapshot;
         public int EditIndexCarry = -1;
 
-        static readonly Color WHITE = Color.white;
+        static readonly Color WHITE = UGUIShip.WHITE;
         static readonly Color HINT = new Color(1f, 1f, 1f, 0.4f);
         static readonly Color OK = new Color(0.55f, 0.85f, 0.55f, 1f);
-        static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
         static readonly Color BTN_BLUE = new Color(0.22f, 0.34f, 0.55f, 1f);
-        static readonly Color BTN_REMOVE = new Color(0.55f, 0.15f, 0.15f, 1f);
+        static readonly Color BTN_REMOVE = UGUIShip.BTN_REMOVE;
         static readonly Color ROW_IDLE = new Color(0.12f, 0.12f, 0.12f, 1f);
 
         const string Upper = "upper", Lower = "lower", Pattern = "pattern", Faceplate = "faceplate", Colour = "colour";

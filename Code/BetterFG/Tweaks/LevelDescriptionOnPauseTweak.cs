@@ -32,6 +32,11 @@ namespace BetterFG.Tweaks
             if (_root != null) _root.SetActive(false);
         }
 
+        public override void OnMainMenuEntered()
+        {
+            if (_root != null) _root.SetActive(false);
+        }
+
         public void OnPauseToggled(bool isOpen)
         {
             if (!IsEnabled || !isOpen) { if (_root != null) _root.SetActive(false); return; }

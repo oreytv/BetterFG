@@ -9,6 +9,7 @@ using BetterFG.UI.SideWheel;
 using UnityEngine.UI;
 using BetterFG.Core;
 using TMPro;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {
@@ -474,6 +475,7 @@ namespace BetterFG.UI
         {
             UpdateInputNavState();
             FGInputLockService.Tick();
+            UGUIShip.PumpTextMirrors();
 
             // housekeeping, not input. none of it has to land on a specific frame, and at 250+ fps
             // running it every frame was paying interop for a dialog queue, a window handle and a
@@ -1013,6 +1015,8 @@ namespace BetterFG.UI
         // ── Tab toggle ────────────────────────────────────────────────────────
         public void ToggleTab(Tab tab)
         {
+            if (SideWheelManager.Instance != null && SideWheelManager.Instance.IsWheelVisible) return;
+
             if (_openTab == tab)
             {
                 AudioService.PlayTabClose();
@@ -1076,6 +1080,15 @@ namespace BetterFG.UI
 
         public void OnWheelVisibilityChanged(bool visible)
         {
+            // sidewheel and tabs share the screen badly — close whatever tab is open the moment
+            // the wheel comes up, and ToggleTab refuses new opens while it's still up.
+            if (visible && _openTab != null)
+            {
+                AnimateTab(_openTab, toOpen: false);
+                _openTab.IsOpen = false;
+                _openTab.OnClosed();
+                _openTab = null;
+            }
             UpdateCameraFreeze();
             UpdateCreativeHintText();
         }

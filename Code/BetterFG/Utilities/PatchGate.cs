@@ -28,6 +28,7 @@ namespace BetterFG.Utilities
         private static readonly Dictionary<string, bool> _defaults = new Dictionary<string, bool>(StringComparer.Ordinal);
         private static readonly HashSet<string> _roundOnly = new HashSet<string>(StringComparer.Ordinal);
         private static bool _roundLive;
+        public static bool RoundLive => _roundLive;
         private static readonly Dictionary<Type, List<MethodBase>> _live = new Dictionary<Type, List<MethodBase>>();
 
         public static void ResetForRepatch()

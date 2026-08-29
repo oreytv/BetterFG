@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using BetterFG.Customization.Pets;
@@ -7,6 +7,7 @@ using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -25,9 +26,9 @@ namespace BetterFG.UI.Tabs
         public PetData Snapshot;
         public int EditIndexCarry = -1;
 
-        static readonly Color WHITE = Color.white;
+        static readonly Color WHITE = UGUIShip.WHITE;
         static readonly Color HINT = new Color(1f, 1f, 1f, 0.4f);
-        static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
         static readonly Color BTN_ADD = new Color(0.22f, 0.42f, 0.22f, 1f);
         static readonly Color BTN_RM = new Color(0.45f, 0.1f, 0.1f, 1f);
         static readonly Color TOGGLE_ON = new Color(0.25f, 0.5f, 0.25f, 1f);

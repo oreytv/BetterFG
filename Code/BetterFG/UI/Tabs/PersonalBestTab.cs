@@ -7,6 +7,7 @@ using BetterFG.UI;
 using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -369,7 +370,8 @@ namespace BetterFG.UI.Tabs
                 float t = r.TimeFor(_subType) ?? 0f;
                 var go = BuildRow(r, t, out _);
                 var bg = go.GetComponent<Image>();
-                if (bg != null) bg.color = ((i - start) % 2 == 0) ? ROW_ALT : ROW_CLEAR;
+                if (bg != null) bg.color = ROW_CLEAR;
+                UGUIShip.PaintRowStripe(go, (i - start) % 2 == 0, ROW_ALT);
             }
 
             // pager + status

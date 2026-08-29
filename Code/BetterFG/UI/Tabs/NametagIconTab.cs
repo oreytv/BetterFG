@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -7,6 +7,7 @@ using BetterFG.Nametag;
 using BetterFG.Features.MorePlatformIcon;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {

@@ -6,15 +6,16 @@ using BepInEx.Unity.IL2CPP.Utils.Collections;
 using FallGuysLib.Utils;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {
     /// <summary>
     /// Full startup sequence:
     ///   1. Load betterfg_startup bundle (contains wow/ui/reveal shader)
-    ///   2. Logo: wait 3s → fade in 2s + slight scale → fade out 2s
+    ///   2. Logo: wait 3s › fade in 2s + slight scale › fade out 2s
     ///   3. Disclaimer text fades in 2s, button fades in ~2s later
-    ///   4. On "I understand": spawn old info window, animate revealer wipe 0→1 over 1s, destroy self
+    ///   4. On "I understand": spawn old info window, animate revealer wipe 0›1 over 1s, destroy self
     ///
     /// Sorting: this canvas is 1001 — above tabs (999) and info window (1000).
     /// Everything else is under the revealer until the wipe completes.
@@ -48,7 +49,7 @@ namespace BetterFG.UI
         private const string KEY_SEEN = "startup.seen";
 
         // ── Colors ─────────────────────────────────────────────────────────────
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
         private static readonly Color BTN_COLOR = new Color(0.12f, 0.12f, 0.14f, 1f);
         private static readonly Color BTN_TEXT = new Color(0.95f, 0.95f, 0.95f, 1f);
 

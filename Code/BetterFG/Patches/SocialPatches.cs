@@ -86,18 +86,29 @@ namespace BetterFG.Patches.Social
         {
             try
             {
+                var emoteBean = __instance.MotorAgent?.gameObject;
+                uint localId = PlayerUtils.GetLocalPlayerId();
+                bool localBean = emoteBean != null && emoteBean.name == "LevelEditor_FallGuy(Clone)";
+                if (!localBean && localId != 0) localBean = emoteBean == PlayerUtils.GetPlayerObject(localId);
+
+                // fire regardless of custom/vanilla - pets should mirror either kind
+                bool petBean = BetterFG.Customization.Pets.PetService.IsPetFgcc(emoteBean?.GetComponent<FallGuysCharacterController>());
+                if (!petBean)
+                {
+                    var mirrorPets = localBean
+                        ? (System.Collections.Generic.IEnumerable<FallGuysCharacterController>)BetterFG.Customization.Pets.PetService.Instance?.LiveFgccs
+                        : BetterFG.Customization.Pets.RemotePetService.Instance?.LiveFgccsForOwner(emoteBean);
+                    BetterFG.Customization.Pets.PetEmoteEcho.Echo(__instance.MotorAgent, emoteIndex, emoteOption, mirrorPets);
+                }
 
                 if (!EmoteInjectionService.CustomClips.TryGetValue(emoteIndex, out var clip) || clip == null)
                     return true;
 
-                // local player only — otherwise every remote bean performing the original emote in
-                // this slot would play OUR custom clip. same guard the speech patch uses above.
-                var emoteBean = __instance.MotorAgent?.gameObject;
-                uint localId = PlayerUtils.GetLocalPlayerId();
-                bool localBean = emoteBean != null && emoteBean.name == "LevelEditor_FallGuy(Clone)";
-                if (!localBean && (localId == 0 || emoteBean != PlayerUtils.GetPlayerObject(localId))) return true;
+                // local player, or one of our own pets mirroring it - anyone else performing the
+                // original emote in this slot should still get the game's own clip.
+                if (!localBean && !petBean) return true;
 
-                var fgcc = PlayerUtils.PlayerController;
+                var fgcc = localBean ? PlayerUtils.PlayerController : emoteBean.GetComponent<FallGuysCharacterController>();
                 if (fgcc != null && fgcc.RigidBody.velocity.sqrMagnitude > 0.5f)
                 {
                     // the emote function already flipped to StateEmote before we got here. blocking

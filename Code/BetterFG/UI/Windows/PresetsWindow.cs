@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using BetterFG.Customization.Presets;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
@@ -96,7 +97,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(ROW_PAD + 20f, 0f, 150f, ROW_H),

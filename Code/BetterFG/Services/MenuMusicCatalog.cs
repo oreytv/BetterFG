@@ -59,16 +59,25 @@ namespace BetterFG.Services
 
         public static bool IsCached(Track t) => File.Exists(CachedPath(t));
 
+        public static readonly Dictionary<string, float> Downloading = new Dictionary<string, float>();
+
         public static IEnumerator Download(Track t, Action<bool> onDone = null)
         {
             string dest = CachedPath(t);
+            Downloading[t.name] = 0f;
             var req = UnityWebRequest.Get(t.url);
-            yield return req.SendWebRequest();
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+            {
+                Downloading[t.name] = req.downloadProgress;
+                yield return null;
+            }
 
             if (req.result != UnityWebRequest.Result.Success)
             {
                 Plugin.Log.LogWarning($"MenuMusicCatalog: download {t.name} failed: {req.error}");
                 req.Dispose();
+                Downloading.Remove(t.name);
                 onDone?.Invoke(false);
                 yield break;
             }
@@ -78,10 +87,12 @@ namespace BetterFG.Services
             {
                 Plugin.Log.LogWarning($"MenuMusicCatalog: write {t.name} failed: {ex.Message}");
                 req.Dispose();
+                Downloading.Remove(t.name);
                 onDone?.Invoke(false);
                 yield break;
             }
             req.Dispose();
+            Downloading.Remove(t.name);
             onDone?.Invoke(true);
         }
     }

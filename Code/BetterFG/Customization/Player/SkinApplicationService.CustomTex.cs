@@ -709,21 +709,68 @@ namespace BetterFG.Customization.Player
             return "";
         }
 
+        // caches an owned CLONE of each option's icon, not the game's live sprite - the game can
+        // destroy/reload its atlas assets underneath us (asset unload, menu re-entry) and a held
+        // reference to the original just goes stale/blank. our clone's pixel data is ours forever.
+        private static readonly Dictionary<string, Sprite> _iconSpriteCache =
+            new Dictionary<string, Sprite>(StringComparer.OrdinalIgnoreCase);
+
         public static Sprite ResolveOptionIconSprite(UnityEngine.Object option)
         {
             if (option == null) return null;
+            string key = option.name;
+            if (!string.IsNullOrEmpty(key) && _iconSpriteCache.TryGetValue(key, out var cached) && cached != null)
+                return cached;
+
             ItemDefinitionSO def = null;
             try { def = option.Cast<ItemDefinitionSO>(); } catch { }
             if (def == null) return null;
-            try { var s = def.MenuDisplaySprite; if (s != null) { PinSprite(s); return s; } } catch { }
-            try { var s = def._spriteAtlasLoadableAsset.AssetRef.LoadAsset<Sprite>().Result; if (s != null) { PinSprite(s); return s; } } catch { }
-            return null;
+
+            Sprite src = null;
+            try { src = def.MenuDisplaySprite; } catch { }
+            if (src == null)
+            {
+                try { src = def._spriteAtlasLoadableAsset.AssetRef.LoadAsset<Sprite>().Result; } catch { }
+            }
+            if (src == null || src.texture == null) return null;
+
+            var crop = CropAtlasToTexture2D(src, string.IsNullOrEmpty(key) ? src.name : key);
+            if (crop == null) return null;
+
+            var owned = Sprite.Create(crop, new Rect(0f, 0f, crop.width, crop.height),
+                new Vector2(src.pivot.x / Mathf.Max(1f, src.rect.width), src.pivot.y / Mathf.Max(1f, src.rect.height)));
+            owned.name = "bfg_icon_" + crop.name;
+            owned.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+            UnityEngine.Object.DontDestroyOnLoad(crop);
+
+            if (!string.IsNullOrEmpty(key)) _iconSpriteCache[key] = owned;
+            return owned;
         }
 
-        private static void PinSprite(Sprite s)
+        // crops a sprite's rect out of its atlas texture into a standalone Texture2D we own outright
+        private static Texture2D CropAtlasToTexture2D(Sprite spr, string name)
         {
-            s.hideFlags = HideFlags.HideAndDontSave;
-            if (s.texture != null) s.texture.hideFlags = HideFlags.HideAndDontSave;
+            var atlas = spr.texture;
+            if (atlas == null) return null;
+
+            var tr = spr.textureRect;
+            int rx = Mathf.Clamp(Mathf.FloorToInt(tr.x), 0, atlas.width);
+            int ry = Mathf.Clamp(Mathf.FloorToInt(tr.y), 0, atlas.height);
+            int rw = Mathf.Clamp(Mathf.CeilToInt(tr.width), 1, atlas.width - rx);
+            int rh = Mathf.Clamp(Mathf.CeilToInt(tr.height), 1, atlas.height - ry);
+
+            var rt = RenderTexture.GetTemporary(atlas.width, atlas.height, 0, RenderTextureFormat.ARGB32);
+            var prev = RenderTexture.active;
+            Graphics.Blit(atlas, rt);
+            RenderTexture.active = rt;
+            var crop = new Texture2D(rw, rh, TextureFormat.RGBA32, false);
+            crop.ReadPixels(new Rect(rx, ry, rw, rh), 0, 0);
+            crop.Apply();
+            crop.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+            crop.name = "bfg_iconsrc_" + name;
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            return crop;
         }
 
         // display name for an option's stored internal name (CostumeOption/SkinPatternOption/etc
@@ -749,29 +796,12 @@ namespace BetterFG.Customization.Player
             {
                 try { spr = opt._spriteAtlasLoadableAsset.AssetRef.LoadAsset<Sprite>().Result; } catch { }
             }
-            if (spr == null) return null;
+            if (spr == null || spr.texture == null) return null;
 
-            var atlas = spr.texture;
-            if (atlas == null) return null;
+            var crop = CropAtlasToTexture2D(spr, optionName);
+            if (crop == null) return null;
 
-            var tr = spr.textureRect;
-            int rx = Mathf.Clamp(Mathf.FloorToInt(tr.x), 0, atlas.width);
-            int ry = Mathf.Clamp(Mathf.FloorToInt(tr.y), 0, atlas.height);
-            int rw = Mathf.Clamp(Mathf.CeilToInt(tr.width), 1, atlas.width - rx);
-            int rh = Mathf.Clamp(Mathf.CeilToInt(tr.height), 1, atlas.height - ry);
-
-            var rt = RenderTexture.GetTemporary(atlas.width, atlas.height, 0, RenderTextureFormat.ARGB32);
-            var prev = RenderTexture.active;
-            Graphics.Blit(atlas, rt);
-            RenderTexture.active = rt;
-            var crop = new Texture2D(rw, rh, TextureFormat.RGBA32, false);
-            crop.ReadPixels(new Rect(rx, ry, rw, rh), 0, 0);
-            crop.Apply();
-            crop.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
-            crop.name = "bfg_icon_" + optionName;
-            RenderTexture.active = prev;
-            RenderTexture.ReleaseTemporary(rt);
-
+            UnityEngine.Object.DontDestroyOnLoad(crop);
             _iconTexCache[optionName] = crop;
             return crop;
         }

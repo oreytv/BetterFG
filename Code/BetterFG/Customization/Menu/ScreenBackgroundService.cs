@@ -112,16 +112,50 @@ namespace BetterFG.Customization.Menu
                 blank.Apply();
                 return blank;
             }
-            if (value.StartsWith(BuiltinPrefix)) return LoadBuiltinTexture(value.Substring(BuiltinPrefix.Length));
+            if (value.StartsWith(BuiltinPrefix))
+            {
+                // LoadBuiltinTexture goes through the shared embedded-resource loader, which sets
+                // Clamp on purpose for its normal callers (icons/thumbnails that must not wrap) — a
+                // pattern needs to actually tile, so force it back to Repeat here, not in the shared
+                // loader (UIPatternPickerTab's thumbnail use of the same call still wants Clamp).
+                var built = LoadBuiltinTexture(value.Substring(BuiltinPrefix.Length));
+                if (built != null) built.wrapMode = TextureWrapMode.Repeat;
+                return built;
+            }
             if (!System.IO.File.Exists(value)) return null;
             try
             {
                 var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 tex.LoadImage(System.IO.File.ReadAllBytes(value));
+                tex.wrapMode = TextureWrapMode.Repeat;
                 tex.Apply();
                 return tex;
             }
             catch (Exception ex) { Plugin.Log.LogError("ScreenBg: pattern load failed: " + ex.Message); return null; }
+        }
+
+        // the Circles shader tiles _Pattern at whatever repeat rate it was authored for the game's own
+        // (small, fixed-size) default pattern texture — that rate doesn't follow the swapped-in texture,
+        // so a differently-sized custom/builtin pattern shows as one stretched copy instead of repeating.
+        // resample it to the default's pixel size so it tiles the same way the vanilla art did.
+        public static Texture2D MatchPatternSize(Texture2D src, Texture reference)
+        {
+            if (src == null || reference == null) return src;
+            if (src.width == reference.width && src.height == reference.height) return src;
+
+            var rt = RenderTexture.GetTemporary(reference.width, reference.height);
+            var prevActive = RenderTexture.active;
+            Graphics.Blit(src, rt);
+            RenderTexture.active = rt;
+            var resized = new Texture2D(reference.width, reference.height, TextureFormat.RGBA32, false);
+            resized.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            resized.wrapMode = TextureWrapMode.Repeat;
+            resized.Apply();
+            RenderTexture.active = prevActive;
+            RenderTexture.ReleaseTemporary(rt);
+
+            UnityEngine.Object.Destroy(src);
+            return resized;
         }
 
         // user-added custom patterns — a flat, shared library (not per-screen), so a pattern you add
@@ -372,7 +406,7 @@ namespace BetterFG.Customization.Menu
                 {
                     var mat = EnsureCirclesMaterialInstance(cimg);
                     if (!_origPattern.ContainsKey(id)) _origPattern[id] = mat.GetTexture("_Pattern");
-                    if (ptex != null) mat.SetTexture("_Pattern", ptex);
+                    if (ptex != null) mat.SetTexture("_Pattern", MatchPatternSize(ptex, _origPattern[id]));
                 }
                 else
                 {

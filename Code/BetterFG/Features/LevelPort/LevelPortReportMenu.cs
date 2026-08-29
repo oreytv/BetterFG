@@ -98,7 +98,7 @@ namespace BetterFG.Features.LevelPort
             if (variant != null)
             {
                 SetText(variant, "TitleContainer/TitleText", "LEVEL IMPORT / EXPORT");
-                SetText(variant, "BodyText", "Choose an action for this level.");
+                SetText(variant, "BodyText", $"Choose an action for \"{name}\"" + (string.IsNullOrEmpty(code) ? "." : $" [{code}]."));
                 SetText(variant, "ButtonContainer/RightButton/Content/Text", "CONFIRM");
                 SetText(variant, "ButtonContainer/LeftButton/Content/Text", "CLOSE");
             }
@@ -196,8 +196,8 @@ namespace BetterFG.Features.LevelPort
                 if (string.IsNullOrEmpty(path)) return;
                 try
                 {
-                    File.WriteAllText(path, json);
-                    Plugin.Log.LogInfo($"level exported -> {path} ({json.Length} chars)");
+                    File.WriteAllText(path, LevelPortCodec.Encode(json));
+                    Plugin.Log.LogInfo($"level exported -> {path} ({json.Length} chars of JSON, encoded)");
                 }
                 catch (Exception ex) { Plugin.Log.LogError("export write failed: " + ex.Message); }
             }));
@@ -227,14 +227,13 @@ namespace BetterFG.Features.LevelPort
 
         private static void DoImport(string path, string levelName, string code)
         {
-            string json;
-            try { json = File.ReadAllText(path); }
+            string text;
+            try { text = File.ReadAllText(path); }
             catch (Exception ex) { Plugin.Log.LogError("import: couldn't read the file: " + ex.Message); return; }
 
-            string trimmed = json?.TrimStart();
-            if (string.IsNullOrEmpty(trimmed) || trimmed[0] != '{')
+            if (!LevelPortCodec.TryDecode(text, out string json))
             {
-                Plugin.Log.LogError("import: that file isn't level JSON");
+                Plugin.Log.LogError("import: not a BettrFG level file — only .bfglevel files exported by BettrFG work here, not raw Fall Guys JSON");
                 return;
             }
             if (string.IsNullOrEmpty(code))

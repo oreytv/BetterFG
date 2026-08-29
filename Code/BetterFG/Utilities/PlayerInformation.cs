@@ -147,6 +147,37 @@ namespace BetterFG.Utilities
             return null;
         }
 
+        static string _cachedLocalBareKey = "";
+
+        /// <summary>
+        /// The local player's playerKey in the SAME bare format everyone else's playerKey comes in
+        /// (squad members, PlayerScores, PlayerKeyById off _playerIdIndex) - GlobalGameStateClient's
+        /// own GetLocalPlayerKey() returns "&lt;platform&gt;_&lt;service&gt;_&lt;bareKey&gt;" instead, which won't
+        /// match anything keyed off the roster. GetLocalPlayerData() goes empty once we're dead/
+        /// spectating (no fgcc), so the bare key is cached the first time it's found and reused after.
+        /// </summary>
+        public static string GetLocalBarePlayerKey()
+        {
+            string key = GetLocalPlayerData()?.playerKey ?? "";
+
+            if (string.IsNullOrEmpty(key))
+            {
+                string ggs = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
+                // ggs is "<platform>_<service>_<bareKey>" (e.g. "pc_steam_zmxnczxcnjzxcnjzx"). don't
+                // use LastIndexOf - a bareKey could itself contain '_' and we'd over-strip it.
+                if (!string.IsNullOrEmpty(ggs))
+                {
+                    int first = ggs.IndexOf('_');
+                    int second = first >= 0 ? ggs.IndexOf('_', first + 1) : -1;
+                    key = second >= 0 && second < ggs.Length - 1 ? ggs.Substring(second + 1) : ggs;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(key)) _cachedLocalBareKey = key;
+            else if (!string.IsNullOrEmpty(_cachedLocalBareKey)) key = _cachedLocalBareKey;
+            return key;
+        }
+
         /// <summary>
         /// Gets the local player's FallGuysCharacterController directly
         /// </summary>

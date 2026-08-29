@@ -307,6 +307,27 @@ namespace BetterFG.Customization.Profiles
             Social.RemoteSocialDisplay.Clear();
             var list = new List<BfgProfile>();
 
+            // more than one file can carry the same player's username - a leftover export, or a
+            // manual copy into the folder that skipped Import()'s own dedup-by-username cleanup.
+            // pick only the most recently written file per username, or an alphabetically-later
+            // stale file would silently shadow the current one in _byKey below (stale loadout wins,
+            // and it looks like a data bug rather than a duplicate file sitting on disk).
+            var newestForUser = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var newestTime = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in List())
+            {
+                if (!IsEnabled(name)) continue;
+                string path = Path.Combine(Dir, name + ".bfgprofile");
+                string user = PlayerUtils.CleanPlayerName(BfgProfile.PeekUsername(path) ?? "");
+                if (string.IsNullOrEmpty(user)) continue;
+                var mtime = File.GetLastWriteTimeUtc(path);
+                if (!newestTime.TryGetValue(user, out var have) || mtime > have)
+                {
+                    newestTime[user] = mtime;
+                    newestForUser[user] = name;
+                }
+            }
+
             foreach (var name in List())
             {
                 if (!IsEnabled(name)) continue;
@@ -315,6 +336,13 @@ namespace BetterFG.Customization.Profiles
                 try { p = BfgProfile.FromJson(File.ReadAllText(Path.Combine(Dir, name + ".bfgprofile"))); }
                 catch (Exception ex) { Plugin.Log.LogError($"load {name}: {ex.Message}"); continue; }
                 if (p == null || string.IsNullOrEmpty(p.username)) continue;
+
+                string cleanUser = PlayerUtils.CleanPlayerName(p.username);
+                if (newestForUser.TryGetValue(cleanUser, out var keep) && !keep.Equals(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    Plugin.Log.LogInfo($"skipping stale profile '{name}', a newer one for the same player ('{keep}') is loaded instead");
+                    continue;
+                }
 
                 p.name = name;
                 p.requireKeyMatch = true;

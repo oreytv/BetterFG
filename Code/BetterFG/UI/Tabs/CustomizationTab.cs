@@ -15,6 +15,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using BetterFG.Customization.Menu;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -130,12 +131,12 @@ namespace BetterFG.UI.Tabs
         private static readonly Color BTN_FETCH = new Color(0.25f, 0.45f, 0.25f, 1f);
         private static readonly Color BTN_IMPORT = new Color(0.25f, 0.35f, 0.45f, 1f);
         private static readonly Color BTN_APPLY = new Color(0.45f, 0.35f, 0.25f, 1f);
-        private static readonly Color BTN_REMOVE = new Color(0.55f, 0.15f, 0.15f, 1f);
+        private static readonly Color BTN_REMOVE = UGUIShip.BTN_REMOVE;
         private static readonly Color BTN_DARK = Color.black;
         private static readonly Color BTN_SEL = new Color(0.28f, 0.28f, 0.28f, 1f);
         private static readonly Color BTN_FILTER_ACTIVE = new Color(0.1f, 0.32f, 0.1f, 1f);
         private static readonly Color ITEM_BG = new Color(0f, 0f, 0f, 0f);
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.45f);
         private static readonly Color GOLD = new Color(1f, 0.8f, 0f, 1f);
         private static readonly Color GREEN = new Color(0f, 1f, 0f, 1f);
@@ -163,6 +164,10 @@ namespace BetterFG.UI.Tabs
         private bool _searchActive;
         private string _searchQuery = "";
         private Dictionary<string, bool> _groupExpanded = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        // group container GOs from the last RefreshSkinList, so a search keystroke can hide a whole
+        // group whose rows all filtered out without rebuilding anything
+        private readonly List<GameObject> _skinGroups = new List<GameObject>();
+        private GameObject _searchEmptyGo;
 
         // filter bar buttons
         private Button _btnCostumes, _btnAccessories, _btnItems, _btnEmotes;
@@ -315,9 +320,9 @@ namespace BetterFG.UI.Tabs
             foreach (char c in Input.inputString)
             {
                 if (c == '\b')
-                { if (_searchQuery.Length > 0) { _searchQuery = _searchQuery.Substring(0, _searchQuery.Length - 1); RefreshSkinList(); } }
+                { if (_searchQuery.Length > 0) { _searchQuery = _searchQuery.Substring(0, _searchQuery.Length - 1); OnSearchChanged(); } }
                 else if (c == '\n' || c == '\r' || c == '\x1b') { _searchActive = false; }
-                else { _searchQuery += c; RefreshSkinList(); }
+                else { _searchQuery += c; OnSearchChanged(); }
                 UpdateSearchCaret();
             }
         }
@@ -557,6 +562,9 @@ namespace BetterFG.UI.Tabs
             _coverImages.Clear();
             _featuredCoverImages.Clear();
             _rowVisuals.Clear();
+            _skinGroups.Clear();
+            _searchEmptyGo = null;
+            ClearSearchRows();
             for (int i = _scrollContent.childCount - 1; i >= 0; i--)
             {
                 var child = _scrollContent.GetChild(i);
@@ -591,7 +599,7 @@ namespace BetterFG.UI.Tabs
                     if (!string.IsNullOrEmpty(activeRaw) && s.sourceRepo != activeRaw) continue;
                 }
                 if (SkinTypeParser.FromString(s.type) != _activeFilter) continue;
-                if (!string.IsNullOrEmpty(q) && !s.name.ToLower().Contains(q) && !s.author.ToLower().Contains(q)) continue;
+                // no search gate here — every row is built once and the query just toggles visibility
                 string group = string.IsNullOrWhiteSpace(s.group) ? "Unsorted" : s.group.Trim();
                 if (!shownGroups.TryGetValue(group, out var groupSkins))
                 {
@@ -610,6 +618,7 @@ namespace BetterFG.UI.Tabs
                     var groupGo = new GameObject("SkinGroup_" + groupName);
                     groupGo.transform.SetParent(_scrollContent, false);
                     groupGo.AddComponent<RectTransform>();
+                    _skinGroups.Add(groupGo);
                     var groupVlg = groupGo.AddComponent<VerticalLayoutGroup>();
                     groupVlg.childForceExpandWidth = true;
                     groupVlg.childForceExpandHeight = false;
@@ -630,23 +639,7 @@ namespace BetterFG.UI.Tabs
                     groupBtnColors.fadeDuration = 0f;
                     groupBtn.colors = groupBtnColors;
                     groupBtn.transition = Selectable.Transition.None;
-                    var groupHoverGo = new GameObject("Hover");
-                    groupHoverGo.transform.SetParent(groupBtn.transform, false);
-                    groupHoverGo.transform.SetAsFirstSibling();
-                    var groupHoverRt = groupHoverGo.AddComponent<RectTransform>();
-                    groupHoverRt.anchorMin = Vector2.zero;
-                    groupHoverRt.anchorMax = Vector2.one;
-                    groupHoverRt.offsetMin = groupHoverRt.offsetMax = Vector2.zero;
-                    var groupHoverImg = groupHoverGo.AddComponent<Image>();
-                    groupHoverImg.color = Color.clear;
-                    groupHoverImg.raycastTarget = false;
-                    var groupBtnTrigger = groupBtn.GetComponent<EventTrigger>() ?? groupBtn.gameObject.AddComponent<EventTrigger>();
-                    var groupEnter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
-                    groupEnter.callback.AddListener(new Action<BaseEventData>(_ => groupHoverImg.color = new Color(1f, 1f, 1f, 0.2f)));
-                    groupBtnTrigger.triggers.Add(groupEnter);
-                    var groupExit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
-                    groupExit.callback.AddListener(new Action<BaseEventData>(_ => groupHoverImg.color = Color.clear));
-                    groupBtnTrigger.triggers.Add(groupExit);
+                    UGUIShip.PaintHoverFill(groupBtn.gameObject, new Color(1f, 1f, 1f, 0.12f));
                     var groupBtnLabel = groupBtn.transform.Find("Label")?.GetComponent<Text>();
                     if (groupBtnLabel != null)
                     {
@@ -727,7 +720,60 @@ namespace BetterFG.UI.Tabs
                 }
             }
 
+            FilterSkinRows();
             LayoutRebuilder.ForceRebuildLayoutImmediate(_scrollContent);
+        }
+
+        // search keystroke path — no teardown. toggle each row against the query, hide groups that
+        // emptied out, and show a "no results" note when nothing matches.
+        private void OnSearchChanged()
+        {
+            if (FeaturedSelected) { RefreshSkinList(); return; } // featured list is tiny, full rebuild is fine
+            FilterSkinRows();
+        }
+
+        private void FilterSkinRows()
+        {
+            int shown = ApplySearchFilter(_searchQuery);
+
+            foreach (var g in _skinGroups)
+            {
+                if (g == null) continue;
+                bool any = false;
+                for (int i = 0; i < g.transform.childCount; i++)
+                {
+                    var c = g.transform.GetChild(i);
+                    if (c != null && c.name.StartsWith("SkinItem") && c.gameObject.activeSelf) { any = true; break; }
+                }
+                // a collapsed group builds no rows — leave it shown so its header still hints "matches here"
+                bool hasRows = false;
+                for (int i = 0; i < g.transform.childCount; i++)
+                    if (g.transform.GetChild(i)?.name.StartsWith("SkinItem") == true) { hasRows = true; break; }
+                bool vis = !hasRows || any;
+                if (g.activeSelf != vis) g.SetActive(vis);
+            }
+
+            bool empty = shown == 0 && !string.IsNullOrEmpty(_searchQuery) && _skinGroups.Count > 0;
+            if (empty && _searchEmptyGo == null)
+            {
+                _searchEmptyGo = new GameObject("SearchEmpty");
+                _searchEmptyGo.transform.SetParent(_scrollContent, false);
+                _searchEmptyGo.AddComponent<RectTransform>();
+                _searchEmptyGo.AddComponent<LayoutElement>().preferredHeight = LH * 2f;
+                var lbl = UGUIShip.CreateFlowLabel(_searchEmptyGo.transform,
+                    string.Format(EMPTY_NO_RESULTS, _searchQuery), FS_SM, HINT);
+                lbl.alignment = TextAnchor.MiddleCenter;
+            }
+            else if (empty)
+            {
+                var txt = _searchEmptyGo.GetComponentInChildren<Text>(true);
+                if (txt != null) txt.text = string.Format(EMPTY_NO_RESULTS, _searchQuery);
+                if (!_searchEmptyGo.activeSelf) _searchEmptyGo.SetActive(true);
+            }
+            else if (_searchEmptyGo != null && _searchEmptyGo.activeSelf)
+            {
+                _searchEmptyGo.SetActive(false);
+            }
         }
 
         private void CreateSkinItem(Transform parent, SkinInfo skin, int index, int displayIndex)
@@ -748,6 +794,7 @@ namespace BetterFG.UI.Tabs
 
             var rowGo = new GameObject("SkinItem_" + index);
             rowGo.transform.SetParent(parent, false);
+            RegisterSearchRow(rowGo, skin.name, skin.author);
             var rowRt = rowGo.AddComponent<RectTransform>();
             rowRt.sizeDelta = new Vector2(0f, rowH);
             rowGo.AddComponent<Image>().color = ITEM_BG;
@@ -866,7 +913,7 @@ namespace BetterFG.UI.Tabs
                 rowConfigBtn = cfgBtn.gameObject;
             }
 
-            // Cover
+            // Cover — picture in a rounded delux frame, clipped to the fill behind it
             var coverGo = new GameObject("Cover");
             coverGo.transform.SetParent(rowGo.transform, false);
             coverGo.AddComponent<RectTransform>();
@@ -874,8 +921,9 @@ namespace BetterFG.UI.Tabs
             coverLE.preferredWidth = COVER_W;
             coverLE.preferredHeight = COVER_H;
             coverLE.minWidth = COVER_W;
-            var coverImg = coverGo.AddComponent<Image>();
-            coverImg.color = new Color(0.04f, 0.04f, 0.04f, 1f);
+            var (_, coverSlot) = UGUIShip.CreateFramedImage(coverGo.transform);
+            var coverImg = coverSlot.gameObject.AddComponent<Image>();
+            coverImg.raycastTarget = false;
             string coverKey = CoverKey(skin);
             _coverImages[coverKey] = coverImg;
 
@@ -890,14 +938,14 @@ namespace BetterFG.UI.Tabs
                 catch
                 {
                     skinCovers.Remove(coverKey);
-                    coverImg.color = new Color(0.04f, 0.04f, 0.04f, 1f);
-                    UGUIShip.CreateStretchLabel(coverGo.transform, "No Preview", FS_SM, HINT);
+                    coverImg.color = new Color(1f, 1f, 1f, 0f);
+                    UGUIShip.CreateStretchLabel(coverSlot, "No Preview", FS_SM, HINT);
                 }
             }
             else
             {
                 catalogService?.EnsureCover(skin, true);
-                UGUIShip.CreateStretchLabel(coverGo.transform, "No Preview", FS_SM, HINT);
+                UGUIShip.CreateStretchLabel(coverSlot, "No Preview", FS_SM, HINT);
             }
 
             // Action button. emotes are copy-to-clipboard (not select+apply) — everything else uses Select
@@ -948,7 +996,7 @@ namespace BetterFG.UI.Tabs
             {
                 string capturedFolder = Path.GetDirectoryName(skin.localPath);
                 var delBtn = UGUIShip.CreateButton(
-                    rowGo.transform, "−", BTN_REMOVE, WHITE, FS_SM,
+                    rowGo.transform, "-", BTN_REMOVE, WHITE, FS_SM,
                     new Action(() => OnDeleteImportedSkin(capturedFolder))
                 ).gameObject;
                 var delLE = delBtn.AddComponent<LayoutElement>();
@@ -1048,18 +1096,13 @@ namespace BetterFG.UI.Tabs
             var bannerLE = bannerGo.AddComponent<LayoutElement>();
             bannerLE.preferredHeight = bannerH;
             bannerLE.minHeight = bannerH;
-            bannerGo.AddComponent<RectMask2D>(); // clip the cover that overfills the banner width
 
-            var coverGo = new GameObject("Cover");
-            coverGo.transform.SetParent(bannerGo.transform, false);
-            var coverRt = coverGo.AddComponent<RectTransform>();
-            coverRt.anchorMin = Vector2.zero;
-            coverRt.anchorMax = Vector2.one;
-            coverRt.offsetMin = coverRt.offsetMax = Vector2.zero;
+            // rounded delux frame; the Mask inside clips the cover that overfills the banner width
+            var (_, coverSlot) = UGUIShip.CreateFramedImage(bannerGo.transform);
             // envelope so every banner fills the full card width uniformly (crop overflow, no letterbox)
-            var arf = coverGo.AddComponent<AspectRatioFitter>();
+            var arf = coverSlot.gameObject.AddComponent<AspectRatioFitter>();
             arf.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-            var coverImg = coverGo.AddComponent<RawImage>();
+            var coverImg = coverSlot.gameObject.AddComponent<RawImage>();
             coverImg.color = new Color(1f, 1f, 1f, 0f);
             coverImg.raycastTarget = false;
             _featuredCoverImages[repo.githubUrl] = coverImg;
@@ -1204,34 +1247,45 @@ namespace BetterFG.UI.Tabs
             }
             else
             {
-                switch (type)
-                {
-                    case SkinType.Costume:
-                        int existing = SelectedCostumeIndex();
-                        if (existing != -1) { selectedIndices.Remove(existing); changed.Add(existing); }
-                        selectedIndices.Add(index);
-                        break;
-
-                    case SkinType.Accessory:
-                        if (CountSelected(SkinType.Accessory) >= MAX_ACCESSORY)
-                        { SetStatus($"Max {MAX_ACCESSORY} accessories."); return; }
-                        selectedIndices.Add(index);
-                        break;
-
-                    case SkinType.Item:
-                        if (CountSelected(SkinType.Item) >= MAX_ITEM)
-                        { SetStatus($"Max {MAX_ITEM} items."); return; }
-                        selectedIndices.Add(index);
-                        break;
-
-                    default:
-                        selectedIndices.Add(index);
-                        break;
-                }
+                if (!SelectIndexRespectingLimits(index, type, out int evicted)) return;
+                if (evicted != -1) changed.Add(evicted);
             }
 
             SaveSelection();
             foreach (int ci in changed) RepaintRowSelection(ci);
+        }
+
+        // enforces the same per-type slot limits whether a row is clicked or a skin lands via
+        // import — importing used to add straight to selectedIndices with no cap/eviction check,
+        // so importing a 2nd Costume left both "selected" but only the last-applied one actually
+        // showed on the bean
+        private bool SelectIndexRespectingLimits(int index, SkinType type, out int evicted)
+        {
+            evicted = -1;
+            switch (type)
+            {
+                case SkinType.Costume:
+                    int existing = SelectedCostumeIndex();
+                    if (existing != -1 && existing != index) { selectedIndices.Remove(existing); evicted = existing; }
+                    selectedIndices.Add(index);
+                    return true;
+
+                case SkinType.Accessory:
+                    if (CountSelected(SkinType.Accessory) >= MAX_ACCESSORY)
+                    { SetStatus($"Max {MAX_ACCESSORY} accessories."); return false; }
+                    selectedIndices.Add(index);
+                    return true;
+
+                case SkinType.Item:
+                    if (CountSelected(SkinType.Item) >= MAX_ITEM)
+                    { SetStatus($"Max {MAX_ITEM} items."); return false; }
+                    selectedIndices.Add(index);
+                    return true;
+
+                default:
+                    selectedIndices.Add(index);
+                    return true;
+            }
         }
 
         // flip a single row's selection visuals (gradient, Configure btn, Select label colour)
@@ -1495,6 +1549,7 @@ namespace BetterFG.UI.Tabs
         {
             for (int i = img.transform.childCount - 1; i >= 0; i--)
                 UnityEngine.Object.Destroy(img.transform.GetChild(i).gameObject);
+            tex.wrapMode = TextureWrapMode.Clamp;
             img.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.one * 0.5f);
             img.preserveAspect = true;
             img.color = Color.white;
@@ -1525,7 +1580,8 @@ namespace BetterFG.UI.Tabs
             if (idx < 0) { availableSkins.Add(skinInfo); idx = availableSkins.Count - 1; }
             else availableSkins[idx] = skinInfo;
 
-            if (!selectedIndices.Contains(idx)) selectedIndices.Add(idx);
+            if (!selectedIndices.Contains(idx))
+                SelectIndexRespectingLimits(idx, SkinTypeParser.FromString(skinInfo.type), out _);
 
             if (cover != null) skinCovers[CoverKey(skinInfo)] = cover;
 
@@ -1538,6 +1594,16 @@ namespace BetterFG.UI.Tabs
                     _importedPaths.Add(folder);
                     SaveImportedPaths();
                 }
+            }
+
+            // jump to the Imported Skins section — otherwise whatever repo filter was active
+            // before the import stays selected and the just-imported skin isn't in it, so the
+            // list looks empty even though the import succeeded
+            if (!ImportedSelected)
+            {
+                ImportedSelected = true;
+                FeaturedSelected = false;
+                OnRepoChanged();
             }
 
             RefreshSkinList();
@@ -1661,7 +1727,7 @@ namespace BetterFG.UI.Tabs
 
             foreach (var skin in wantedSkins)
             {
-                if (applicationService.HasActiveSlotForFile(skin.file))
+                if (applicationService.HasActiveSlotForFile(skin))
                 {
                     // already equipped. the only per-item change the menu can make to a live skin
                     // is the L/R hand override — compare against the snapshot (not the live slot,

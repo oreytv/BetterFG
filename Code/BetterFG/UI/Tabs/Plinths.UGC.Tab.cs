@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -36,7 +37,8 @@ namespace BetterFG.UI.Tabs
 
             var plinths = new List<SkinInfo>();
             foreach (var skin in catalog.AvailableSkins)
-                if (SkinTypeParser.FromString(skin.type) == SkinType.Plinth && skin.sourceRepo == SelectedRaw) plinths.Add(skin);
+                if (SkinTypeParser.FromString(skin.type) == SkinType.Plinth && skin.sourceRepo == SelectedRaw)
+                    plinths.Add(skin);
 
             if (plinths.Count == 0)
             {
@@ -60,7 +62,7 @@ namespace BetterFG.UI.Tabs
                 {
                     PlinthApp?.ApplyPlinthFromSource(captured, new Action<string>(SetStatus));
                     SetStatus($"Applying {captured.name}...");
-                }));
+                }), skin.name, skin.author);
 
                 string key = (string.IsNullOrEmpty(skin.sourceRepo) ? "" : skin.sourceRepo) + "|" + skin.file;
                 _coverImgs[key] = img;

@@ -104,12 +104,14 @@ namespace BetterFG.Features.CreativeGroups
             foreach (var o in sel) if (o != null) objs.Add(o);
 
             var schemas = new List<UGCObjectDataSchema>();
+            var schemaIndex = new int[objs.Count];
             var centre = Vector3.zero;
             int noSchema = 0;
-            foreach (var o in objs)
+            for (int k = 0; k < objs.Count; k++)
             {
-                var schema = LevelSaver.GetObjectSchema(o);
-                if (schema == null || schema.Position == null || schema.Position.Length < 3) { noSchema++; continue; }
+                var schema = LevelSaver.GetObjectSchema(objs[k]);
+                if (schema == null || schema.Position == null || schema.Position.Length < 3) { schemaIndex[k] = -1; noSchema++; continue; }
+                schemaIndex[k] = schemas.Count;
                 schemas.Add(schema);
                 centre += new Vector3(schema.Position[0], schema.Position[1], schema.Position[2]);
             }
@@ -148,10 +150,24 @@ namespace BetterFG.Features.CreativeGroups
             string jsonPath = Path.Combine(dir, clean + ".json");
             bool replacing = File.Exists(jsonPath);
 
+            var links = new List<string>();
+            for (int t = 0; t < objs.Count; t++)
+            {
+                if (schemaIndex[t] < 0) continue;
+                var ctrl = objs[t].LinkController;
+                if (ctrl == null || !LinkingSystemExtensions.IsMoverType(ctrl.GetTransmitterLinkType())) continue;
+                for (int r = 0; r < objs.Count; r++)
+                {
+                    if (r == t || schemaIndex[r] < 0 || objs[r].LinkController == null) continue;
+                    try { if (ctrl.IsReceiverLinkedTo(objs[r])) links.Add($"{schemaIndex[t]}:{schemaIndex[r]}"); }
+                    catch (Exception ex) { Plugin.Log.LogWarning($"link probe {t}->{r} threw, skipping it: {ex.Message}"); }
+                }
+            }
+
             string levelText = UGCJsonSerializer.SerializeObject(level, true);
             var png = Snapshot(objs);
             string imageField = png != null ? $"\"{Convert.ToBase64String(png)}\"" : "null";
-            File.WriteAllText(jsonPath, $"{{\"Level\":{levelText},\"Image\":{imageField}}}");
+            File.WriteAllText(jsonPath, $"{{\"Links\":\"{string.Join(",", links)}\",\"Level\":{levelText},\"Image\":{imageField}}}");
 
             // pre-embed saves left a sidecar png next to the json — clean it up now that it's redundant
             string legacyImage = Path.Combine(dir, clean + ".png");
@@ -161,6 +177,7 @@ namespace BetterFG.Features.CreativeGroups
             status = $"{(replacing ? "replaced" : "saved")} {clean}, {schemas.Count} object(s)";
             Plugin.Log.LogInfo($"group '{clean}' {(replacing ? "overwritten" : "saved")} — {schemas.Count} object(s), "
                 + $"{flat.Count} node(s) once children/links are counted, centred on {centre}"
+                + (links.Count > 0 ? $", {links.Count} controller link(s) noted" : "")
                 + (noSchema > 0 ? $", {noSchema} wouldn't serialise" : "")
                 + (png == null ? ", no preview (nothing renderable in there)" : $", preview {png.Length / 1024}kb"));
             return schemas.Count;
@@ -206,6 +223,7 @@ namespace BetterFG.Features.CreativeGroups
             }
 
             var placed = new List<LevelEditorPlaceableObject>();
+            var placedByIndex = new LevelEditorPlaceableObject[schemas.Length];
             int registered = 0, noLepo = 0;
             for (int i = 0; i < schemas.Length; i++)
             {
@@ -214,6 +232,7 @@ namespace BetterFG.Features.CreativeGroups
 
                 var lepo = go.GetComponent<LevelEditorPlaceableObject>();
                 if (lepo == null) { noLepo++; continue; }
+                placedByIndex[i] = lepo;
 
                 var drawable = lepo.DrawableData;
                 var shaderScale = schemas[i].ShaderScale;
@@ -247,6 +266,8 @@ namespace BetterFG.Features.CreativeGroups
                 return 0;
             }
 
+            int relinked = Relink(BetterFG.Utilities.JsonUtil.GetValue(raw, "Links"), placedByIndex);
+
             var centre = Vector3.zero;
             foreach (var p in placed) centre += p.Position;
             centre /= placed.Count;
@@ -263,8 +284,34 @@ namespace BetterFG.Features.CreativeGroups
             status = $"{placed.Count} object(s) placed";
             Plugin.Log.LogInfo($"'{g.Name}' dropped at {origin} — {placed.Count} of {schemas.Length} object(s), group {group}, "
                 + (registered == 0 ? "the loader registered them all itself" : $"{registered} needed registering by hand")
+                + (relinked > 0 ? $", put back {relinked} controller link(s)" : "")
                 + (noLepo > 0 ? $", {noLepo} never turned into a placeable" : ""));
             return placed.Count;
+        }
+
+        private static int Relink(string spec, LevelEditorPlaceableObject[] placed)
+        {
+            if (string.IsNullOrEmpty(spec)) return 0;
+
+            int relinked = 0;
+            foreach (var pair in spec.Split(','))
+            {
+                var bits = pair.Split(':');
+                if (bits.Length != 2 || !int.TryParse(bits[0], out int ti) || !int.TryParse(bits[1], out int ri)) continue;
+                if (ti < 0 || ti >= placed.Length || ri < 0 || ri >= placed.Length) continue;
+
+                var tx = placed[ti];
+                var rx = placed[ri];
+                var ctrl = tx != null ? tx.LinkController : null;
+                var rc = rx != null ? rx.LinkController : null;
+                if (ctrl == null || rc == null || ctrl.IsReceiverLinkedTo(rx)) continue;
+                if (!ctrl.CanTransmitterLinkToReceiver(rc, out var why)
+                    || why != ObjectLinkController.LinkConnectionCheckResult.ValidConnection) continue;
+
+                ctrl.LinkReceiver(rx, false);
+                relinked++;
+            }
+            return relinked;
         }
 
         private static void Walk(UGCObjectDataSchema schema, Action<UGCObjectDataSchema> fn)

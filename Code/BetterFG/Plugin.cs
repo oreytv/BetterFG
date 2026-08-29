@@ -26,6 +26,7 @@ using System.IO;
 using System.Reflection;
 using static LevelEditor.LevelEditorWallResizer;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
+using BettrFG.uGUI;
 
 namespace BetterFG
 {
@@ -48,6 +49,8 @@ namespace BetterFG
             AudioService.Init();
             MenuMusicService.Init();
             DiscordPresenceService.Init();
+
+            WireUGUIShip();
 
             try { TMPro.TMP_Settings.instance.m_warningsDisabled = true; } catch { }
 
@@ -80,6 +83,27 @@ namespace BetterFG
 
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+
+        private static void WireUGUIShip()
+        {
+            UGUIShip.Log = Log;
+            UGUIShip.ResourceAssembly = Assembly.GetExecutingAssembly();
+            UGUIShip.LoadTexture = BetterFG.Utilities.EmbeddedResourceandUnity.LoadTexture;
+            UGUIShip.LoadSprite = res => BetterFG.Utilities.EmbeddedResourceandUnity.LoadSprite(res);
+            UGUIShip.PlayClick = AudioService.PlayButtonClick;
+            UGUIShip.PlayHover = AudioService.PlayButtonHoverOn;
+            UGUIShip.RegisterCanvas = UIScaleService.Register;
+            UGUIShip.ProtectFont = FontReplacementService.Protect;
+            UGUIShip.RegisterShine = TabHoverStyle.RegisterShine;
+            UGUIShip.RegisterFill = TabHoverStyle.RegisterFill;
+            UGUIShip.Tint = () => TabHoverStyle.Tint;
+            UGUIShip.AddTooltip = (go, tip) =>
+            {
+                var trig = go.AddComponent<TooltipTrigger>();
+                trig.text = tip;
+                trig.instant = true;
+            };
         }
 
         static partial void InitCompBuild();
@@ -145,6 +169,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<MoveScrollUvRaw>();
             ClassInjector.RegisterTypeInIl2Cpp<DragHandler>();
             ClassInjector.RegisterTypeInIl2Cpp<LinkHover>();
+            ClassInjector.RegisterTypeInIl2Cpp<StylizeGuard>();
             ClassInjector.RegisterTypeInIl2Cpp<SideWheelManager>();
             ClassInjector.RegisterTypeInIl2Cpp<RingGraphic>();
             ClassInjector.RegisterTypeInIl2Cpp<AutoFetchTrigger>();
@@ -195,6 +220,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<PetSkinTextureTab>();
             ClassInjector.RegisterTypeInIl2Cpp<PetPhrasesTab>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Customization.Pets.PetService>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Customization.Pets.RemotePetService>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Customization.Pets.PetFollowComponent>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Customization.Pets.PetSpeechComponent>();
 
@@ -217,6 +243,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.PublishThumbnailWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Windows.Creative.CreativeSelectionWatcher>();
             ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.LevelPort.LevelBrowserPortPrompt>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.Features.CopyCode.CopyCodePrompt>();
             ClassInjector.RegisterTypeInIl2Cpp<WindowDragHandle>();
             ClassInjector.RegisterTypeInIl2Cpp<TweaksWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<Background3dWindow>();
@@ -290,10 +317,12 @@ namespace BetterFG
             Spawn<BetterFG.Features.UnityRound.Editor.CreativeRoundMemory>("BetterFG_CreativeRoundMemory", persist: true);
             Spawn<BetterFG.UI.Windows.Creative.CreativeSelectionWatcher>("BetterFG_CreativeSelectionWatcher", persist: true);
             Spawn<BetterFG.Features.LevelPort.LevelBrowserPortPrompt>("BetterFG_LevelBrowserPortPrompt", persist: true);
+            Spawn<BetterFG.Features.CopyCode.CopyCodePrompt>("BetterFG_CopyCodePrompt", persist: true);
             Spawn<BetterFG.Features.CustomizeFallGuys.FallGuyEyeDriver>("BetterFG_FallGuyEyes", persist: true);
 
             Spawn<BeanMonitorService>("BetterFG_BeanMonitor", persist: false);
             Spawn<BetterFG.Customization.Pets.PetService>("BetterFG_PetService", persist: true);
+            Spawn<BetterFG.Customization.Pets.RemotePetService>("BetterFG_RemotePetService", persist: true);
 
             //Spawn<BetterFG.Features.WinStreakDebug.WinStreakDebugService>("BetterFG_WinStreakDebug", persist: true);
 

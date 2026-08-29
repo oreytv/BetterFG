@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>uGUIship</AssemblyName>
+    <RootNamespace>BettrFG.uGUI</RootNamespace>
+    <Product>$(BettrFGDisplayName)</Product>
+    <Version>$(BettrFGVersion)</Version>
+    <AssemblyVersion>$(BettrFGVersion)</AssemblyVersion>
+    <FileVersion>$(BettrFGVersion)</FileVersion>
+    <InformationalVersion>$(BettrFGVersion)</InformationalVersion>
+    <AssemblyTitle>uGUIship</AssemblyTitle>
+    <LangVersion>latest</LangVersion>
+    <Configurations>Debug;Release;Release_Profiles;EarlyAcesss</Configurations>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+    <FGBepInEx>..\..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Fall Guys\BepInEx</FGBepInEx>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="$(FGBepInEx)\interop\*.dll">
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="$(FGBepInEx)\core\*.dll">
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

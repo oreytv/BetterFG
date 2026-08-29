@@ -6,6 +6,7 @@ using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -20,7 +21,7 @@ namespace BetterFG.UI.Tabs
         public UGCTab Host;
 
 
-        static readonly Color WHITE = Color.white;
+        static readonly Color WHITE = UGUIShip.WHITE;
         static readonly Color HINT = new Color(1f, 1f, 1f, 0.45f);
         static readonly Color GOLD = new Color(1f, 0.8f, 0f, 1f);
         static readonly Color GREEN = new Color(0f, 1f, 0f, 1f);
@@ -28,7 +29,7 @@ namespace BetterFG.UI.Tabs
         static readonly Color ORANGE = new Color(1f, 0.55f, 0.1f, 1f);
         static readonly Color YELLOW = new Color(1f, 1f, 0f, 1f);
         static readonly Color BTN_DARK = Color.black;
-        static readonly Color BTN_REMOVE = new Color(0.55f, 0.15f, 0.15f, 1f);
+        static readonly Color BTN_REMOVE = UGUIShip.BTN_REMOVE;
 
         static Texture2D _importedTex, _featuredTex;
 
@@ -153,14 +154,10 @@ namespace BetterFG.UI.Tabs
             _searchField.onValueChanged.AddListener(new Action<string>(val =>
             {
                 _searchQuery = val ?? "";
-                if (_scrollContent != null)
-                {
-                    PopulateRepoEntries(_scrollContent);
-                    LayoutRebuilder.ForceRebuildLayoutImmediate(_scrollContent);
-                }
+                ApplySearchFilter(_searchQuery);
             }));
 
-            var backBtn = UGUIShip.CreateButton(searchGo.transform, "▴", BTN_DARK, CYAN, FS_SM,
+            var backBtn = UGUIShip.CreateButton(searchGo.transform, "‹", BTN_DARK, CYAN, FS_SM,
                 new Action(() => CloseBackToHost(false)));
             backBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = BTN_H;
 
@@ -232,13 +229,13 @@ namespace BetterFG.UI.Tabs
             for (int i = contentRt.childCount - 1; i >= 0; i--)
                 Destroy(contentRt.GetChild(i).gameObject);
 
-            string q = (_searchQuery ?? "").Trim().ToLower();
+            ClearSearchRows();
             foreach (var repo in Registry.Repos)
             {
                 if (repo.isDefault) continue;
-                if (q.Length > 0 && !repo.DisplayName.ToLower().Contains(q)) continue;
                 BuildRepoEntryRow(contentRt, repo);
             }
+            ApplySearchFilter(_searchQuery);
         }
 
         static void MakeButtonScrollable(Button btn)
@@ -277,6 +274,7 @@ namespace BetterFG.UI.Tabs
                     Registry.SetActive(capturedRepo);
                     CloseBackToHost(true);
                 }));
+            RegisterSearchRow(btn.transform.parent.gameObject, capturedRepo.DisplayName);
             BuildRepoButtonContents(btn, capturedRepo, _coverImages);
         }
 
@@ -289,7 +287,9 @@ namespace BetterFG.UI.Tabs
             var coverRt = coverGo.AddComponent<RectTransform>();
             coverRt.anchorMin = Vector2.zero;
             coverRt.anchorMax = Vector2.one;
-            coverRt.offsetMin = coverRt.offsetMax = Vector2.zero;
+            // sit inside the delux button's rounded frame so its corners/AA fringe don't leak the image
+            coverRt.offsetMin = new Vector2(3f, 3f);
+            coverRt.offsetMax = new Vector2(-3f, -3f);
             var coverImg = coverGo.AddComponent<RawImage>();
             coverImg.raycastTarget = false;
             if (fixedCover != null)
@@ -346,7 +346,7 @@ namespace BetterFG.UI.Tabs
             else
             {
                 var capturedRepo = repo;
-                var removeBtn = UGUIShip.CreateButton(btn.transform, "−",
+                var removeBtn = UGUIShip.CreateButton(btn.transform, "-",
                     BTN_REMOVE, WHITE, FS_SM, new Action(() => { Registry.RemoveRepo(capturedRepo); onRemoved?.Invoke(); }));
                 MakeButtonScrollable(removeBtn);
                 var rmRt = removeBtn.GetComponent<RectTransform>();

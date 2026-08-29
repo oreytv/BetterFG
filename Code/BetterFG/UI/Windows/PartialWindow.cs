@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using BetterFG.UI.SideWheel;
 using UnityEngine;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {

@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using BetterFG.Services;
 using BetterFG.UI;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
@@ -71,6 +72,9 @@ namespace BetterFG.UI.Windows
     internal static class OptionsWindowBuilder
     {
         private const float ROW_H = 22f;
+        // row width isn't the full 280 window — CreateScrollView insets its viewport by
+        // SCROLLBAR_INSET on both sides for the scrollbar, so the actual row content is narrower.
+        private const float WINDOW_W = 280f - 2f * UGUIShip.SCROLLBAR_INSET;
         private const float BTN_W = 80f;
         private const float BTN_H = 16f;
         private const float PAD = 6f;
@@ -261,7 +265,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 150f, ROW_H),
@@ -290,7 +294,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 200f, ROW_H),
@@ -374,7 +378,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 90f, ROW_H),
@@ -391,79 +395,25 @@ namespace BetterFG.UI.Windows
             valRt.sizeDelta = new Vector2(valW, ROW_H);
             valRt.anchoredPosition = new Vector2(-PAD, 0f);
 
-            // slider stretches between the label and the value text
-            var sldGo = new GameObject("Slider");
-            sldGo.transform.SetParent(rowGo.transform, false);
-            var sldRt = sldGo.AddComponent<RectTransform>();
-            sldRt.anchorMin = new Vector2(0f, 0.5f);
-            sldRt.anchorMax = new Vector2(1f, 0.5f);
-            sldRt.pivot = new Vector2(0.5f, 0.5f);
-            sldRt.offsetMin = new Vector2(PAD + 110f, -5f);
-            sldRt.offsetMax = new Vector2(-(PAD + valW + 6f), 5f);
-
-            var bgGo = new GameObject("Background");
-            bgGo.transform.SetParent(sldGo.transform, false);
-            var bgRt = bgGo.AddComponent<RectTransform>();
-            bgRt.anchorMin = new Vector2(0f, 0.3f);
-            bgRt.anchorMax = new Vector2(1f, 0.7f);
-            bgRt.offsetMin = bgRt.offsetMax = Vector2.zero;
-            bgGo.AddComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 1f);
-
-            var fillAreaGo = new GameObject("Fill Area");
-            fillAreaGo.transform.SetParent(sldGo.transform, false);
-            var faRt = fillAreaGo.AddComponent<RectTransform>();
-            faRt.anchorMin = new Vector2(0f, 0.3f);
-            faRt.anchorMax = new Vector2(1f, 0.7f);
-            faRt.offsetMin = new Vector2(2f, 0f);
-            faRt.offsetMax = new Vector2(-2f, 0f);
-            var fillGo = new GameObject("Fill");
-            fillGo.transform.SetParent(fillAreaGo.transform, false);
-            var fillRt = fillGo.AddComponent<RectTransform>();
-            fillRt.anchorMin = Vector2.zero;
-            fillRt.anchorMax = Vector2.one;
-            fillRt.offsetMin = fillRt.offsetMax = Vector2.zero;
-            var fillImg = fillGo.AddComponent<Image>();
-            fillImg.color = BTN_IDLE;
-            fillImg.raycastTarget = false;
-
-            var hsGo = new GameObject("Handle Slide Area");
-            hsGo.transform.SetParent(sldGo.transform, false);
-            var hsRt = hsGo.AddComponent<RectTransform>();
-            hsRt.anchorMin = Vector2.zero;
-            hsRt.anchorMax = Vector2.one;
-            hsRt.offsetMin = new Vector2(6f, 0f);
-            hsRt.offsetMax = new Vector2(-6f, 0f);
-            var handleGo = new GameObject("Handle");
-            handleGo.transform.SetParent(hsGo.transform, false);
-            var handleRt = handleGo.AddComponent<RectTransform>();
-            handleRt.anchorMin = new Vector2(0f, 0f);
-            handleRt.anchorMax = new Vector2(0f, 1f);
-            handleRt.pivot = new Vector2(0.5f, 0.5f);
-            handleRt.sizeDelta = new Vector2(10f, 0f);
-            var handleImg = handleGo.AddComponent<Image>();
-            handleImg.color = Color.white;
-
-            var slider = sldGo.AddComponent<Slider>();
-            slider.fillRect = fillRt;
-            slider.handleRect = handleRt;
-            slider.targetGraphic = handleImg;
-            slider.direction = Slider.Direction.LeftToRight;
-            slider.minValue = min;
-            slider.maxValue = max;
-            slider.wholeNumbers = false;
-            slider.value = Mathf.Clamp(get(), min, max);
-            slider.onValueChanged.AddListener(new Action<float>(v =>
-            {
-                set(v);
-                valLbl.text = fmt(v);
-            }));
-
-            if (resetTo.HasValue) UGUIShip.WireSliderReset(slider, resetTo.Value);
+            // shared delux slider (same widget nametag/menu tabs use — tints with the rest of the UI).
+            // min/max here is an arbitrary range; CreateSlider only knows 0..1, so normalize in/out.
+            float sldX = PAD + 110f;
+            float sldW = WINDOW_W - sldX - (PAD + valW + 6f);
+            float t0 = Mathf.InverseLerp(min, max, Mathf.Clamp(get(), min, max));
+            var slider = UGUIShip.CreateSlider(rowGo.transform, sldX, 0f, sldW, "", t0, ROW_H, 0f, 13,
+                t =>
+                {
+                    float v = Mathf.Lerp(min, max, t);
+                    set(v);
+                    valLbl.text = fmt(v);
+                },
+                null, BTN_IDLE, reserveLabel: false,
+                resetTo: resetTo.HasValue ? Mathf.InverseLerp(min, max, resetTo.Value) : (float?)null);
 
             if (onCommit != null)
             {
-                var trig = sldGo.GetComponent<UnityEngine.EventSystems.EventTrigger>()
-                    ?? sldGo.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+                var trig = slider.gameObject.GetComponent<UnityEngine.EventSystems.EventTrigger>()
+                    ?? slider.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
                 var up = new UnityEngine.EventSystems.EventTrigger.Entry
                 { eventID = UnityEngine.EventSystems.EventTriggerType.PointerUp };
                 up.callback.AddListener(new Action<UnityEngine.EventSystems.BaseEventData>(_ => onCommit()));
@@ -480,7 +430,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 150f, ROW_H),
@@ -513,7 +463,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = PREV + 8f;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 120f, PREV + 8f),
@@ -577,7 +527,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 150f, ROW_H),
@@ -613,7 +563,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             // label — same offset/style as TweaksWindow
             UGUIShip.CreateLabel(rowGo.transform,

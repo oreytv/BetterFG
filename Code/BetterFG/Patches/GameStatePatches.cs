@@ -55,6 +55,9 @@ namespace BetterFG.Patches.GameStates
             MenuCustomizationApplication.Instance?.CacheBgImageBase();
 
             BetterFG.Utilities.PatchGate.SetRoundActive(false);
+            // copy-code prompt hooks go in here and stay in — nothing can reach a lobby or show
+            // tile before the menu exists. Install() no-ops once they're live.
+            BetterFG.Utilities.PatchGate.SetActive("copycode.prompts", true);
             BetterFG.Tweaks.BfgTweak.RaiseMainMenuEntered();
             BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.SetInRound(false);
             BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
@@ -63,6 +66,8 @@ namespace BetterFG.Patches.GameStates
             BetterFG.Customization.Pets.PetPreview.RetryOnMainMenuEntered();
 
             BetterFG.UI.Tabs.NametagTab.CacheNameAssets();
+            BetterFG.UI.Tabs.AllCosmeticsTab.RefreshLiveInstances();
+            BetterFG.UI.Tabs.CustomSkinTextureTab.RefreshLiveInstances();
             BetterFG.UI.BetterFGUIMan.ResolveAsapFont();
 
             MenuCustomizationApplication.Instance.StartCoroutine(MenuCustomizationApplication.ReapplyForegroundFromSettingsCoroutine().WrapToIl2Cpp());
@@ -235,7 +240,9 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix(GameObject __0)
         {
-            if (__0 != null) BeanMonitorService.PushBean(__0);
+            if (__0 == null) return;
+            BeanMonitorService.PushBean(__0);
+            SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals(__0);
         }
     }
 
@@ -337,7 +344,7 @@ namespace BetterFG.Patches.GameStates
     internal static class PrefabUILobbyUpdateMember
     {
         [HarmonyPostfix]
-        public static void Postfix(Prefab_UI_Lobby __instance)
+        public static void Postfix(Prefab_UI_Lobby __instance, IPartyMember remoteMember)
         {
             var characters = __instance?._partyCharacters;
             if (characters == null) return;
@@ -349,6 +356,26 @@ namespace BetterFG.Patches.GameStates
                 if (bean == null || !bean.activeInHierarchy) continue;
                 BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Apply(bean, isLocalPlayer: false);
             }
+
+#if PROFILES
+            // MenuIndex is the same slot ordering _partyCharacters is built in - unconfirmed live,
+            // watch for a "profile 'X' -> slot N" log line landing on the wrong bean and holler.
+            if (remoteMember != null && !remoteMember.IsLocal)
+            {
+                int idx = remoteMember.MenuIndex;
+                var bean = idx >= 0 && idx < characters.Count ? characters[idx]?._fallGuyGO : null;
+                string cleanName = PlayerUtils.CleanPlayerName(remoteMember.NameKey ?? "");
+                var rp = !string.IsNullOrEmpty(cleanName)
+                    ? BetterFG.Customization.Profiles.ProfileService.GetRemoteProfileForName(cleanName)
+                    : null;
+                if (bean != null && rp != null)
+                {
+                    BetterFG.Customization.Player.CustomizationHandler.Dress(rp, bean);
+                    BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyProfileOverride(bean, rp);
+                    Plugin.Log.LogInfo($"falling screen: profile '{cleanName}' -> slot {idx}");
+                }
+            }
+#endif
         }
     }
 
@@ -569,6 +596,14 @@ namespace BetterFG.Patches.GameStates
         {
             BetterFG.Customization.Player.CostumePollerComponent.LastLoadingFinished = Time.time;
             BetterFGUnityRounds.MarkSceneReadyAndInstantiateQueuedRound();
+
+            // CEP leaves checkpoint/spawn zone flags visible so it can dynamically place them in the
+            // editor - fine there, but they leak into actual UGC rounds too. Only hide in-round.
+            if (GlobalGameStateClient.Instance?.IsInCreativeEditor != true)
+            {
+                foreach (var checker in UnityEngine.Object.FindObjectsOfType<LevelEditorCheckpointTriggerZoneChecker>())
+                    checker.ShowVisual(false);
+            }
         }
     }
 
@@ -687,7 +722,83 @@ namespace BetterFG.Patches.GameStates
         {
             if (__instance == null) return;
             BetterFG.Features.LevelPort.LevelBrowserPortPrompt.OnTileSelected(__instance);
+            BetterFG.Features.CopyCode.CopyCodePrompt.OnLevelTileSelected(__instance);
         }
+    }
+
+    // private lobby screen focus. feeds CopyCodePrompt so the copy-code prompt lives and dies with
+    // the screen's own focus, the way the game's built-in nav prompts do.
+    // all four go in once the main menu has opened and stay in — none of their targets can be hit
+    // before that, so they'd only be trampolines sitting in the boot path.
+    [Utilities.BfgPatchGate("copycode.prompts")]
+    [HarmonyPatch(typeof(FGClient.UI.PrivateLobby.PrivateLobbyScreenViewModel), "OnGainFocus")]
+    internal static class PrivateLobbyScreenGainFocusPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FGClient.UI.PrivateLobby.PrivateLobbyScreenViewModel __instance)
+        {
+            if (__instance == null) return;
+            BetterFG.Features.CopyCode.CopyCodePrompt.OnLobbyFocus(__instance);
+        }
+    }
+
+    [Utilities.BfgPatchGate("copycode.prompts")]
+    [HarmonyPatch(typeof(FGClient.UI.PrivateLobby.PrivateLobbyScreenViewModel), "OnLoseFocus")]
+    internal static class PrivateLobbyScreenLoseFocusPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Features.CopyCode.CopyCodePrompt.OnLobbyBlur();
+    }
+
+    // discovery / show-selector highlight. NOT the tile: reading ShowData off a tile crashes, its
+    // backing pointer goes stale as the selector rebuilds. The preview panel follows the highlight
+    // and is handed the show as an argument, which is safe to read.
+    [Utilities.BfgPatchGate("copycode.prompts")]
+    [HarmonyPatch(typeof(ShowSelectorShowPreviewViewModel), nameof(ShowSelectorShowPreviewViewModel.SetIndividualShowData))]
+    internal static class ShowPreviewIndividualShowPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ShowSelectorShow showSelectorShow)
+            => BetterFG.Features.CopyCode.CopyCodePrompt.OnShowPreviewed(showSelectorShow);
+    }
+
+    // highlight moved onto a nested-shows entry point — a folder of shows, no share code of its own
+    [Utilities.BfgPatchGate("copycode.prompts")]
+    [HarmonyPatch(typeof(ShowSelectorShowPreviewViewModel), nameof(ShowSelectorShowPreviewViewModel.SetNestedShowsEntryPointData))]
+    internal static class ShowPreviewNestedShowsPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Features.CopyCode.CopyCodePrompt.OnShowPreviewCleared();
+    }
+
+    [Utilities.BfgPatchGate("copycode.prompts")]
+    [HarmonyPatch(typeof(ShowSelectorViewModel), nameof(ShowSelectorViewModel.OnLoseFocus))]
+    internal static class ShowSelectorLoseFocusPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Features.CopyCode.CopyCodePrompt.OnShowPreviewCleared();
+    }
+
+    // private lobby's own show list. the manager owns the highlight and exposes the highlighted
+    // show's ShareCode, which is empty for official shows — so only a UGC round gets the prompt.
+    [Utilities.BfgPatchGate("copycode.prompts")]
+    [HarmonyPatch(typeof(FragglePlobbiesManager), nameof(FragglePlobbiesManager.ShowHighlighted))]
+    internal static class PrivateLobbyShowHighlightedPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FragglePlobbiesManager __instance)
+        {
+            if (__instance == null) return;
+            BetterFG.Features.CopyCode.CopyCodePrompt.OnPrivateLobbyShowHighlighted(__instance);
+        }
+    }
+
+    [Utilities.BfgPatchGate("copycode.prompts")]
+    [HarmonyPatch(typeof(FGClient.UI.PrivateLobby.PrivateLobbyShowListViewModel), "OnDisable")]
+    internal static class PrivateLobbyShowListDisabledPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Features.CopyCode.CopyCodePrompt.OnPrivateLobbyShowListClosed();
     }
 
     [HarmonyPatch(typeof(ShowsManager), nameof(ShowsManager.RefreshShowSelectorPageData))]
@@ -809,6 +920,19 @@ namespace BetterFG.Patches.GameStates
         {
             var app = MenuCustomizationApplication.Instance;
             app?.StartCoroutine(app.ReapplySpecialForegroundNextFrame(MenuCustomizationApplication.SpecialScreen.PrivateLobbyPlayerList).WrapToIl2Cpp());
+        }
+    }
+
+    // per-row view-profile/kick popup on a private lobby player row. opens via ToggleOpen, not
+    // DoFadeIn (it's not a full screen), so it needs its own hook.
+    [HarmonyPatch(typeof(PrivateLobbyPlayerActionViewModel), nameof(PrivateLobbyPlayerActionViewModel.ToggleOpen))]
+    internal static class PrivateLobbyPlayerActionViewModelToggleOpenPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(PrivateLobbyPlayerActionViewModel __instance, bool value)
+        {
+            if (!value || __instance == null) return;
+            MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(__instance.transform);
         }
     }
 
@@ -1709,3 +1833,4 @@ namespace BetterFG.Patches.GameStates
 
 
 }
+

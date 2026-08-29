@@ -86,6 +86,8 @@ if ($BuildOutput -and (Test-Path $BuildOutput)) {
     $filesToReplace = @(
         "BetterFG.dll",
         "BetterFG.pdb",
+        "uGUIship.dll",
+        "uGUIship.pdb",
         "FallGuysLib.dll"
     )
 

@@ -8,6 +8,7 @@ using Il2CppInterop.Runtime;
 using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {

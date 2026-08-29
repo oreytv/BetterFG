@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Menu;
 using BetterFG.Utilities;
 using UnityEngine;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {

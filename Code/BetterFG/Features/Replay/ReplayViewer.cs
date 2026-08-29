@@ -25,6 +25,7 @@ using UnityEngine.ResourceManagement.ResourceProviders;
 using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.Replay
 {

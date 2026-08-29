@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BetterFG.Creator", "BetterF
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BetterFG.Installer", "BetterFG.Installer\BetterFG.Installer.csproj", "{0AD99ECF-B6D4-477D-9708-E8B7CBB86AA0}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BetterFG.uGUI", "BetterFG.uGUI\BetterFG.uGUI.csproj", "{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,14 @@ Global
 		{0AD99ECF-B6D4-477D-9708-E8B7CBB86AA0}.Release|Any CPU.Build.0 = Debug|Any CPU
 		{0AD99ECF-B6D4-477D-9708-E8B7CBB86AA0}.Release_Profiles|Any CPU.ActiveCfg = Debug|Any CPU
 		{0AD99ECF-B6D4-477D-9708-E8B7CBB86AA0}.Release_Profiles|Any CPU.Build.0 = Debug|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.EarlyAccess|Any CPU.ActiveCfg = EarlyAcesss|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.EarlyAccess|Any CPU.Build.0 = EarlyAcesss|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Release_Profiles|Any CPU.ActiveCfg = Release_Profiles|Any CPU
+		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Release_Profiles|Any CPU.Build.0 = Release_Profiles|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

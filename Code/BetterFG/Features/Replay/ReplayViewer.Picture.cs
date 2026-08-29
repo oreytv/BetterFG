@@ -1,9 +1,10 @@
-using System.Collections;
+﻿using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Core;
 using BetterFG.UI;
 using FG.Common;
 using UnityEngine;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.Replay
 {

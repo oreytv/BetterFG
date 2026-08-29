@@ -4,6 +4,7 @@ using BetterFG.Services;
 using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {
@@ -25,6 +26,9 @@ namespace BetterFG.UI
         // every button-shine overlay image, so a tint change recolors them live. keeps each image's
         // own alpha (0.4 idle / 1.0 hover) — we only override RGB.
         private static readonly List<Image> _shines = new List<Image>();
+        // static zebra-row colorfills (PaintStaticRowFill) — base colour varies per row, so we
+        // multiply by Tint instead of overriding, keeping white Tint a no-op.
+        private static readonly List<(Image img, Color baseColor)> _fills = new List<(Image, Color)>();
 
         public static bool AlwaysShow;
         public static float IdleAlpha = 0.25f;
@@ -77,6 +81,15 @@ namespace BetterFG.UI
             shine.color = new Color(Tint.r, Tint.g, Tint.b, shine.color.a);
         }
 
+        // static zebra-row colorfill — the same RGB-multiply live tint as shines get.
+        public static void RegisterFill(Image fill, Color baseColor)
+        {
+            if (fill == null) return;
+            EnsureLoaded();
+            _fills.Add((fill, baseColor));
+            fill.color = baseColor * Tint;
+        }
+
         // push current style to every live tab + shine (called when a slider/toggle changes). prunes
         // entries whose GameObject got destroyed on a slot swap.
         public static void ApplyAll()
@@ -86,6 +99,9 @@ namespace BetterFG.UI
 
             _shines.RemoveAll(s => s == null);
             foreach (var s in _shines) s.color = new Color(Tint.r, Tint.g, Tint.b, s.color.a);
+
+            _fills.RemoveAll(f => f.img == null);
+            foreach (var f in _fills) f.img.color = f.baseColor * Tint;
         }
     }
 
@@ -100,7 +116,7 @@ namespace BetterFG.UI
         // TitleBar's own transform. closed sits at y 231.0001, slides down to 226.2728 when opened
         private RectTransform _titleRt;
         private static readonly Vector3 TitleClosedPos = new Vector3(21.6729f, 228.6001f, 0f);
-        private static readonly Vector3 TitleOpenedPos = new Vector3(21.6729f, 221.1817f, 0f);
+        private static readonly Vector3 TitleOpenedPos = new Vector3(21.6729f, 225f, 0f);
         private const float TitleReachClosed = 8f;
         private const float TitleReachOpened = -4f;
 
@@ -140,6 +156,7 @@ namespace BetterFG.UI
             if (_contentArea != null && _contentArea.activeSelf != active) _contentArea.SetActive(active);
         }
 
+        private Vector3 _labelClosedPos;
         private bool _isOpen = false;
         public bool IsOpen
         {
@@ -156,6 +173,8 @@ namespace BetterFG.UI
                     var basePos = value ? TitleOpenedPos : TitleClosedPos;
                     _titleRt.localPosition = new Vector3(basePos.x, basePos.y + TitleYOffset, basePos.z);
                 }
+                if (_titleLabel != null)
+                    _titleLabel.transform.localPosition = value ? new Vector3(7.8f, -3.96f, 0f) : _labelClosedPos;
             }
         }
 
@@ -207,6 +226,7 @@ namespace BetterFG.UI
             var t = UGUIShip.CreateLabel(titleGo.transform, default, TitleDisplay.ToUpper(), UIScale.FS_TITLE,
                 new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
             t.fontStyle = FontStyle.Bold;
+            UGUIShip.Unstylize(t); // tab titles stay Arial
             _titleLabel = t;
             var labelRt = t.rectTransform;
             labelRt.anchorMin = new Vector2(0f, 1f);
@@ -215,6 +235,7 @@ namespace BetterFG.UI
             labelRt.sizeDelta = new Vector2(0f, UIScale.TITLE_H);
             labelRt.anchoredPosition = Vector2.zero;
             labelRt.offsetMin = new Vector2(UIScale.PAD * 3f, labelRt.offsetMin.y);
+            _labelClosedPos = labelRt.localPosition;
 
             var hoverGo = new GameObject("HoverTint");
             hoverGo.transform.SetParent(titleGo.transform, false);
@@ -255,6 +276,17 @@ namespace BetterFG.UI
             contentRt.anchorMax = Vector2.one;
             contentRt.offsetMin = Vector2.zero;
             contentRt.offsetMax = new Vector2(0f, -UIScale.TITLE_H);
+            contentRt.localScale = new Vector3(0.98f, 0.98f, 0.98f);
+
+            var fillGo = new GameObject("ContentFill");
+            fillGo.transform.SetParent(contentGo.transform, false);
+            var fillRt = fillGo.AddComponent<RectTransform>();
+            fillRt.anchorMin = Vector2.zero;
+            fillRt.anchorMax = Vector2.one;
+            fillRt.offsetMin = fillRt.offsetMax = Vector2.zero;
+            var fillImg = fillGo.AddComponent<Image>();
+            fillImg.raycastTarget = false;
+            UGUIShip.ApplyDeluxPanel(fillImg);
 
             BuildContent(contentRt);
 
@@ -350,5 +382,36 @@ namespace BetterFG.UI
         }
         protected virtual void OnTitleClicked() { BetterFGUIMan.Instance?.ToggleTab(this); }
         protected virtual void BuildContent(RectTransform contentRoot) { }
+
+        // search-as-you-type used to destroy + rebuild the whole row list on every keystroke —
+        // hundreds of GameObjects torn down and remade, covers reloaded, a forced layout pass, per
+        // letter. instead each tab builds its rows once and registers them here; a keystroke just
+        // toggles each row's active state against the query and lets the layout groups reflow.
+        private readonly List<(GameObject go, string hay)> _searchRows = new List<(GameObject, string)>();
+
+        protected void ClearSearchRows() => _searchRows.Clear();
+
+        protected void RegisterSearchRow(GameObject go, params string[] fields)
+        {
+            string hay = "";
+            foreach (var f in fields)
+                if (!string.IsNullOrEmpty(f)) hay += f.ToLowerInvariant() + "\n";
+            _searchRows.Add((go, hay));
+        }
+
+        // toggles visibility of every registered row against the query; returns how many are shown
+        protected int ApplySearchFilter(string query)
+        {
+            string q = (query ?? "").Trim().ToLowerInvariant();
+            int shown = 0;
+            foreach (var (go, hay) in _searchRows)
+            {
+                if (go == null) continue;
+                bool show = q.Length == 0 || hay.Contains(q);
+                if (go.activeSelf != show) go.SetActive(show);
+                if (show) shown++;
+            }
+            return shown;
+        }
     }
 }

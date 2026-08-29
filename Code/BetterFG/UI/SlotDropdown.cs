@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {

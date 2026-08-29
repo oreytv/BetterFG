@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using BetterFG.UI;
 using UnityEngine;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.Replay
 {

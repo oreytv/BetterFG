@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -92,7 +93,8 @@ namespace BetterFG.UI.Tabs
                 var le = rowGo.AddComponent<LayoutElement>();
                 le.preferredHeight = ROW_H;
                 le.flexibleWidth = 1f;
-                rowGo.AddComponent<Image>().color = i % 2 == 0 ? ROW_ALT : ROW_CLEAR;
+                rowGo.AddComponent<Image>().color = ROW_CLEAR;
+                UGUIShip.PaintRowStripe(rowGo, i % 2 == 0, ROW_ALT);
 
                 var fa = FontReplacementService.GetFontAssetByName(entry.targetFontName);
                 var previewGo = new GameObject("Preview");

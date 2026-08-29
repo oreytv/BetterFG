@@ -105,6 +105,9 @@ namespace BetterFG.Services
                         var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                         if (tex.LoadImage(bytes))
                         {
+                            // default wrapMode is Repeat — bilinear sampling at the UV edge then
+                            // bleeds a 1px sliver of the opposite edge into the RawImage
+                            tex.wrapMode = TextureWrapMode.Clamp;
                             UnityEngine.Object.DontDestroyOnLoad(tex);
                             _coverCache[repo.githubUrl] = tex;
                             _coverLoading.Remove(repo.githubUrl);

@@ -32,6 +32,11 @@ namespace BetterFG.Customization.Menu
         private readonly Dictionary<int, GameObject> _extraApplied = new Dictionary<int, GameObject>();
         private readonly Dictionary<int, bool> _extraOrigActive = new Dictionary<int, bool>();
 
+        // party holders showing OTHER people's profile plinths — kept separate from _extraApplied
+        // so swapping your own plinth (RemovePlinth/ApplyGamePlinth) can't nuke what's on their beans
+        private readonly Dictionary<int, GameObject> _profileApplied = new Dictionary<int, GameObject>();
+        private readonly Dictionary<int, bool> _profileOrigActive = new Dictionary<int, bool>();
+
         // one bundle per file — never double-load
         private readonly Dictionary<string, AssetBundle> _bundles = new Dictionary<string, AssetBundle>();
 
@@ -256,7 +261,7 @@ namespace BetterFG.Customization.Menu
                 if (bundle == null) { Plugin.Log.LogWarning($"lobby plinth bundle wouldn't load: {info.file}"); yield break; }
                 bundle = GetOrRegisterBundle(info.file, bundle);
             }
-            yield return ApplyToSlotCoroutine(slot, info, bundle).WrapToIl2Cpp();
+            yield return ApplyToSlotCoroutine(slot, info, bundle, isProfile: true).WrapToIl2Cpp();
         }
 
         public void RemovePlinth()
@@ -354,20 +359,22 @@ namespace BetterFG.Customization.Menu
             OnStatus?.Invoke($"Plinth: {info.name}");
         }
 
-        private IEnumerator ApplyToSlotCoroutine(PlinthSlot slot, SkinInfo info, AssetBundle bundle)
+        private IEnumerator ApplyToSlotCoroutine(PlinthSlot slot, SkinInfo info, AssetBundle bundle, bool isProfile = false)
         {
             if (slot?.holderGO == null || slot.meshGO == null) yield break;
 
+            var applied = isProfile ? _profileApplied : _extraApplied;
+            var origActive = isProfile ? _profileOrigActive : _extraOrigActive;
             int id = slot.holderGO.GetInstanceID();
 
-            if (_extraApplied.TryGetValue(id, out var existing) && existing != null)
+            if (applied.TryGetValue(id, out var existing) && existing != null)
             {
                 Destroy(existing);
-                _extraApplied.Remove(id);
+                applied.Remove(id);
             }
 
-            if (!_extraOrigActive.ContainsKey(id))
-                _extraOrigActive[id] = slot.meshGO.activeSelf;
+            if (!origActive.ContainsKey(id))
+                origActive[id] = slot.meshGO.activeSelf;
 
             slot.meshGO.SetActive(false);
 
@@ -375,7 +382,7 @@ namespace BetterFG.Customization.Menu
             if (prefabName == null)
             {
                 Plugin.Log.LogWarning($"plinth bundle has no prefab, slot {slot.type}");
-                slot.meshGO.SetActive(_extraOrigActive[id]);
+                slot.meshGO.SetActive(origActive[id]);
                 yield break;
             }
 
@@ -386,7 +393,7 @@ namespace BetterFG.Customization.Menu
             if (prefab == null)
             {
                 Plugin.Log.LogWarning($"plinth prefab cast failed, slot {slot.type}");
-                slot.meshGO.SetActive(_extraOrigActive[id]);
+                slot.meshGO.SetActive(origActive[id]);
                 yield break;
             }
 
@@ -397,7 +404,7 @@ namespace BetterFG.Customization.Menu
 
             SkinApplicationService.SetRenderQueue(clone, 3000);
 
-            _extraApplied[id] = clone;
+            applied[id] = clone;
             Plugin.Log.LogInfo($"plinth {info.name} -> slot {slot.type}");
         }
 
@@ -538,32 +545,34 @@ namespace BetterFG.Customization.Menu
 
             if (prefab == null) { Plugin.Log.LogWarning($"no prefab behind {gp.Label} ({gp.Guid})"); return; }
 
-            PlaceGamePrefabOnSlot(slot, prefab, gp);
+            PlaceGamePrefabOnSlot(slot, prefab, gp, isProfile: true);
             Plugin.Log.LogInfo($"{gp.Label} plinth onto a party holder");
         }
 
-        private void PlaceGamePrefabOnSlot(PlinthSlot slot, GameObject prefab, GamePlinth gp = null)
+        private void PlaceGamePrefabOnSlot(PlinthSlot slot, GameObject prefab, GamePlinth gp = null, bool isProfile = false)
         {
             if (slot?.holderGO == null || slot.meshGO == null) return;
 
             gp = gp ?? _appliedGame;
             if (gp == null) return;
 
+            var applied = isProfile ? _profileApplied : _extraApplied;
+            var origActive = isProfile ? _profileOrigActive : _extraOrigActive;
             int id = slot.holderGO.GetInstanceID();
-            if (_extraApplied.TryGetValue(id, out var existing) && existing != null)
+            if (applied.TryGetValue(id, out var existing) && existing != null)
             {
                 Destroy(existing);
-                _extraApplied.Remove(id);
+                applied.Remove(id);
             }
 
-            if (!_extraOrigActive.ContainsKey(id))
-                _extraOrigActive[id] = slot.meshGO.activeSelf;
+            if (!origActive.ContainsKey(id))
+                origActive[id] = slot.meshGO.activeSelf;
             slot.meshGO.SetActive(false);
 
             var clone = SpawnClone(prefab, slot.holderGO.transform, GameOffsetFor(gp));
             clone.transform.localScale = GameScaleFor(gp);
             SkinApplicationService.SetRenderQueue(clone, 3000);
-            _extraApplied[id] = clone;
+            applied[id] = clone;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

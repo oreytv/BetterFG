@@ -549,6 +549,7 @@ namespace BetterFG.Customization.Menu
             var tex = ScreenBackgroundService.LoadPatternTexture(value);
             if (tex != null)
             {
+                tex = ScreenBackgroundService.MatchPatternSize(tex, _originalPatternTex);
                 if (_appliedPatternTex != null) Destroy(_appliedPatternTex);
                 _appliedPatternTex = tex;
                 mat.SetTexture("_Pattern", tex);

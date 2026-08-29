@@ -4,6 +4,7 @@ using BetterFG.Core;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {
@@ -22,7 +23,7 @@ namespace BetterFG.UI
         private const int FS_BODY = 13;
         private const int FS_BTN = 12;
 
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.45f);
         private static readonly Color BTN_CLOSE = new Color(0.55f, 0.15f, 0.15f, 1f);
         private static readonly Color TRANSP = Color.clear;

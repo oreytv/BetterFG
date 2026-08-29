@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Reflection;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -56,6 +57,37 @@ namespace BetterFG.UI.Tabs
 
         // ── live clone preview (Backdrop + Circles) ────────────────────────────
         private const float SCREEN_PREVIEW_H = 100f;
+        // gap between the preview frame and the scroll frame below it
+        private const float PREVIEW_GAP = 6f;
+
+        // rounded, masked frame for a live clone preview. sized to (w, SCREEN_PREVIEW_H) at (x, y);
+        // returns the inner slot to instantiate the clone into.
+        private static Transform BuildPreviewFrame(Transform parent, float x, float y, float w)
+        {
+            var frameGo = new GameObject("PreviewFrame");
+            frameGo.transform.SetParent(parent, false);
+            UGUIShip.SetPixelRect(frameGo.AddComponent<RectTransform>(), new Rect(x, y, w, SCREEN_PREVIEW_H));
+            var (_, slot) = UGUIShip.CreateFramedImage(frameGo.transform);
+            slot.gameObject.AddComponent<RectMask2D>();
+            return slot;
+        }
+
+        // scroll view wrapped in its own slightly-inner outline frame, sitting below the preview.
+        // returns the same (scrollRect, content) pair CreateScrollView gives.
+        private (ScrollRect scrollRect, RectTransform content) BuildFramedScroll(RectTransform parent, float x, float y, float w, float h)
+        {
+            var frameGo = new GameObject("ScrollFrame");
+            frameGo.transform.SetParent(parent, false);
+            UGUIShip.SetPixelRect(frameGo.AddComponent<RectTransform>(), new Rect(x, y, w, h));
+            var outGo = new GameObject("Outline");
+            outGo.transform.SetParent(frameGo.transform, false);
+            var oRt = outGo.AddComponent<RectTransform>();
+            oRt.anchorMin = Vector2.zero; oRt.anchorMax = Vector2.one; oRt.offsetMin = oRt.offsetMax = Vector2.zero;
+            var oImg = outGo.AddComponent<Image>();
+            UGUIShip.ApplyDeluxPanelOutline(oImg);
+            oImg.raycastTarget = false;
+            return UGUIShip.CreateScrollView(frameGo.transform, new Rect(3f, 3f, w - 6f, h - 6f));
+        }
         private GameObject _scPreviewGo;
         private Image _scPreviewBackdrop;
         private Image _scPreviewCircles;
@@ -278,15 +310,13 @@ namespace BetterFG.UI.Tabs
             BuildScreenSubtabCarousel(parent, x, y, w);
             UGUIShip.CreatePanel(parent, new Rect(x, y + headerH - SH, w, 1f), new Color(1f, 1f, 1f, 0.06f));
 
-            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y + headerH, TabWidth, h - headerH));
-            // the scroll view's content is narrower than TabWidth by the scrollbar's inset on both
-            // sides (UGUIShip insets the viewport symmetrically) — rows built at the outer `w` run
-            // past content's real right edge and get clipped by the viewport mask.
-            w = TabWidth - UGUIShip.SCROLLBAR_INSET * 2f - PAD * 2f;
+            BuildScreenPreview(BuildPreviewFrame(parent, x, y + headerH, w), x, w);
 
-            BuildScreenPreview(scrollRect.transform.Find("Viewport"), x, w);
+            float scrollY = y + headerH + SCREEN_PREVIEW_H + PREVIEW_GAP;
+            var (scrollRect, content) = BuildFramedScroll(parent, x, scrollY, w, h - headerH - SCREEN_PREVIEW_H - PREVIEW_GAP);
+            w -= UGUIShip.SCROLLBAR_INSET * 2f;
 
-            float cy = SCREEN_PREVIEW_H + PAD;
+            float cy = PAD;
 
             if (_screenSubtab == 0)
             {
@@ -399,13 +429,12 @@ namespace BetterFG.UI.Tabs
         }
 
         // clones the live Backdrop+Circles container once so the preview shows the real shader/pattern,
-        // not an approximation — pinned to the viewport (not content) so it stays put while the sliders
-        // below scroll, same trick the banner preview uses.
-        private void BuildScreenPreview(Transform viewport, float x, float w)
+        // not an approximation. lives in its own framed slot above the scroll area.
+        private void BuildScreenPreview(Transform previewSlot, float x, float w)
         {
             if (_scPreviewGo != null) GameObject.Destroy(_scPreviewGo);
             _scPreviewGo = null; _scPreviewBackdrop = null; _scPreviewCircles = null; _scPreviewDefaultPattern = null;
-            if (viewport == null) return;
+            if (previewSlot == null) return;
 
             var source = ScreenPreviewSource(_screenSel, out bool ownGeometry);
             if (source == null) return; // not in the main menu right now, nothing live to clone
@@ -416,20 +445,20 @@ namespace BetterFG.UI.Tabs
             if (_screenSel != ScreenBackgroundService.Screen.FallForce && ownGeometry)
                 ScreenBackgroundService.CacheScreenDefault(_screenSel, source);
 
-            var holderGo = new GameObject("ScreenPreviewHolder");
-            holderGo.transform.SetParent(viewport, false);
-            var holderRt = holderGo.AddComponent<RectTransform>();
-            UGUIShip.SetPixelRect(holderRt, new Rect(x, 0f, w, SCREEN_PREVIEW_H));
-            holderGo.AddComponent<RectMask2D>();
-
+            var holderRt = (RectTransform)previewSlot;
             _scPreviewGo = GameObject.Instantiate(source.gameObject, holderRt, false);
             _scPreviewGo.name = "ScreenPreviewClone";
             FitCloneToPreview(_scPreviewGo, source, w, SCREEN_PREVIEW_H);
 
             foreach (var anim in _scPreviewGo.GetComponentsInChildren<Animator>(true))
                 if (anim != null) anim.enabled = false;
+            // the framed preview slot sits under a real UI Mask now (rounded corners), not just a
+            // RectMask2D — Mask makes MaskableGraphic swap in a cached stencil COPY of the material,
+            // taken once and never refreshed, so every SetTexture/color we do below in Refresh*Preview
+            // kept painting a material nobody was actually rendering. maskable=false skips that copy;
+            // the RectMask2D still clips the box, just square-cornered instead of rounded.
             foreach (var g in _scPreviewGo.GetComponentsInChildren<Graphic>(true))
-                if (g != null) g.raycastTarget = false;
+                if (g != null) { g.raycastTarget = false; if (g is MaskableGraphic mg) mg.maskable = false; }
 
             _scPreviewBackdrop = _scPreviewGo.transform.Find("Backdrop")?.GetComponent<Image>();
             _scPreviewCircles = ScreenBackgroundService.FindCirclesChild(_scPreviewGo.transform)?.GetComponent<Image>();
@@ -537,6 +566,8 @@ namespace BetterFG.UI.Tabs
                 {
                     if (_scPreviewPatternTex != null) Destroy(_scPreviewPatternTex);
                     _scPreviewPatternTex = ScreenBackgroundService.LoadPatternTexture(_scPattern);
+                    if (_scPreviewPatternTex != null && _scPreviewDefaultPattern != null)
+                        _scPreviewPatternTex = ScreenBackgroundService.MatchPatternSize(_scPreviewPatternTex, _scPreviewDefaultPattern);
                     _scPreviewPatternPath = _scPattern;
                 }
 
@@ -691,11 +722,11 @@ namespace BetterFG.UI.Tabs
 
         private void BuildFallingBody(RectTransform parent, float x, float y, float w, float h)
         {
-            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y, TabWidth, h));
-            w = TabWidth - UGUIShip.SCROLLBAR_INSET * 2f - PAD * 2f;
+            BuildFallingPreview(BuildPreviewFrame(parent, x, y, w), x, w);
 
-            BuildFallingPreview(scrollRect.transform.Find("Viewport"), x, w);
-            float cy = SCREEN_PREVIEW_H + PAD;
+            var (scrollRect, content) = BuildFramedScroll(parent, x, y + SCREEN_PREVIEW_H + PREVIEW_GAP, w, h - SCREEN_PREVIEW_H - PREVIEW_GAP);
+            w -= UGUIShip.SCROLLBAR_INSET * 2f;
+            float cy = PAD;
 
             _lbEnabledBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
                 _lbEnabled ? "Custom colours: ON" : "Custom colours: OFF", _lbEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
@@ -830,23 +861,18 @@ namespace BetterFG.UI.Tabs
             RebuildScreenBody();
         }
 
-        private void BuildFallingPreview(Transform viewport, float x, float w)
+        private void BuildFallingPreview(Transform previewSlot, float x, float w)
         {
             if (_lbPreviewGo != null) GameObject.Destroy(_lbPreviewGo);
             _lbPreviewGo = null;
             _lbPreviewSlots.Clear();
             _lbPreviewDefaults.Clear();
-            if (viewport == null) return;
+            if (previewSlot == null) return;
 
             var source = MenuCustomizationApplication.FindLobbyBgPreviewSource();
             if (source == null) return;
 
-            var holderGo = new GameObject("FallingPreviewHolder");
-            holderGo.transform.SetParent(viewport, false);
-            var holderRt = holderGo.AddComponent<RectTransform>();
-            UGUIShip.SetPixelRect(holderRt, new Rect(x, 0f, w, SCREEN_PREVIEW_H));
-            holderGo.AddComponent<RectMask2D>();
-
+            var holderRt = (RectTransform)previewSlot;
             _lbPreviewGo = GameObject.Instantiate(source.gameObject, holderRt, false);
             _lbPreviewGo.name = "FallingPreviewClone";
             _lbPreviewGo.SetActive(true);
@@ -860,8 +886,10 @@ namespace BetterFG.UI.Tabs
 
             FitCloneToPreview(_lbPreviewGo, source, w, SCREEN_PREVIEW_H);
 
+            // see BuildScreenPreview: skip the Mask's stencil-material caching so live colour/sprite
+            // updates below actually show up.
             foreach (var g in _lbPreviewGo.GetComponentsInChildren<Graphic>(true))
-                if (g != null) g.raycastTarget = false;
+                if (g != null) { g.raycastTarget = false; if (g is MaskableGraphic mg) mg.maskable = false; }
 
             var app = MenuCustomizationApplication.Instance;
             var srcImages = source.GetComponentsInChildren<Image>(true);
@@ -913,12 +941,11 @@ namespace BetterFG.UI.Tabs
 
         private void BuildCreativeBody(RectTransform parent, float x, float y, float w, float h)
         {
-            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, y, TabWidth, h));
-            w = TabWidth - UGUIShip.SCROLLBAR_INSET * 2f - PAD * 2f;
+            BuildCreativePreview(BuildPreviewFrame(parent, x, y, w), x, w);
 
-            BuildCreativePreview(scrollRect.transform.Find("Viewport"), x, w);
-
-            float cy = SCREEN_PREVIEW_H + PAD;
+            var (scrollRect, content) = BuildFramedScroll(parent, x, y + SCREEN_PREVIEW_H + PREVIEW_GAP, w, h - SCREEN_PREVIEW_H - PREVIEW_GAP);
+            w -= UGUIShip.SCROLLBAR_INSET * 2f;
+            float cy = PAD;
 
             _crEnabledBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
                 _crEnabled ? "Custom colours: ON" : "Custom colours: OFF", _crEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
@@ -968,24 +995,19 @@ namespace BetterFG.UI.Tabs
         }
 
         // clones the live level-editor creative canvas so the preview shows the real paper-craft art,
-        // not swatches — same pinned-to-viewport trick as the Screen/Falling previews.
-        private void BuildCreativePreview(Transform viewport, float x, float w)
+        // not swatches. lives in its own framed slot above the scroll area.
+        private void BuildCreativePreview(Transform previewSlot, float x, float w)
         {
             if (_crPreviewGo != null) GameObject.Destroy(_crPreviewGo);
             _crPreviewGo = null;
             _crPreviewGraphics.Clear();
             _crPreviewDefaults.Clear();
-            if (viewport == null) return;
+            if (previewSlot == null) return;
 
             var source = MenuCustomizationApplication.FindCreativePreviewSource();
             if (source == null) return; // level editor view has never been up this session
 
-            var holderGo = new GameObject("CreativePreviewHolder");
-            holderGo.transform.SetParent(viewport, false);
-            var holderRt = holderGo.AddComponent<RectTransform>();
-            UGUIShip.SetPixelRect(holderRt, new Rect(x, 0f, w, SCREEN_PREVIEW_H));
-            holderGo.AddComponent<RectMask2D>();
-
+            var holderRt = (RectTransform)previewSlot;
             _crPreviewGo = GameObject.Instantiate(source.gameObject, holderRt, false);
             _crPreviewGo.name = "CreativePreviewClone";
 
@@ -1002,8 +1024,10 @@ namespace BetterFG.UI.Tabs
 
             FitCloneToPreview(_crPreviewGo, source, w, SCREEN_PREVIEW_H);
 
+            // see BuildScreenPreview: skip the Mask's stencil-material caching so live colour/sprite
+            // updates below actually show up.
             foreach (var g in _crPreviewGo.GetComponentsInChildren<Graphic>(true))
-                if (g != null) g.raycastTarget = false;
+                if (g != null) { g.raycastTarget = false; if (g is MaskableGraphic mg) mg.maskable = false; }
 
             // pair up clone graphics with the SOURCE's true (untainted) colour, slot by slot — the
             // clone's own graphics may already be sitting mid-custom-colour if the source canvas was

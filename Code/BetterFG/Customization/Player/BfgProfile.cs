@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using BetterFG.Customization.Pets;
 using BetterFG.Nametag;
 using BetterFG.Network;
 using BetterFG.Services;
@@ -41,7 +42,7 @@ namespace BetterFG.Customization.Player
         public const string CosmeticFaceplate = "allcosmetics.faceplate";
 
         public static readonly string[] Prefixes =
-            { "skin.", "skintex.", "allcosmetics.", "nametag.", "crownrank.", "iteml", "itemr" };
+            { "skin.", "skintex.", "allcosmetics.", "nametag.", "crownrank.", "iteml", "itemr", "feature.customizefallguys" };
 
         public string name;
         public string username;
@@ -57,6 +58,7 @@ namespace BetterFG.Customization.Player
 
         public Dictionary<string, string> settings = new Dictionary<string, string>(StringComparer.Ordinal);
         public List<RemoteSkinEntry> skins = new List<RemoteSkinEntry>();
+        public List<PetData> pets = new List<PetData>();
         public List<TexEmbed> textures = new List<TexEmbed>();
         public string iconB64;
         public string backingB64;
@@ -160,6 +162,8 @@ namespace BetterFG.Customization.Player
 
             p.skins = ReadLoadout(p.Get);
             p.nametag = p.BuildNametag();
+            if (PetService.Instance != null)
+                p.pets.AddRange(PetService.Instance.EquippedPets());
             return p;
         }
 
@@ -305,6 +309,26 @@ namespace BetterFG.Customization.Player
             }
             sb.Append(skins.Count == 0 ? "],\n" : "\n  ],\n");
 
+            sb.Append("  \"pets\": [");
+            for (int i = 0; i < pets.Count; i++)
+            {
+                var pd = pets[i];
+                sb.Append(i == 0 ? "\n" : ",\n");
+                sb.Append("    { \"name\": \"").Append(JsonUtil.Escape(pd.name))
+                  .Append("\", \"top\": \"").Append(JsonUtil.Escape(pd.costumeTop))
+                  .Append("\", \"bottom\": \"").Append(JsonUtil.Escape(pd.costumeBottom))
+                  .Append("\", \"pattern\": \"").Append(JsonUtil.Escape(pd.pattern))
+                  .Append("\", \"faceplate\": \"").Append(JsonUtil.Escape(pd.faceplate))
+                  .Append("\", \"colour\": \"").Append(JsonUtil.Escape(pd.colour))
+                  .Append("\", \"scale\": ").Append(pd.scale.ToString("R", CultureInfo.InvariantCulture));
+                if (pd.costume != null && !string.IsNullOrEmpty(pd.costume.file))
+                    sb.Append(", \"costumeFile\": \"").Append(JsonUtil.Escape(pd.costume.file))
+                      .Append("\", \"costumeRepo\": \"").Append(JsonUtil.Escape(pd.costume.sourceRepo))
+                      .Append("\", \"costumeFolder\": \"").Append(JsonUtil.Escape(pd.costume.repoFolder)).Append('"');
+                sb.Append(" }");
+            }
+            sb.Append(pets.Count == 0 ? "],\n" : "\n  ],\n");
+
             sb.Append("  \"textures\": [");
             for (int i = 0; i < textures.Count; i++)
             {
@@ -388,6 +412,31 @@ namespace BetterFG.Customization.Player
                     bundleB64 = JsonUtil.GetValue(s, "bundleB64"),
                     hand = JsonUtil.GetInt(s, "hand"),
                 });
+
+            foreach (var s in JsonUtil.GetArray(json, "pets"))
+            {
+                var pd = new PetData
+                {
+                    name = JsonUtil.GetValue(s, "name"),
+                    costumeTop = JsonUtil.GetValue(s, "top"),
+                    costumeBottom = JsonUtil.GetValue(s, "bottom"),
+                    pattern = JsonUtil.GetValue(s, "pattern"),
+                    faceplate = JsonUtil.GetValue(s, "faceplate"),
+                    colour = JsonUtil.GetValue(s, "colour"),
+                    scale = JsonUtil.GetFloat(s, "scale", 0.6f),
+                };
+                string costumeFile = JsonUtil.GetValue(s, "costumeFile");
+                if (!string.IsNullOrEmpty(costumeFile))
+                    pd.costume = new SkinInfo
+                    {
+                        name = costumeFile,
+                        file = costumeFile,
+                        type = "costume",
+                        sourceRepo = JsonUtil.GetValue(s, "costumeRepo"),
+                        repoFolder = JsonUtil.GetValue(s, "costumeFolder"),
+                    };
+                p.pets.Add(pd);
+            }
 
             foreach (var t in JsonUtil.GetArray(json, "textures"))
                 p.textures.Add(new TexEmbed { fileName = JsonUtil.GetValue(t, "fileName"), b64 = JsonUtil.GetValue(t, "b64") });

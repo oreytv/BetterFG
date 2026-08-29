@@ -7,6 +7,7 @@ using BetterFG.UI.Windows;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.SideWheel
 {

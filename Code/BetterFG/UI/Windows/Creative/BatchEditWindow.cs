@@ -12,6 +12,7 @@ using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 using Groups = BetterFG.Features.CreativeGroups.CreativeGroups;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows.Creative
 {
@@ -624,7 +625,7 @@ namespace BetterFG.UI.Windows.Creative
             y += 34f;
 
             MakeLabel(root, new Rect(PAD, y, w, 48f),
-                "each object goes through the editor's own link check, so anything past the limit or that this controller can't drive is skipped",
+                "each object goes through the editor's own link check. anything this controller can't drive is skipped; once it hits its slot limit a copy of it is dropped in place to take the rest",
                 FS_SM, HINT_COL, TextAnchor.UpperLeft);
             y += 52f;
         }

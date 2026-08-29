@@ -14,6 +14,7 @@ using MPG.Utility;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -79,7 +80,7 @@ namespace BetterFG.UI.Tabs
         private List<EmoteEntry> _emoteEntries = new List<EmoteEntry>();
 
         // ── Colors ────────────────────────────────────────────────────────────
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
         private static readonly Color SEL = new Color(0.25f, 0.5f, 0.25f, 1f);
         private static readonly Color DARK = new Color(0.18f, 0.18f, 0.18f, 1f);
@@ -638,7 +639,7 @@ namespace BetterFG.UI.Tabs
                 PhraseSettingsService.Save(_entries);
             }));
 
-            // line 2: slot stepper (−/value/+), then Edit + minus on the far right
+            // line 2: slot stepper (-/value/+), then Edit + minus on the far right
             float line2Y = line1Y + RBTN_H + gap;
             float slotLblW = LH * 3.5f;
             float stepW = BTN_H;
@@ -668,7 +669,7 @@ namespace BetterFG.UI.Tabs
                 }));
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(leftW - minusW + PAD, line2Y, minusW, RBTN_H),
-                "−", BTN_RM, WHITE, FS,
+                "-", BTN_RM, WHITE, FS,
                 new Action(() => OnRemoveEntry(captured)));
 
             // edit mode: 3 sound rows
@@ -1024,7 +1025,7 @@ namespace BetterFG.UI.Tabs
                 EmoticonSettingsService.Save(_emoticonEntries);
             }));
 
-            // line 2: slot stepper (−/value/+), then Edit + minus on the far right
+            // line 2: slot stepper (-/value/+), then Edit + minus on the far right
             float line2Y = line1Y + RBTN_H + gap;
             float slotLblW = LH * 3.5f;
             float stepW = BTN_H;
@@ -1054,7 +1055,7 @@ namespace BetterFG.UI.Tabs
                 }));
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(leftW - minusW + PAD, line2Y, minusW, RBTN_H),
-                "−", BTN_RM, WHITE, FS,
+                "-", BTN_RM, WHITE, FS,
                 new Action(() => OnRemoveEmoticonEntry(captured)));
 
             // collision warning — emote injection paints over the emoticon's slot icon and clip
@@ -1432,7 +1433,7 @@ namespace BetterFG.UI.Tabs
                     RefreshEmoteList();
                 }));
 
-            // ── Slot line: label + −/value/+ stepper, then minus on the far right ──
+            // ── Slot line: label + -/value/+ stepper, then minus on the far right ──
             float line2Y = line1Y + RBTN_H + gap;
             float slotLblW = LH * 3.5f;
             float stepW = BTN_H;
@@ -1450,7 +1451,7 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(leftW - minusW + PAD, line2Y, minusW, RBTN_H),
-                "−", BTN_RM, WHITE, FS,
+                "-", BTN_RM, WHITE, FS,
                 new Action(() => OnRemoveEmoteEntry(captured)));
 
             // collision warning — when an emoticon is also on this slot, the emote wins (we paint

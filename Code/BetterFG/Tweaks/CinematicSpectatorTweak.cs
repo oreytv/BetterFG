@@ -112,6 +112,12 @@ namespace BetterFG.Tweaks
             if (newState == null || newState.TryCast<StateGameInProgress>() == null) Shutdown();
         }
 
+        public override void OnMainMenuEntered()
+        {
+            _sessionOver = true;
+            Shutdown();
+        }
+
         // the manager is taken once from SwitchToSpectatorMode, so a null one here means we simply
         // aren't spectating and the frame costs a field read. teardown only runs on the edge.
         bool _torndown = true;

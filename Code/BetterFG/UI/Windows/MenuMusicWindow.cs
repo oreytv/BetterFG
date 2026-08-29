@@ -1,10 +1,12 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
+using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
@@ -18,6 +20,7 @@ namespace BetterFG.UI.Windows
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private RectTransform _listRt;
+        private readonly ProgressBarTracker _bars = new ProgressBarTracker();
 
         protected override void BuildContent(RectTransform contentRoot)
         {
@@ -55,6 +58,7 @@ namespace BetterFG.UI.Windows
             if (_listRt == null) return;
             for (int i = _listRt.childCount - 1; i >= 0; i--)
                 Destroy(_listRt.GetChild(i).gameObject);
+            _bars.Clear();
             MenuMusicWindowBuilder.BuildRows(_listRt, this);
         }
 
@@ -63,7 +67,18 @@ namespace BetterFG.UI.Windows
         public void StartFetch() => StartCoroutine(MenuMusicCatalog.Fetch(Rebuild).WrapToIl2Cpp());
 
         public void StartDownload(MenuMusicCatalog.Track t, Action<bool> onDone)
-            => StartCoroutine(MenuMusicCatalog.Download(t, onDone).WrapToIl2Cpp());
+        {
+            StartCoroutine(MenuMusicCatalog.Download(t, onDone).WrapToIl2Cpp());
+            Rebuild();
+        }
+
+        internal void RegisterBar(string trackName, RectTransform fillRt) => _bars.Add(trackName, fillRt);
+
+        protected override void ManagedUpdate()
+        {
+            base.ManagedUpdate();
+            _bars.Tick(MenuMusicCatalog.Downloading);
+        }
     }
 
     internal static class MenuMusicWindowBuilder
@@ -126,7 +141,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 200f, ROW_H),
@@ -167,7 +182,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             string countTxt = MenuMusicCatalog.Loaded
                 ? $"{MenuMusicCatalog.Tracks.Count} available"
@@ -201,7 +216,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 160f, ROW_H),
@@ -262,15 +277,16 @@ namespace BetterFG.UI.Windows
             }
             else
             {
+                bool busy = MenuMusicCatalog.Downloading.ContainsKey(track.name);
                 var dlBtn = UGUIShip.CreateButton(dlGo.transform,
                     new Rect(0f, 0f, BTN_W, TOGGLE_H),
-                    "Get", DL_COL, Color.white, 9);
-                var dlLbl = dlBtn.GetComponentInChildren<Text>();
+                    busy ? "..." : "Get", DL_COL, Color.white, 9);
+                dlBtn.interactable = !busy;
                 dlBtn.onClick.AddListener(new Action(() =>
-                {
-                    if (dlLbl != null) dlLbl.text = "...";
-                    window.StartDownload(track, ok => window.RefreshList());
-                }));
+                    window.StartDownload(track, ok => window.RefreshList())));
+
+                if (busy)
+                    window.RegisterBar(track.name, UGUIShip.CreateProgressBar(rowGo.transform, DL_COL));
             }
         }
 

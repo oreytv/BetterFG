@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {

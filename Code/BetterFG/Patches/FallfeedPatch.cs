@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using BetterFG.Core;
 using BetterFG.Features.MorePlatformIcon;
-using BetterFG.Features.TimePlacement;
 using BetterFG.Nametag;
 using BetterFG.Network;
 using BetterFG.Tweaks;
@@ -63,11 +62,40 @@ namespace BetterFG.Patches
         // material the game gave it, so a profile-less player never gets scrubbed to the shadow mat.
         private static readonly HashSet<IntPtr> _styledRows = new HashSet<IntPtr>();
 
+        // each row's own font + material as the game first handed it to us. reverting to a single
+        // global asap-bold-shadow material stomped CJK / other-language / custom-font rows onto the
+        // wrong atlas — that's the garbled bold-shadow text. restore the row's real original instead.
+        private static readonly Dictionary<IntPtr, ValueTuple<TMPro.TMP_FontAsset, Material>> _rowOrigin
+            = new Dictionary<IntPtr, ValueTuple<TMPro.TMP_FontAsset, Material>>();
+
+        private static void RestoreRowFont(TextMeshProUGUI t)
+        {
+            t.enableVertexGradient = false;
+            if (_rowOrigin.TryGetValue(t.m_CachedPtr, out var o))
+            {
+                if (o.Item1 != null) t.font = o.Item1;
+                if (o.Item2 != null) t.fontSharedMaterial = o.Item2;
+            }
+            else if (AssetManager.DefaultNameMaterial != null)
+            {
+                t.fontSharedMaterial = AssetManager.DefaultNameMaterial;
+            }
+            t.color = Color.white;
+            // rows are pooled - whoever occupied this TMP before may have had an icon attached as a
+            // sibling under it (AttachUIIcon), and that icon does NOT get cleared just because the
+            // font/material got reset above. left alone it rides along onto whoever reuses this row
+            // next, showing the WRONG player with our icon.
+            NametagIconApplicator.RemoveInlineUIIcon(t.transform);
+        }
+
         internal static void RestyleSlot(TextMeshProUGUI iconText, TextMeshProUGUI nameText, string localKey)
         {
             if (nameText == null) return;
             string displayName = nameText.text ?? "";
             if (string.IsNullOrEmpty(displayName)) return;
+
+            if (!_rowOrigin.ContainsKey(nameText.m_CachedPtr))
+                _rowOrigin[nameText.m_CachedPtr] = new ValueTuple<TMPro.TMP_FontAsset, Material>(nameText.font, nameText.fontSharedMaterial);
 
             bool isLocal = IsLocalDisplayName(displayName);
             string fullKey = isLocal ? localKey : NametagIconApplicator.ResolveKeyByDisplayName(displayName);
@@ -89,20 +117,14 @@ namespace BetterFG.Patches
                 // only undo our own styling if this exact row carried it — an untouched row is left
                 // exactly as the game rendered it, material included.
                 if (_styledRows.Remove(nameText.m_CachedPtr))
-                {
-                    nameText.enableVertexGradient = false;
-                    if (AssetManager.DefaultNameMaterial != null) nameText.fontSharedMaterial = AssetManager.DefaultNameMaterial;
-                    nameText.color = Color.white;
-                }
+                    RestoreRowFont(nameText);
                 return;
             }
 
             // rows are pooled — the game refreshes .text every show but never resets colour/gradient/
             // material, so whatever a previous occupant's row got styled to (gold gradient, custom
             // colour) sticks around for whoever reuses that TMP next: right name, someone else's look.
-            nameText.enableVertexGradient = false;
-            if (AssetManager.DefaultNameMaterial != null) nameText.fontSharedMaterial = AssetManager.DefaultNameMaterial;
-            nameText.color = Color.white;
+            RestoreRowFont(nameText);
             _styledRows.Add(nameText.m_CachedPtr);
 
             string fallback = displayName;
@@ -136,10 +158,13 @@ namespace BetterFG.Patches
                 FallFeedNameCore.RestyleSlot(vm._platformIconText2, vm._playerNameText2, localKey);
 
                 string primaryNameBefore = vm._playerNameText != null ? (vm._playerNameText.text ?? "") : "";
-                string primaryKey = FallFeedNameCore.IsLocalDisplayName(primaryNameBefore)
-                    ? localKey
-                    : NametagIconApplicator.ResolveKeyByDisplayName(primaryNameBefore);
-                FallFeedQualTimeTweak.Instance?.Apply(vm._messageBodyText, primaryKey);
+                bool primaryIsLocal = FallFeedNameCore.IsLocalDisplayName(primaryNameBefore);
+                string primaryKey = primaryIsLocal ? localKey : NametagIconApplicator.ResolveKeyByDisplayName(primaryNameBefore);
+                // _qualTimes is keyed by the bare playerKey (PlayerKeyById), not GlobalGameStateClient's
+                // "<platform>_<service>_<bareKey>" format - only matters for the local player, everyone
+                // else already resolves through that same bare-key space via ResolveKeyByDisplayName.
+                string qualKey = primaryIsLocal ? BetterFG.Utilities.PlayerInformation.GetLocalBarePlayerKey() : primaryKey;
+                FallFeedQualTimeTweak.Instance?.Apply(vm._messageBodyText, qualKey);
 
                 // our text swap can change rendered width (custom name, colour tags, the qual-time
                 // stamp) — the background bubble was already sized off the vanilla text, so it needs

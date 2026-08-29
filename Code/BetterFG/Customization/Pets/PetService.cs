@@ -5,8 +5,6 @@ using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
 using FallGuysLib.Round;
 using FG.Common;
-using FGClient;
-using MPG.Utility;
 using UnityEngine;
 
 namespace BetterFG.Customization.Pets
@@ -55,17 +53,22 @@ namespace BetterFG.Customization.Pets
             get { foreach (var kv in _livePets) if (kv.Value != null) yield return kv.Value; }
         }
 
-        // every live pet's fgcc - PetMotorPatches pumps each one
-        public IEnumerable<FallGuysCharacterController> LiveFgccs
+        // every live pet's fgcc - PetMotorPatches pumps each one, 4x a frame. cached instead of
+        // GetComponent'd fresh every call (that was 4 IL2Cpp GetComponent calls per pet per frame,
+        // just to re-fetch a reference that never changes across a pet's lifetime) - kept in sync
+        // in SpawnOne/DespawnOne/DespawnAll below.
+        readonly List<FallGuysCharacterController> _liveFgccCache = new List<FallGuysCharacterController>();
+        // DespawnOne only untracks a pet it destroyed itself - if the game's own network
+        // reconciliation kills the bean first (the Update() revive-timer comment below), the fgcc
+        // stays in this cache pointing at a destroyed native object, and PetMotorPatches pumping it
+        // every frame is what threw the CalculateFloorRaycastOrigin/UpdateGravity NREs. prune here so
+        // every caller gets a clean list regardless of how the bean died.
+        public List<FallGuysCharacterController> LiveFgccs
         {
             get
             {
-                foreach (var kv in _livePets)
-                {
-                    if (kv.Value == null) continue;
-                    var f = kv.Value.GetComponent<FallGuysCharacterController>();
-                    if (f != null) yield return f;
-                }
+                _liveFgccCache.RemoveAll(f => f == null);
+                return _liveFgccCache;
             }
         }
 
@@ -227,14 +230,27 @@ namespace BetterFG.Customization.Pets
                 }
                 _livePets[data.id] = bean;
                 var f = bean.GetComponent<FallGuysCharacterController>();
-                if (f != null) _petFgccPtrs.Add(f.m_CachedPtr);
+                if (f != null) { _petFgccPtrs.Add(f.m_CachedPtr); _liveFgccCache.Add(f); }
                 Plugin.Log.LogInfo($"pet '{data.name}' spawned, following you around now ({_livePets.Count} out)");
             }).WrapToIl2Cpp());
         }
 
+        // RemotePetService rides the same pending-name window while a remote pet's spawn tag event
+        // fires ahead of its build coroutine handing back the fgcc - same race MatchesPendingPet
+        // covers for your own pets.
+        internal void AddPendingName(string name) => _pendingNames.Add(name);
+        internal void RemovePendingName(string name) => _pendingNames.Remove(name);
+
         internal void RegisterLiveFgcc(FallGuysCharacterController fgcc)
         {
             if (fgcc != null && fgcc.m_CachedPtr != IntPtr.Zero) _petFgccPtrs.Add(fgcc.m_CachedPtr);
+        }
+
+        // must be called AFTER the caller's own network unspawn, not before - PetUnspawnGuardPatch
+        // only skips the game's broken unspawn handler for a pet while its pointer is still in this set
+        internal void UnregisterLiveFgcc(FallGuysCharacterController fgcc)
+        {
+            if (fgcc != null && fgcc.m_CachedPtr != IntPtr.Zero) _petFgccPtrs.Remove(fgcc.m_CachedPtr);
         }
 
         public static bool IsPetFgcc(FallGuysCharacterController fgcc)
@@ -267,37 +283,19 @@ namespace BetterFG.Customization.Pets
                 if (old != null) old.enabled = false;
 
                 var f = live.GetComponent<FallGuysCharacterController>();
-                if (f != null) _petFgccPtrs.Remove(f.m_CachedPtr);
 
                 // this bean went through the real networked spawn path and is registered in the
                 // client's net object table - plain Destroy() leaves that entry dangling and the next
                 // unspawn message NREs walking the table (that softlocked the game mid-round). tear it
                 // down through the game's OWN unspawn path; policy Destroy kills the GameObject too.
-                if (!TryNetworkUnspawn(live)) Destroy(live);
+                // UnspawnNetObject synchronously fires _handleClientUnspawnNetObject, which
+                // PetUnspawnGuardPatch skips only while this fgcc's pointer is still in _petFgccPtrs -
+                // so the pointer must come out AFTER the unspawn call, not before.
+                if (!BetterFG.Utilities.BeanNetworkUtil.TryNetworkUnspawn(live)) Destroy(live);
+
+                if (f != null) { _petFgccPtrs.Remove(f.m_CachedPtr); _liveFgccCache.Remove(f); }
             }
             _livePets.Remove(id);
-        }
-
-        static bool TryNetworkUnspawn(GameObject bean)
-        {
-            var netObj = BetterFG.Utilities.BeanNetworkUtil.TryGetMpgNetObject(bean);
-            if (netObj == null || !netObj.NetID.IsValid()) return false;
-
-            ClientGameManager cgm = null;
-            SingletonBehaviour<GlobalGameStateClient>.Instance?.GameStateView?.GetLiveClientGameManager(out cgm);
-            var mgr = cgm?._netObjectManager;
-            if (mgr == null) return false;
-
-            try
-            {
-                mgr.UnspawnNetObject(netObj.NetID, MPGNetObjectManager.UnspawnGameObjectPolicy.Destroy);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogWarning($"pet unspawn went sideways, falling back to a plain destroy: {ex.Message}");
-                return false;
-            }
         }
     }
 }

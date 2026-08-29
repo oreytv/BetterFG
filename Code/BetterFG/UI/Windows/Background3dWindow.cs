@@ -5,8 +5,10 @@ using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
 using BetterFG.Tweaks;
+using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
@@ -32,8 +34,7 @@ namespace BetterFG.UI.Windows
         private static readonly Color DEL_COL = new Color(0.45f, 0.22f, 0.22f, 1f);
 
         private RectTransform _listRt;
-        private readonly List<string> _barBundles = new List<string>();
-        private readonly List<RectTransform> _barFills = new List<RectTransform>();
+        private readonly ProgressBarTracker _bars = new ProgressBarTracker();
 
         protected override void BuildContent(RectTransform contentRoot)
         {
@@ -79,8 +80,7 @@ namespace BetterFG.UI.Windows
 
         private void BuildRows()
         {
-            _barBundles.Clear();
-            _barFills.Clear();
+            _bars.Clear();
 
             BuildHeader("BACKDROPS");
 
@@ -117,7 +117,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             // names come off the release, so they can be any length ("Junkyard (credits to
             // BurntApple)"). stretch to whatever's left of the button and let it shrink to fit.
@@ -167,29 +167,8 @@ namespace BetterFG.UI.Windows
 
             if (!busy) return;
 
-            // hairline track along the bottom of the row, fill runs left to right. it only exists
-            // while the bundle's in flight — the rebuild on completion takes it away
-            var trackGo = new GameObject("Bar");
-            trackGo.transform.SetParent(rowGo.transform, false);
-            var trackRt = trackGo.AddComponent<RectTransform>();
-            trackRt.anchorMin = new Vector2(0f, 0f);
-            trackRt.anchorMax = new Vector2(1f, 0f);
-            trackRt.pivot = new Vector2(0.5f, 0f);
-            trackRt.offsetMin = Vector2.zero;
-            trackRt.offsetMax = new Vector2(0f, 2f);
-            trackGo.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.08f);
-
-            var fillGo = new GameObject("Fill");
-            fillGo.transform.SetParent(trackGo.transform, false);
-            var fillRt = fillGo.AddComponent<RectTransform>();
-            fillRt.anchorMin = Vector2.zero;
-            fillRt.anchorMax = new Vector2(0f, 1f);
-            fillRt.pivot = new Vector2(0f, 0.5f);
-            fillRt.offsetMin = fillRt.offsetMax = Vector2.zero;
-            fillGo.AddComponent<Image>().color = DL_COL;
-
-            _barBundles.Add(bundle);
-            _barFills.Add(fillRt);
+            // only exists while the bundle's in flight — the rebuild on completion takes it away
+            _bars.Add(bundle, UGUIShip.CreateProgressBar(rowGo.transform, DL_COL));
         }
 
         private IEnumerator Grab(string bundle)
@@ -211,13 +190,7 @@ namespace BetterFG.UI.Windows
                 Rebuild();
             }
 
-            for (int i = 0; i < _barBundles.Count; i++)
-            {
-                var fill = _barFills[i];
-                if (fill == null) continue;
-                Background3dTweak.Downloading.TryGetValue(_barBundles[i], out float p);
-                fill.anchorMax = new Vector2(Mathf.Clamp01(p), 1f);
-            }
+            _bars.Tick(Background3dTweak.Downloading);
         }
     }
 }

@@ -22,7 +22,7 @@ namespace BetterFG.Customization.Pets
         // time the preview rebuilds, and each one re-registers as PetService.LiveFgcc - stomping the
         // real follow pet, which is what made its walk anim/sounds die and threw the
         // CalculateFloorRaycastOrigin NRE). Always clone the resident bot instead.
-        public static IEnumerator Build(PetData data, Action<GameObject> onBean, bool forPreview = false)
+        public static IEnumerator Build(PetData data, Action<GameObject> onBean, bool forPreview = false, GameObject ownerOverride = null)
         {
             FallGuysCharacterController fgcc = null;
             bool usedFallback = true;
@@ -69,7 +69,7 @@ namespace BetterFG.Customization.Pets
             // localPlayer.transform.position) - offset to PetFollowComponent's own resting spot
             // rather than dead-center on the owner, so its collider never starts out overlapping
             // yours (that overlap is what was shoving you on spawn/respawn before this).
-            var owner = BeanMonitorService.LocalPlayerBean;
+            var owner = ownerOverride != null ? ownerOverride : BeanMonitorService.LocalPlayerBean;
             if (owner != null)
             {
                 var ownerTf = owner.transform;

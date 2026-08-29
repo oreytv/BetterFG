@@ -3,6 +3,7 @@ using BetterFG.Services;
 using BetterFG.Customization.Player;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {

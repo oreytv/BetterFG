@@ -4,6 +4,7 @@ using BetterFG.UI;
 using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -14,10 +15,11 @@ namespace BetterFG.UI.Tabs
         public override string TabTitle => "Features";
         protected override string BgResource => "BetterFG.assets.ui.tab.features.png";
 
-        static readonly Color WHITE = Color.white;
+        static readonly Color WHITE = UGUIShip.WHITE;
         static readonly Color ROW_BG = new Color(0f, 0f, 0f, 0.55f);
         static readonly Color HEADER_BG = new Color(0f, 0f, 0f, 0.82f);
-        static readonly Color ON = new Color(0.25f, 0.5f, 0.25f, 1f);
+        // delux buttons render normalColor at 0.4x — pick a color that still reads as green after that
+        static readonly Color ON = new Color(0.7f, 1.4f, 0.7f, 1f);
         static readonly Color OFF = new Color(0f, 0f, 0f, 1f);
 
 

@@ -129,6 +129,68 @@ namespace BetterFG.Features.CustomizeFallGuys
             // bean happened to get tracked first.
             public Vector3 restPosL, restPosR, restScaleL, restScaleR;
             public Quaternion restRotL, restRotR;
+
+            // set when this bean belongs to a matched profile owner — their own eye settings
+            // override the viewer's globals for this bean specifically, [[see ApplyProfileOverride]]
+            public bool hasOverride;
+            public bool ovBlink, ovLook, ovSquint;
+            public float ovDist, ovHeight, ovRot, ovScale, ovYscale;
+        }
+
+        // profile-owner eye settings for a remote bean, keyed by that bean's instance id — kept
+        // separate from the viewer's own globals so a profile owner's look survives regardless of
+        // whether the viewer even has this feature turned on
+        struct EyeOverride
+        {
+            public GameObject bean;
+            public bool blink, look, squint;
+            public float dist, height, rot, scale, yscale;
+            public string eyeMat;
+        }
+        static readonly Dictionary<int, EyeOverride> _overrides = new Dictionary<int, EyeOverride>();
+        internal static bool HasOverrides => _overrides.Count > 0;
+
+        public static void ApplyProfileOverride(GameObject bean, BetterFG.Customization.Player.BfgProfile profile)
+        {
+            if (bean == null || profile == null) return;
+            int id = bean.GetInstanceID();
+
+            if (!profile.GetBool("feature.customizefallguys", false)) { _overrides.Remove(id); return; }
+
+            _overrides[id] = new EyeOverride
+            {
+                bean = bean,
+                blink = profile.GetBool("feature.customizefallguys.blink", true),
+                look = profile.GetBool("feature.customizefallguys.look", true),
+                squint = profile.GetBool("feature.customizefallguys.squint", false),
+                dist = profile.GetFloat("feature.customizefallguys.eyedist", 0f),
+                height = profile.GetFloat("feature.customizefallguys.eyeheight", 0f),
+                rot = profile.GetFloat("feature.customizefallguys.eyerot", 0f),
+                scale = profile.GetFloat("feature.customizefallguys.eyescale", 1f),
+                yscale = profile.GetFloat("feature.customizefallguys.eyeyscale", 1f),
+                eyeMat = profile.Get("feature.customizefallguys.eyemat", "none"),
+            };
+            Apply(bean, isLocalPlayer: false);
+        }
+
+        public static void ClearProfileOverride(GameObject bean)
+        {
+            if (bean != null) _overrides.Remove(bean.GetInstanceID());
+        }
+
+        static void ReapplyOverrides()
+        {
+            foreach (var kv in _overrides)
+                if (kv.Value.bean != null) Apply(kv.Value.bean, isLocalPlayer: false);
+        }
+
+        static bool Gate(GameObject bean, bool isLocalPlayer)
+        {
+            if (bean == null) return false;
+            if (_overrides.ContainsKey(bean.GetInstanceID())) return true;
+            if (!_work) return false;
+            if (_localOnly && !isLocalPlayer) return false;
+            return true;
         }
 
         static Eyes[] _eyes = new Eyes[64];
@@ -187,6 +249,9 @@ namespace BetterFG.Features.CustomizeFallGuys
 
             // the clone isn't in the scene sweep below (that's the point of it), so re-queue it by hand
             Apply(EyePreview.Clone);
+            // RestoreAll above wiped every tracked bean, profile-owned ones included — get them back
+            // regardless of the viewer's own toggle/localOnly, they don't answer to those
+            ReapplyOverrides();
             if (!_work) return;
 
             if (_localOnly)
@@ -212,8 +277,7 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         public static void Apply(GameObject bean, bool isLocalPlayer = true)
         {
-            if (bean == null || !_work) return;
-            if (_localOnly && !isLocalPlayer) return;
+            if (!Gate(bean, isLocalPlayer)) return;
             for (int i = 0; i < _pending.Count; i++)
                 if (_pending[i] == bean) return;
             _pending.Add(bean);
@@ -221,8 +285,7 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         public static void ApplyLater(GameObject bean, float delay, bool isLocalPlayer = true)
         {
-            if (bean == null || !_work) return;
-            if (_localOnly && !isLocalPlayer) return;
+            if (!Gate(bean, isLocalPlayer)) return;
             var driver = FallGuyEyeDriver.Instance;
             if (driver == null) { Apply(bean, isLocalPlayer); return; }
             driver.StartCoroutine(ApplyAfter(bean, delay, isLocalPlayer).WrapToIl2Cpp());
@@ -236,7 +299,7 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         internal static void OnInvisibilityVisuals(Levels.Invisibeans.InvisibilityVisualsController controller, bool hidden)
         {
-            if (!_work) return;
+            if (!_work && !HasOverrides) return;
             for (int i = 0; i < _count; i++)
             {
                 var invis = _eyes[i].invis;
@@ -258,23 +321,26 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         public static void ReassertOn(GameObject bean)
         {
-            if (!_work || _eyeMat == "none" || bean == null) return;
+            if (bean == null) return;
             for (int i = 0; i < _count; i++)
             {
                 if (_eyes[i].root != bean) continue;
-                EyeGeometry.Reassert(_eyes[i].eyeRenderer, _eyes[i].body, _eyes[i].wantMat);
+                if (_eyes[i].eyeRenderer != null) EyeGeometry.Reassert(_eyes[i].eyeRenderer, _eyes[i].body, _eyes[i].wantMat);
                 return;
             }
         }
 
         public static void OnFaceplateChanged(GameObject bean, FaceplateOption option)
         {
-            if (!_work || _eyeMat == "none" || bean == null || option == null) return;
+            if (bean == null || option == null) return;
             for (int i = 0; i < _count; i++)
             {
                 if (_eyes[i].root != bean) continue;
-                EyeGeometry.SetTint(_eyes[i].eyeRenderer, option.eyesColour);
-                _eyes[i].wantMat = _eyes[i].eyeRenderer.sharedMaterial;
+                if (_eyes[i].eyeRenderer != null)
+                {
+                    EyeGeometry.SetTint(_eyes[i].eyeRenderer, option.eyesColour);
+                    _eyes[i].wantMat = _eyes[i].eyeRenderer.sharedMaterial;
+                }
                 var fgch = bean.GetComponent<FallguyCustomisationHandler>();
                 BlankStockEyes(fgch == null ? null : fgch._matInstance, option.eyesColour);
                 return;
@@ -315,15 +381,15 @@ namespace BetterFG.Features.CustomizeFallGuys
             RestoreStockEyes();
         }
 
-        static GameObject AttachEyes(GameObject bean, out SkinnedMeshRenderer body)
+        static GameObject AttachEyes(GameObject bean, string eyeMat, out SkinnedMeshRenderer body)
         {
             body = null;
-            if (_eyeMat == "none") return null;
+            if (eyeMat == "none") return null;
 
-            var shared = AssetManager.GetMaterial("bettrfg_mat_eyes_" + _eyeMat);
+            var shared = AssetManager.GetMaterial("bettrfg_mat_eyes_" + eyeMat);
             if (shared == null)
             {
-                Plugin.Log.LogWarning($"eye material '{_eyeMat}' isn't in any loaded bundle, leaving that bean's face alone");
+                Plugin.Log.LogWarning($"eye material '{eyeMat}' isn't in any loaded bundle, leaving that bean's face alone");
                 return null;
             }
 
@@ -392,11 +458,23 @@ namespace BetterFG.Features.CustomizeFallGuys
             var eyeR = GameObjectHelper.FindBoneOnBean(root, "Eye_R_jnt");
             if (eyeL == null || eyeR == null) return;
 
+            bool hasOv = _overrides.TryGetValue(root.GetInstanceID(), out var ov);
+            string eyeMat = hasOv ? ov.eyeMat : _eyeMat;
+
             for (int i = 0; i < _count; i++)
             {
                 if (_eyes[i].l.m_CachedPtr != eyeL.m_CachedPtr) continue;
-                if (_eyeMat == "none") return;
-                var fresh = AttachEyes(root, out var freshBody);
+
+                _eyes[i].hasOverride = hasOv;
+                if (hasOv)
+                {
+                    _eyes[i].ovBlink = ov.blink; _eyes[i].ovLook = ov.look; _eyes[i].ovSquint = ov.squint;
+                    _eyes[i].ovDist = ov.dist; _eyes[i].ovHeight = ov.height; _eyes[i].ovRot = ov.rot;
+                    _eyes[i].ovScale = ov.scale; _eyes[i].ovYscale = ov.yscale;
+                }
+
+                if (eyeMat == "none") return;
+                var fresh = AttachEyes(root, eyeMat, out var freshBody);
                 if (fresh == null) return;
                 EyeGeometry.Detach(_eyes[i].eyeGo);
                 _eyes[i].eyeGo = fresh;
@@ -424,13 +502,20 @@ namespace BetterFG.Features.CustomizeFallGuys
             }
 
             if (_count == _eyes.Length) Array.Resize(ref _eyes, _count * 2);
-            _eyes[_count].eyeGo = AttachEyes(root, out var newBody);
+            _eyes[_count].eyeGo = AttachEyes(root, eyeMat, out var newBody);
             _eyes[_count].eyeRenderer = _eyes[_count].eyeGo != null ? _eyes[_count].eyeGo.GetComponent<SkinnedMeshRenderer>() : null;
             _eyes[_count].wantMat = _eyes[_count].eyeRenderer != null ? _eyes[_count].eyeRenderer.sharedMaterial : null;
             _eyes[_count].body = newBody;
             _eyes[_count].hiddenSet = false;
             _eyes[_count].cullSet = false;
             _eyes[_count].invisHidden = false;
+            _eyes[_count].hasOverride = hasOv;
+            if (hasOv)
+            {
+                _eyes[_count].ovBlink = ov.blink; _eyes[_count].ovLook = ov.look; _eyes[_count].ovSquint = ov.squint;
+                _eyes[_count].ovDist = ov.dist; _eyes[_count].ovHeight = ov.height; _eyes[_count].ovRot = ov.rot;
+                _eyes[_count].ovScale = ov.scale; _eyes[_count].ovYscale = ov.yscale;
+            }
             _eyes[_count].invis = root.GetComponentInChildren<InvisibilityVisualsController>();
             _eyes[_count].root = root;
             // preview beans sit parked miles from any game camera - without this the distance/visibility
@@ -489,7 +574,7 @@ namespace BetterFG.Features.CustomizeFallGuys
                 int last = _pending.Count - 1;
                 var next = _pending[last];
                 _pending.RemoveAt(last);
-                if (next != null && _work) Track(next);
+                if (next != null) Track(next);
             }
 
             ApplyEyes(dt);
@@ -507,9 +592,8 @@ namespace BetterFG.Features.CustomizeFallGuys
 
         static void ApplyEyes(float dt)
         {
-            if (_count == 0 || !_work) return;
+            if (_count == 0) return;
 
-            bool blink = _blink && _bakedFrames > 0;
             float now = Time.time;
 
             // eyes are a couple of centimetres across. past ~30m they're subpixel, but the renderer was
@@ -523,9 +607,6 @@ namespace BetterFG.Features.CustomizeFallGuys
             var cam = _inRound ? Camera.main : null;
             bool haveCam = cam != null;
             Vector3 camPos = haveCam ? cam.transform.position : Vector3.zero;
-            bool hasRot = !Mathf.Approximately(_rot, 0f);
-            var rotL = hasRot ? Quaternion.Euler(0f, 0f, _rot) : Quaternion.identity;
-            var rotR = hasRot ? Quaternion.Euler(0f, 0f, -_rot) : Quaternion.identity;
             int frameStagger = Time.frameCount;
 
             for (int i = 0; i < _count; i++)
@@ -580,10 +661,20 @@ namespace BetterFG.Features.CustomizeFallGuys
                     }
                 }
 
+                bool ov = _eyes[i].hasOverride;
+                bool blinkOn = (ov ? _eyes[i].ovBlink : _blink) && _bakedFrames > 0;
+                bool lookOn = ov ? _eyes[i].ovLook : _look;
+                bool squintOn = ov ? _eyes[i].ovSquint : _squint;
+                float dist = ov ? _eyes[i].ovDist : _dist;
+                float height = ov ? _eyes[i].ovHeight : _height;
+                float rot = ov ? _eyes[i].ovRot : _rot;
+                float scale = ov ? _eyes[i].ovScale : _scale;
+                float yscale = ov ? _eyes[i].ovYscale : _yscale;
+
                 Vector3 pl = _eyes[i].restPosL, pr = _eyes[i].restPosR, sl = _eyes[i].restScaleL, sr = _eyes[i].restScaleR;
                 Quaternion ql = _eyes[i].restRotL, qr = _eyes[i].restRotR;
 
-                if (blink)
+                if (blinkOn)
                 {
                     float c = _eyes[i].blinkCursor + dt * _eyes[i].blinkSpeed;
                     _eyes[i].blinkCursor = c;
@@ -593,8 +684,8 @@ namespace BetterFG.Features.CustomizeFallGuys
                     pr = _rPos[idx]; qr = _rRot[idx]; sr = _rScale[idx];
                 }
 
-                float glance = _look ? StepLook(ref _eyes[i], dt) * LookOffset : 0f;
-                float squint = _squint
+                float glance = lookOn ? StepLook(ref _eyes[i], dt) * LookOffset : 0f;
+                float squint = squintOn
                     ? 1f - 0.2f * (0.55f + 0.45f * Mathf.Sin(now * 0.7f + _eyes[i].squintPhase))
                     : 1f;
 
@@ -604,19 +695,26 @@ namespace BetterFG.Features.CustomizeFallGuys
                 // the eyes of a bean that isn't on screen.
                 if (hasRenderer && !_eyes[i].preview && !eyeRenderer.isVisible) continue;
 
-                pl.x += glance - _dist;
-                pr.x += glance + _dist;
-                pl.y += _height;
-                pr.y += _height;
+                pl.x += glance - dist;
+                pr.x += glance + dist;
+                pl.y += height;
+                pr.y += height;
 
-                float yl = sl.y * _scale * _yscale * squint;
-                float yr = sr.y * _scale * _yscale * squint;
+                float yl = sl.y * scale * yscale * squint;
+                float yr = sr.y * scale * yscale * squint;
 
-                l.SetLocalPositionAndRotation(pl, hasRot ? ql * rotL : ql);
-                r.SetLocalPositionAndRotation(pr, hasRot ? qr * rotR : qr);
+                bool hasRot = !Mathf.Approximately(rot, 0f);
+                if (hasRot)
+                {
+                    ql *= Quaternion.Euler(0f, 0f, rot);
+                    qr *= Quaternion.Euler(0f, 0f, -rot);
+                }
 
-                l.localScale = new Vector3(sl.x * _scale, yl, sl.z * _scale);
-                r.localScale = new Vector3(sr.x * _scale, yr, sr.z * _scale);
+                l.SetLocalPositionAndRotation(pl, ql);
+                r.SetLocalPositionAndRotation(pr, qr);
+
+                l.localScale = new Vector3(sl.x * scale, yl, sl.z * scale);
+                r.localScale = new Vector3(sr.x * scale, yr, sr.z * scale);
             }
         }
 
@@ -679,7 +777,7 @@ namespace BetterFG.Features.CustomizeFallGuys
         // 30fps but the look/squint drifts and the interpolation between them are not. tried 2026-08-21.
         void LateUpdate()
         {
-            if (!FeatureCustomizeFallGuys.On) return;
+            if (!FeatureCustomizeFallGuys.On && !FeatureCustomizeFallGuys.HasOverrides) return;
             FeatureCustomizeFallGuys.Tick(Time.deltaTime);
         }
 

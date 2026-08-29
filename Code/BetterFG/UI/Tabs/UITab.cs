@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -14,8 +15,8 @@ namespace BetterFG.UI.Tabs
 
         internal static float subTabH => BTN_H * 0.9f;
 
-        internal static readonly Color WHITE = Color.white;
-        internal static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        internal static readonly Color WHITE = UGUIShip.WHITE;
+        internal static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
         internal static readonly Color SEL_COLOR = new Color(0.25f, 0.5f, 0.25f, 1f);
 
         static readonly (string label, Func<Tab> make)[] Sections =

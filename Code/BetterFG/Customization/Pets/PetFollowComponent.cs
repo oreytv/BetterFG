@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BetterFG.Services;
 using FG.Common.Character;
 using UnityEngine;
@@ -24,6 +25,10 @@ namespace BetterFG.Customization.Pets
         // multiple pets from all walking the exact same line behind you.
         public int SlotIndex;
 
+        // set by RemotePetService for another player's pet - follows this bean instead of
+        // BeanMonitorService.LocalPlayerBean. null for your own pets.
+        public GameObject OwnerOverride;
+
         const float FollowDistance = 1.6f;
         const float SideOffset = 0.7f;
         const float ArriveRadius = 0.3f;
@@ -34,6 +39,7 @@ namespace BetterFG.Customization.Pets
         const float VerticalDrag = 0.1f;
         const float TargetSmoothSpeed = 6f;
         const float CollisionScanInterval = 0.25f;
+        const float DynamicIgnoreRadius = 4f; // loose props within this get paired off before the pet can shove them
         const float TeleportBackDistance = 15f;
         const float TeleportBackCheckInterval = 2f;
 
@@ -110,7 +116,7 @@ namespace BetterFG.Customization.Pets
             // the pet spawns right next to the owner (PetBeanBuilder) - do this synchronously before
             // any physics step can run, not on Update()'s throttled scan, or the initial near-overlap
             // can shove the (real, dynamic-rigidbody) player before the ignore-pairing exists
-            IgnorePlayerCollisions();
+            IgnoreCollisions(pairAgainstOtherPets: true);
 
             Plugin.Log.LogInfo($"pet follow: rb={_rb != null} beingGrabbed={_beingGrabbed != null} jumpFn={_jumpFn != null} jumpTask={_jumpTask != null} grabTask={_grabTask != null}");
         }
@@ -128,7 +134,7 @@ namespace BetterFG.Customization.Pets
         void FixedUpdate()
         {
             if (_rb == null) return;
-            var owner = BeanMonitorService.LocalPlayerBean;
+            var owner = OwnerOverride != null ? OwnerOverride : BeanMonitorService.LocalPlayerBean;
             if (owner == null) return;
 
             // held frozen through the round-start turbulence (see PetService.FrozenForRoundStart) -
@@ -313,8 +319,10 @@ namespace BetterFG.Customization.Pets
             _collisionScanTimer -= Time.deltaTime;
             if (_collisionScanTimer > 0f) return;
             _collisionScanTimer = CollisionScanInterval;
-            IgnorePlayerCollisions();
+            IgnoreCollisions(pairAgainstOtherPets: false);
         }
+
+        static readonly Collider[] _overlapScratch = new Collider[32];
 
         // sweeps every OTHER live player bean and excludes collision against this pet. re-fetches
         // the other side's colliders every pass instead of caching once - a remote-flagged bean
@@ -326,7 +334,13 @@ namespace BetterFG.Customization.Pets
         // scan every 0.25s was the actual FPS hit players felt while the pet followed them around.
         // BeanMonitorService already tracks every live player bean incrementally for other
         // features, so reuse that list instead of re-scanning the whole scene ourselves.
-        void IgnorePlayerCollisions()
+        //
+        // pairAgainstOtherPets only runs from Awake: Physics.IgnoreCollision is symmetric and a
+        // pet's own collider set never changes after spawn (we own it, nothing external touches
+        // it), so a pair only needs setting up ONCE, by whichever pet spawns second. Redoing every
+        // pet-vs-every-other-pet pairing on every periodic scan was pure O(petCount^2) waste for
+        // nothing - the pairs were already permanent.
+        void IgnoreCollisions(bool pairAgainstOtherPets)
         {
             if (_ownColliders == null || _ownColliders.Length == 0) return;
 
@@ -341,13 +355,38 @@ namespace BetterFG.Customization.Pets
                 }
             }
 
-            IgnoreAgainst(BeanMonitorService.LocalPlayerBean);
+            IgnoreAgainst(OwnerOverride != null ? OwnerOverride : BeanMonitorService.LocalPlayerBean);
             foreach (var bean in BeanMonitorService.GetTrackedBeans())
                 IgnoreAgainst(bean);
             // and every other pet - otherwise a pack of them shoves each other around
-            if (PetService.Instance != null)
+            if (pairAgainstOtherPets && PetService.Instance != null)
                 foreach (var petGo in PetService.Instance.LivePetObjects)
                     IgnoreAgainst(petGo);
+
+            // any loose prop nearby - grabbables, dodgeballs, anything with a live (non-kinematic)
+            // rigidbody, plus level-editor destructibles (those take a collision hit and can shift
+            // even while kinematic) - gets knocked across the screen when the pet brushes it. pair
+            // it off before contact. a small overlap check, not the scene-wide rigidbody scan that
+            // used to be the fps hit. NonAlloc + a shared static buffer - this ran every 0.25s per
+            // pet and was handing back a fresh array (GC garbage) every single time.
+            int count = Physics.OverlapSphereNonAlloc(transform.position, DynamicIgnoreRadius, _overlapScratch, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
+            {
+                var oc = _overlapScratch[i];
+                if (oc == null) continue;
+                var body = oc.attachedRigidbody;
+                bool liveBody = body != null && !body.isKinematic && body.gameObject != gameObject;
+
+                // GetComponentInParent<Responder>() != null matched every collider under the same
+                // hierarchy - static level geometry parented alongside a destructible piece - so the
+                // pet fell straight through the floor. Only the responder's own ActiveCollider is
+                // the actual destructible piece, and only while destruction is actually enabled on it.
+                var responder = oc.GetComponentInParent<LevelEditorDestructibleObjectResponder>();
+                bool destructible = responder != null && responder.IsDestructionEnabled && oc == responder.ActiveCollider;
+                if (!liveBody && !destructible) continue;
+                foreach (var pc in _ownColliders)
+                    if (pc != null) Physics.IgnoreCollision(pc, oc, true);
+            }
         }
     }
 }

@@ -4,6 +4,7 @@ using BetterFG.Tweaks;
 using UnityEngine;
 using UnityEngine.UI;
 using static BetterFG.Tweaks.PlayerNameWarningTweak;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
@@ -182,7 +183,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = ROW_EVEN;
+            UGUIShip.PaintStaticRowFill(rowGo, ROW_EVEN);
             MakeLabel(rowGo.transform, new Rect(5f, 0f, WindowWidth - PAD * 2f - 10f, ROW_H),
                 "No rules. Add one to get warned.", FS_SM, HINT);
         }
@@ -194,7 +195,7 @@ namespace BetterFG.UI.Windows
             var le = rowGo.AddComponent<LayoutElement>();
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
-            rowGo.AddComponent<Image>().color = bg;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             int captured = idx;
             float removeW = 22f;

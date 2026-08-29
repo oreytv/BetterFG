@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using BetterFG.Services;
 using BetterFG.Nametag;
 using BetterFG.Customization.Menu;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {

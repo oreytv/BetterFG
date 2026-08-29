@@ -5,6 +5,7 @@ using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -16,13 +17,13 @@ namespace BetterFG.UI.Tabs
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
 
 
-        private static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        private static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
         private static readonly Color BTN_APPLY = new Color(0.25f, 0.45f, 0.25f, 1f);
-        private static readonly Color BTN_REMOVE = new Color(0.55f, 0.15f, 0.15f, 1f);
+        private static readonly Color BTN_REMOVE = UGUIShip.BTN_REMOVE;
         private static readonly Color BTN_ADD = new Color(0.3f, 0.3f, 0.15f, 1f);
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
         private static readonly Color DIM = new Color(1f, 1f, 1f, 0.4f);
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
 
         private static float ROW_H => 30f * UIScale.S;
 
@@ -31,6 +32,17 @@ namespace BetterFG.UI.Tabs
 
         private RectTransform _entryContent;
         private Text _statusLbl;
+
+        private static readonly List<CustomSkinTextureTab> _live = new List<CustomSkinTextureTab>();
+
+        void Awake() => _live.Add(this);
+        void OnDestroy() => _live.Remove(this);
+
+        public static void RefreshLiveInstances()
+        {
+            for (int i = 0; i < _live.Count; i++)
+                _live[i]?.RefreshEntryList();
+        }
 
         protected override void BuildContent(RectTransform contentRoot)
         {

@@ -51,21 +51,6 @@ namespace BetterFG.Services
             Instance = this;
         }
 
-        // throttle for the font watchdog. the game re-slams the original gold/fame material onto nametags
-        // sporadically (fame animation), corrupting our swapped font's glyphs; our event hooks don't catch
-        // every re-set, so poll the small known-nametag set a couple times a second and re-derive any that
-        // drifted. no-op (and basically free) when font replacement is off — see TickNametagWatchdog.
-        private float _fontWatchdogTimer;
-
-        void Update()
-        {
-            if (!FontReplacementService.MasterOnFast) return;
-            _fontWatchdogTimer += Time.unscaledDeltaTime;
-            if (_fontWatchdogTimer < 0.4f) return;
-            _fontWatchdogTimer = 0f;
-            FontReplacementService.TickNametagWatchdog();
-        }
-
         // ── Beans ─────────────────────────────────────────────────────────────
 
         public static void PushBean(GameObject bean, bool isLocalPlayer = true)

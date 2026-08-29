@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,6 +8,7 @@ using BetterFG.Services;
 using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -257,7 +258,7 @@ namespace BetterFG.UI.Tabs
             int end = Math.Min(start + PAGE_SIZE, total);
 
             for (int i = start; i < end; i++)
-                BuildRow(_filtered[i], (i - start) % 2 == 0 ? ROW_ALT : ROW_CLEAR);
+                BuildRow(_filtered[i], (i - start) % 2 == 0);
 
             if (_pendingThumbs.Count > 0)
                 _thumbRoutine = StartCoroutine(LoadPendingThumbs().WrapToIl2Cpp());
@@ -270,7 +271,7 @@ namespace BetterFG.UI.Tabs
             else SetStatus(total + (total == 1 ? " replay" : " replays"));
         }
 
-        void BuildRow(ReplayMeta meta, Color bg)
+        void BuildRow(ReplayMeta meta, bool alt)
         {
             var rowGo = new GameObject("ReplayRow");
             rowGo.transform.SetParent(ListContent, false);
@@ -279,19 +280,10 @@ namespace BetterFG.UI.Tabs
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
 
-            // the zebra rides in the colour block rather than the image so the hover lift is the same
-            // on both stripes — tinting a transparent row only ever multiplies back to nothing. no
-            // EventTrigger either: it would eat the drag and the list would stop scrolling by hand
             var rowImg = rowGo.AddComponent<Image>();
-            rowImg.color = Color.white;
+            rowImg.color = ROW_CLEAR;
             var rowBtn = rowGo.AddComponent<Button>();
-            var cols = rowBtn.colors;
-            cols.normalColor = bg;
-            cols.highlightedColor = ROW_HOVER;
-            cols.pressedColor = ROW_PRESS;
-            cols.selectedColor = bg;
-            cols.fadeDuration = 0f;
-            rowBtn.colors = cols;
+            rowBtn.transition = Selectable.Transition.None;
             var nav = rowBtn.navigation;
             nav.mode = Navigation.Mode.None;
             rowBtn.navigation = nav;
@@ -300,6 +292,7 @@ namespace BetterFG.UI.Tabs
                 AudioService.PlayButtonClick();
                 OpenFile(meta.path);
             }));
+            UGUIShip.PaintRowStripe(rowGo, alt, ROW_ALT);
 
             float thumbW = ROW_H * 2.4f;
             float starW = 26f, delW = 24f;

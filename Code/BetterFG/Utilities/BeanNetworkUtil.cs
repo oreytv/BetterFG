@@ -1,7 +1,10 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using BetterFG;
 using FG.Common;
 using FallGuysLib.Players;
+using FGClient;
+using MPG.Utility;
 using UnityEngine;
 
 namespace BetterFG.Utilities
@@ -29,7 +32,7 @@ namespace BetterFG.Utilities
             var result = new List<GameObject>();
             try
             {
-                var cpm = PlayerUtils.GetClientPlayerManager();
+                var cpm = FallGuysLib.Players.PlayerUtils.GetClientPlayerManager();
                 if (cpm?._playerIdIndex == null) return result;
 
                 var entries = new List<(uint playerId, GameObject go)>();
@@ -57,7 +60,7 @@ namespace BetterFG.Utilities
             if (bean == null) return null;
             try
             {
-                var cpm = PlayerUtils.GetClientPlayerManager();
+                var cpm = FallGuysLib.Players.PlayerUtils.GetClientPlayerManager();
                 if (cpm?._playerIdIndex == null) return null;
 
                 foreach (var kvp in cpm._playerIdIndex)
@@ -75,6 +78,32 @@ namespace BetterFG.Utilities
             }
 
             return null;
+        }
+
+        // tears a synthetic (SpawnBeanUtils-spawned) bean down through the game's own unspawn path -
+        // plain Destroy() leaves it dangling in the client's net object table and NREs the next
+        // unspawn message walking that table (softlocked the game mid-round once). used by both the
+        // local pet follower and remote pets spawned off someone else's profile.
+        public static bool TryNetworkUnspawn(GameObject bean)
+        {
+            var netObj = TryGetMpgNetObject(bean);
+            if (netObj == null || !netObj.NetID.IsValid()) return false;
+
+            ClientGameManager cgm = null;
+            SingletonBehaviour<GlobalGameStateClient>.Instance?.GameStateView?.GetLiveClientGameManager(out cgm);
+            var mgr = cgm?._netObjectManager;
+            if (mgr == null) return false;
+
+            try
+            {
+                mgr.UnspawnNetObject(netObj.NetID, MPGNetObjectManager.UnspawnGameObjectPolicy.Destroy);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"network unspawn went sideways, falling back to a plain destroy: {ex.Message}");
+                return false;
+            }
         }
     }
 }

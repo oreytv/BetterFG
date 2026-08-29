@@ -7,6 +7,7 @@ using BepInEx.Unity.IL2CPP.Utils.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {
@@ -30,7 +31,7 @@ namespace BetterFG.UI
         private const int FS_LINK = 15;
         private const int FS_BTN = 12;
 
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.55f);
         private static readonly Color LINK = new Color(0.55f, 0.80f, 1.00f, 1f);
         private static readonly Color LINK_HOVER = new Color(0.25f, 0.50f, 0.90f, 1f);

@@ -1,15 +1,15 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using TMPro;
 using UnityEngine;
 using UnityEngine.TextCore.LowLevel;
 using BetterFG.Services;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 
 namespace BetterFG.Customization.Menu
 {
-    // one font override: replace every TMP that uses a given game font asset (by name) with a custom
-    // ttf/otf, built into a runtime dynamic SDF asset.
+    // one font override: replace a named game TMP_FontAsset with a custom ttf/otf.
     public class FontOverride
     {
         public string entryName = "";
@@ -17,44 +17,53 @@ namespace BetterFG.Customization.Menu
         public string targetFontName = ""; // the game TMP_FontAsset name this replaces
         public bool enabled = true;
 
-        // built lazily, not persisted
-        public TMP_FontAsset builtAsset;
+        public TMP_FontAsset builtAsset;   // the donor asset built from fontPath (not persisted)
     }
 
-    // entry-based font replacement. each entry maps "game font asset name" -> custom ttf. on every TMP
-    // that turns on we look up its current font's name and, if a matching enabled override exists, swap
-    // it (this is what survives HUD/instantiate resets — FindObjectsOfType only catches what's already
-    // there). TMP's CreateFontAsset(fontFilePath, ...) reads the file itself and bakes a dynamic SDF
-    // atlas, same as the editor's "Create > Font Asset", just at runtime.
+    // ── Font replacement by ATLAS PIXEL SWAP ──────────────────────────────────────────────────────
+    //
+    // Every earlier approach mutated things the game keeps re-deriving — `tmp.font`, or `_MainTex` on
+    // every font material (plus the per-bean instance clones TMP spawns in a round) — and then had to
+    // reverse all of it perfectly on toggle-off. Each fix traded one break for another.
+    //
+    // This approach touches NO material and NO `tmp.font`. It builds a dynamic SDF atlas from the user's
+    // ttf at the GAME atlas's exact size + format + padding, then blits those pixels straight INTO the
+    // game font asset's existing atlas Texture2D (same object every material already samples) and swaps
+    // in the matching glyph / character tables + face metrics. Materials are never read or written, so
+    // there is nothing about them to get wrong or to undo — shadow / gold / outline / every instance
+    // clone just render the new pixels through their unchanged `_GradientScale` (valid because we kept
+    // the game's padding). Non-Latin still routes through the game's untouched fallback font table.
+    //
+    // Toggle-off blits the stashed original pixels back and restores the table references. One cold
+    // Harmony hook on ReadFontAssetDefinition re-applies if the game re-initialises a hijacked asset.
     public static class FontReplacementService
     {
         public const string KEY_MASTER_ON = "ui.font.master";
         public const string KEY_COUNT = "ui.font.count";
         private static string EK(int i, string f) => $"ui.font.entry.{i}.{f}";
 
-        private const int SAMPLING_POINT_SIZE = 90;
-        private const int ATLAS_PADDING = 9;
-        private const int ATLAS_SIZE = 1024;
+        private const string OUR_PREFIX = "BFG_";
 
-        // overrides keyed by the game font-asset name they target (lowercased). only enabled ones live
-        // here; rebuilt whenever the UI saves.
+        // ASCII printable + Latin-1 Supplement printable — covers essentially all Latin text the game
+        // shows; small enough to fit any real game atlas. Anything outside it falls through to the
+        // game's own fallback font chain, untouched, exactly as before.
+        private static readonly string WarmupChars = BuildWarmup();
+        private static string BuildWarmup()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int c = 0x20; c <= 0x7E; c++) sb.Append((char)c);
+            for (int c = 0xA1; c <= 0xFF; c++) sb.Append((char)c);
+            return sb.ToString();
+        }
+
         private static readonly Dictionary<string, FontOverride> _active =
             new Dictionary<string, FontOverride>(StringComparer.OrdinalIgnoreCase);
         private static bool _masterOn;
 
-        // read from settings, not the in-memory field — the field isn't set until RebuildAndApply runs,
-        // so the UI would otherwise show OFF on first open even when it's saved ON.
         public static bool MasterOn => SettingsService.Get(KEY_MASTER_ON, "false") == "true";
-
-        // in-memory mirror of the master flag for hot paths (the per-frame watchdog tick). reading
-        // settings every frame is needless string-map churn; _masterOn is kept current by
-        // RebuildAndApply/SetMaster. it's false until the first RebuildAndApply, which is fine — the
-        // watchdog has nothing to do before fonts are built anyway.
         public static bool MasterOnFast => _masterOn;
 
-        private const string OUR_PREFIX = "BFG_";
-
-        // ── enumerate the game's font assets (for the target picker) ─────────
+        // ── enumerate the game's font assets (target picker) ──────────────────
         public static List<string> GetAllFontAssetNames()
         {
             var names = new List<string>();
@@ -63,7 +72,7 @@ namespace BetterFG.Customization.Menu
                 foreach (var fa in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
                 {
                     if (fa == null || string.IsNullOrEmpty(fa.name)) continue;
-                    if (fa.name.StartsWith(OUR_PREFIX, StringComparison.Ordinal)) continue; // never list ours
+                    if (fa.name.StartsWith(OUR_PREFIX, StringComparison.Ordinal)) continue;
                     if (!names.Contains(fa.name)) names.Add(fa.name);
                 }
             }
@@ -72,665 +81,325 @@ namespace BetterFG.Customization.Menu
             return names;
         }
 
-        // lookup the original TMP_FontAsset by exact name. used by the UITab dropdown to render
-        // each row in the actual game font it represents.
         public static TMP_FontAsset GetFontAssetByName(string name)
         {
-            if (string.IsNullOrEmpty(name)) return null;
+            var all = GetFontAssetsByName(name);
+            return all.Count > 0 ? all[0] : null;
+        }
+
+        private static List<TMP_FontAsset> GetFontAssetsByName(string name)
+        {
+            var outp = new List<TMP_FontAsset>();
+            if (string.IsNullOrEmpty(name)) return outp;
             try
             {
                 foreach (var fa in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
                 {
                     if (fa == null || string.IsNullOrEmpty(fa.name)) continue;
                     if (fa.name.StartsWith(OUR_PREFIX, StringComparison.Ordinal)) continue;
-                    if (fa.name == name) return fa;
+                    if (fa.name == name) outp.Add(fa);
                 }
             }
             catch { }
-            return null;
+            return outp;
         }
 
-        // built assets cached by font file path. RebuildAndApply runs on every toggle/apply and LoadAll
-        // hands back fresh FontOverride objects each time, so without this we'd call CreateFontAsset AGAIN
-        // every toggle — making a NEW TMP_FontAsset (and a new atlas) each time. that's the "garbled /
-        // chopped up" bug: text still pointing at a previous build, plus the _derived material cache (keyed
-        // on the built asset's instance id) never hitting. caching by path means the SAME asset instance is
-        // reused across rebuilds, so instance ids stay stable and nothing is orphaned.
-        private static readonly Dictionary<string, TMP_FontAsset> _builtByPath =
+        // ── build the donor asset: a dynamic SDF font at a given atlas size/padding, warmed with the
+        //    Latin set. cached by (path|WxH|pad) since different game fonts have different atlases. ──
+        private static readonly Dictionary<string, TMP_FontAsset> _builtByKey =
             new Dictionary<string, TMP_FontAsset>(StringComparer.OrdinalIgnoreCase);
 
-        // ── build a dynamic SDF asset from a ttf/otf on disk (cached by path) ─
-        private static TMP_FontAsset BuildAsset(FontOverride ov)
+        private static TMP_FontAsset BuildDonor(FontOverride ov, int w, int h, int pad)
         {
             if (string.IsNullOrEmpty(ov.fontPath) || !File.Exists(ov.fontPath))
             {
                 Plugin.Log.LogError("BetterFG: font file missing: " + ov.fontPath);
                 return null;
             }
-
-            if (_builtByPath.TryGetValue(ov.fontPath, out var cached) && cached != null)
-                return cached;
+            string key = $"{ov.fontPath}|{w}x{h}|{pad}";
+            if (_builtByKey.TryGetValue(key, out var cached) && cached != null) return cached;
 
             try
             {
-                var asset = TMP_FontAsset.CreateFontAsset(ov.fontPath, 0, SAMPLING_POINT_SIZE,
-                    ATLAS_PADDING, GlyphRenderMode.SDFAA, ATLAS_SIZE, ATLAS_SIZE);
-                if (asset == null)
-                {
-                    Plugin.Log.LogError("BetterFG: CreateFontAsset returned null for " + ov.fontPath);
-                    return null;
-                }
+                // pick a sampling size that lets the whole warmup set fit this atlas on ONE page. cell
+                // side ~= sqrt(area / cells); sampling = cell minus the padding on both sides.
+                int cells = WarmupChars.Length + 48;
+                int cell = Mathf.Max(8, (int)Mathf.Sqrt((float)w * h / cells));
+                int sampling = Mathf.Clamp(cell - 2 * pad - 2, 12, 80);
+
+                var asset = TMP_FontAsset.CreateFontAsset(ov.fontPath, 0, sampling, pad,
+                    GlyphRenderMode.SDFAA, w, h, AtlasPopulationMode.Dynamic, false);
+                if (asset == null) { Plugin.Log.LogError("BetterFG: CreateFontAsset null for " + ov.fontPath); return null; }
                 asset.hideFlags = HideFlags.HideAndDontSave;
-                asset.name = "BFG_" + Path.GetFileNameWithoutExtension(ov.fontPath);
-                _builtByPath[ov.fontPath] = asset;
+                asset.name = OUR_PREFIX + Path.GetFileNameWithoutExtension(ov.fontPath) + $"_{w}_{pad}";
+
+                // TMP defers the atlas texture (null until glyphs render, queued to end of frame). give it
+                // a real Alpha8 texture set up like TMP's own — zero-filled (raw Texture2D memory is
+                // garbage => edge seams), Clamp (Repeat wraps a border sample across the atlas => a line),
+                // Bilinear — then bake the charset and flush the queue synchronously.
+                var atlas = new Texture2D(w, h, TextureFormat.Alpha8, false, true)
+                {
+                    name = asset.name + " Atlas",
+                    hideFlags = HideFlags.HideAndDontSave,
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                };
+                try { atlas.LoadRawTextureData(new Il2CppStructArray<byte>(w * h)); atlas.Apply(false, false); } catch { }
+
+                var arr = new Il2CppReferenceArray<Texture2D>(1); arr[0] = atlas;
+                asset.m_AtlasTextures = arr;
+                asset.m_AtlasTexture = atlas;
+                asset.m_AtlasTextureIndex = 0;
+                if (asset.material != null) asset.material.SetTexture("_MainTex", atlas);
+
+                try { asset.TryAddCharacters(WarmupChars, false); } catch (Exception ex) { Plugin.Log.LogWarning("warmup: " + ex.Message); }
+                try { TMP_FontAsset.UpdateFontAssetsInUpdateQueue(); } catch { }
+                try { atlas.Apply(false, false); } catch { }
+
+                // drop any glyph that spilled to a second atlas page — with a single-page atlas its
+                // atlasIndex >= 1 would send TMP_MaterialManager.GetFallbackMaterial out of bounds.
+                PruneOverflowGlyphs(asset);
+
+                Plugin.Log.LogInfo($"donor {asset.name}: {w}x{h} Alpha8 sampling={sampling} pad={pad} chars={asset.characterTable?.Count}");
+                _builtByKey[key] = asset;
                 return asset;
             }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError("BetterFG: BuildAsset failed: " + ex);
-                return null;
-            }
+            catch (Exception ex) { Plugin.Log.LogError("BetterFG: BuildDonor: " + ex); return null; }
         }
 
-        // every TMP we've swapped -> the original font AND the EXACT material it was rendering with.
-        // assigning .font makes TMP reassign its shared material to the new font's *default* material,
-        // dropping any outline/glow the text had. so on swap we capture the real material, and on
-        // restore we slam BOTH the font and that captured material back. setting .font alone does not
-        // restore the outline — it falls back to the font default, which has none.
-        private class Touched
+        private static void PruneOverflowGlyphs(TMP_FontAsset a)
         {
-            public TMP_FontAsset orig;
-            public string origName;
-            public Material origSharedMat;   // the live material the text rendered with before we touched it
-            public Color32 origOutlineColor;
-            public float origOutlineWidth;
-            public bool isNametag;           // swapped via ApplyToNametag — never famepass-revert these
-            public bool origEnableGradient;  // gold reproduction turns on the per-vertex gradient; restore it
-        }
-        private static readonly Dictionary<TMP_Text, Touched> _touched =
-            new Dictionary<TMP_Text, Touched>();
-
-        // text the general sweep must never touch — only fame/famepass text we've caught mid-swap ends up
-        // here now. nametags are NO LONGER blanket-protected: we want the custom font on them (applied via
-        // ApplyToNametag at the end of the applicator's style pass), so they're free for replacement.
-        private static readonly HashSet<TMP_Text> _protectedTexts = new HashSet<TMP_Text>();
-
-        // public hands-off marker for UI we render in the actual game fonts (e.g. font-replacement
-        // dropdown previews) so the sweep doesn't replace them with the user's chosen font.
-        public static void Protect(TMP_Text t) { if (t != null) _protectedTexts.Add(t); }
-
-        // every nametag text the applicator has ever handed us. the general sweep (TryApplyTo) skips
-        // nametags, so a plain toggle on/off would never re-apply the font to them — only a view switch
-        // (which re-runs the applicator) would. by remembering them we can re-run ApplyToNametag on toggle,
-        // so toggling font replacement back on fixes nametags immediately, no view switch needed.
-        private static readonly HashSet<TMP_Text> _knownNametags = new HashSet<TMP_Text>();
-
-        // legacy entry the applicator still calls at the START of its apply. it used to ban the nametag
-        // from font replacement; now the model is reversed (the applicator calls ApplyToNametag at the
-        // END to opt the nametag IN). all this does now is drop any stale general-sweep swap so the
-        // applicator starts from the original font, then re-applies its own material cleanly.
-        public static void ProtectText(TMP_Text t)
-        {
-            if (t == null) return;
-            if (_touched.TryGetValue(t, out var b))
-            {
-                RestoreOne(t, b);
-                _touched.Remove(t);
-            }
-        }
-
-        // called by the nametag applicator at the END of its style apply, once it has set the final
-        // font material (shadow/gold/default) on the text. if a font override targets this text's
-        // CURRENT font, swap to our atlas and rebuild whatever material the applicator just set onto it
-        // (carrying its outline/shadow). this is how nametags get the custom font WITH their outline:
-        // the applicator owns the material, we just re-point the atlas. no-op when master is off or no
-        // override matches. nametags are NOT added to _protectedTexts anymore — we want them swapped.
-        public static void ApplyToNametag(TMP_Text t)
-        {
-            if (t == null) return;
-            _knownNametags.Add(t); // remember it even while off, so toggle-on can re-apply (see RebuildAndApply)
-            if (!_masterOn || _active.Count == 0) return;
             try
             {
-                var cur = t.font;
-                if (cur == null) return;
-
-                Material curMat = GetRenderingMaterialSafe(t);
-
-                FontOverride match;
-
-                // the font is ALREADY ours. but the applicator (or the game's gold-material assignment)
-                // may have just set a NEW material on top — bound to the ORIGINAL atlas, so it renders
-                // garbage on our font. if the current material isn't already a derived [BFG] one, re-derive
-                // it onto our atlas. this is the fix for famepass nametags whose gold material lands AFTER
-                // our first swap: re-running ApplyNametag re-derives instead of early-outing.
-                if (cur.name.StartsWith(OUR_PREFIX, StringComparison.Ordinal))
+                var ct = a.characterTable;
+                if (ct == null) return;
+                int removed = 0;
+                for (int i = ct.Count - 1; i >= 0; i--)
                 {
-                    if (curMat != null && curMat.name != null &&
-                        curMat.name.IndexOf("[BFG]", StringComparison.Ordinal) >= 0) return; // already correct
-                    if (!_touched.TryGetValue(t, out var prev)) return; // ours but untracked — leave it
-                    if (!_active.TryGetValue(prev.origName, out match) || match.builtAsset == null) return;
-                    // the game drifted the raw metallic gold back onto our font — reproduce it the nice way
-                    // (see ApplyNiceGold) instead of mapping the baked metallic texture onto our atlas.
-                    if (IsMetallicGold(curMat)) { ApplyNiceGold(t, match.builtAsset); t.ForceMeshUpdate(); return; }
-                    var d = DeriveMaterial(match.builtAsset, curMat);
-                    // DeriveMaterial returns a SHARED cached material (keyed by base+atlas) — assign via
-                    // fontSharedMaterial, not fontMaterial, or every nametag that hits this re-instances
-                    // its own private clone of it and stops batching with every other nametag.
-                    if (d != null) t.fontSharedMaterial = d;
-                    t.ForceMeshUpdate();
-                    return;
+                    var ch = ct[i];
+                    if (ch != null && ch.glyph != null && ch.glyph.atlasIndex != 0) { ct.RemoveAt(i); removed++; }
                 }
-
-                if (!_active.TryGetValue(cur.name, out match) || match.builtAsset == null) return;
-
-                // record the original font + material so toggle-off (RestoreUncovered) can put it back.
-                // without this, nametags we swapped here would never revert when font replacement is
-                // turned off. only record on the FIRST swap so we don't overwrite the true original with
-                // a re-applied state on subsequent passes.
-                if (!_touched.ContainsKey(t))
-                    _touched[t] = new Touched
-                    {
-                        orig = cur,
-                        origName = cur.name,
-                        origSharedMat = curMat,
-                        origOutlineColor = t.outlineColor,
-                        origOutlineWidth = t.outlineWidth,
-                        isNametag = true,
-                        origEnableGradient = t.enableVertexGradient
-                    };
-
-                t.font = match.builtAsset;
-                // famed players carry the game's metallic gold material, which is baked for the original
-                // font and looks wrong remapped onto our atlas. reproduce the gold the way the local
-                // "gold rgb" style does instead — drop the face texture, drive a gold->white vertex
-                // gradient on the gold shader. looks right on any font.
-                if (IsMetallicGold(curMat)) { ApplyNiceGold(t, match.builtAsset); t.ForceMeshUpdate(); return; }
-                var derived = DeriveMaterial(match.builtAsset, curMat);
-                if (derived != null) t.fontSharedMaterial = derived;
-                t.ForceMeshUpdate();
+                if (removed > 0)
+                {
+                    a.InitializeDictionaryLookupTables();
+                    Plugin.Log.LogWarning($"donor {a.name}: pruned {removed} overflow glyphs (atlas too small for full warmup)");
+                }
             }
             catch { }
         }
 
-        // the game's raw metallic gold (famepass) material — still has its baked gold _FaceTex. that's the
-        // one that looks wrong remapped onto a custom font. the local "gold rgb" style nulls _FaceTex and
-        // drives a vertex gradient, so a material whose name says EndFamePass but has NO _FaceTex is the
-        // reproduced/derived one we should leave alone.
-        private static bool IsMetallicGold(Material m)
+        public static TMP_FontAsset BuildPreview(FontOverride ov) => BuildDonor(ov, 512, 512, 4);
+
+        // ── hijack state ─────────────────────────────────────────────────────
+        private class HijackSnapshot
         {
-            if (m == null || m.name == null) return false;
-            if (m.name.IndexOf("EndFamePass", StringComparison.OrdinalIgnoreCase) < 0) return false;
-            try { return !m.HasProperty("_FaceTex") || m.GetTexture("_FaceTex") != null; }
-            catch { return true; }
+            public TMP_FontAsset game;
+            public Texture2D gameAtlas;        // the game's own atlas texture (object never changes)
+            public Texture2D stash;            // GPU copy of its original pixels
+            public UnityEngine.TextCore.FaceInfo faceInfo;
+            public AtlasPopulationMode populationMode;
+            public Il2CppSystem.Collections.Generic.List<UnityEngine.TextCore.Glyph> glyphTable;
+            public Il2CppSystem.Collections.Generic.List<TMP_Character> characterTable;
+            public Il2CppSystem.Collections.Generic.List<UnityEngine.TextCore.GlyphRect> usedGlyphRects, freeGlyphRects;
+            public TMP_FontFeatureTable fontFeatureTable;
+            public TMP_FontAsset donor;
         }
 
-        // fame gold reproduced the way the local "gold rgb" (goldcolored) style does — and that looks great
-        // on ANY font. instead of remapping the metallic _FaceTex (baked for the original font), drop the
-        // face texture and drive the color with a per-vertex gradient (gold at the top fading to white) on
-        // the gold shader, keeping its nice outline. point the material at our atlas.
-        private static readonly Color GOLD_FACE = new Color(1f, 0.82f, 0.20f, 1f);
-        private static readonly Color GOLD_OUTLINE = new Color(0.30f, 0.22f, 0.03f, 1f);
-        private static Material _niceGold;
-        private static int _niceGoldAtlas;
+        private static readonly Dictionary<int, HijackSnapshot> _hijacked = new Dictionary<int, HijackSnapshot>();
 
-        private static void ApplyNiceGold(TMP_Text t, TMP_FontAsset built)
-        {
-            var goldSrc = BetterFG.Core.AssetManager.GoldNameMaterial;
-            var fontDefault = built != null ? built.material : null;
-            if (goldSrc == null || fontDefault == null) return;
+        private static bool _restoring;
+        internal static bool IsRestoring => _restoring;
 
-            // one shared nice-gold material per atlas (rebuilt only if the active font's atlas changes).
-            if (_niceGold == null || _niceGoldAtlas != built.GetInstanceID())
-            {
-                var m = new Material(goldSrc) { hideFlags = HideFlags.HideAndDontSave };
-                m.name = "BFG_NiceGold [BFG]";
-                try { m.shaderKeywords = goldSrc.shaderKeywords; } catch { }
-                m.SetTexture("_FaceTex", null);
-                m.SetColor("_FaceColor", Color.white);
-                m.SetColor("_OutlineColor", GOLD_OUTLINE);
-                if (m.HasProperty("_OutlineWidth") && m.GetFloat("_OutlineWidth") <= 0f)
-                    m.SetFloat("_OutlineWidth", 0.2f);
-
-                if (fontDefault.HasProperty("_MainTex")) m.SetTexture("_MainTex", fontDefault.GetTexture("_MainTex"));
-                foreach (var p in new[] { "_TextureWidth", "_TextureHeight", "_GradientScale" })
-                    if (fontDefault.HasProperty(p) && m.HasProperty(p)) m.SetFloat(p, fontDefault.GetFloat(p));
-
-                _niceGold = m;
-                _niceGoldAtlas = built.GetInstanceID();
-            }
-
-            // _niceGold is ONE shared material reused for every gold nametag — assign it via
-            // fontSharedMaterial (not fontMaterial), or every gold nametag re-instances its own
-            // private clone of it and stops batching with every other gold nametag on screen.
-            t.fontSharedMaterial = _niceGold;
-            t.color = Color.white;
-            t.enableVertexGradient = true;
-            t.colorGradient = new VertexGradient(GOLD_FACE, GOLD_FACE, Color.white, Color.white);
-
-            // we now KNOW this nametag is gold — but its _touched record was captured on the first swap,
-            // BEFORE the game's gold material landed, so it stored the white default as the "original".
-            // sync it to the real metallic gold so toggle-off restores vanilla GOLD (not the default), and
-            // toggle-on re-derives nice gold from that restored gold instead of a white default.
-            if (_touched.TryGetValue(t, out var rec))
-            {
-                rec.origSharedMat = goldSrc;
-                rec.origEnableGradient = false;
-            }
-        }
-
-        // put a touched text fully back to how it was: original font, original material, original outline.
-        // ORDER + FORCED REBUILD MATTER: setting .font rebinds TMP to the original atlas but leaves the
-        // mesh holding glyph quads sized/UV'd for OUR runtime atlas — that's the "garbled / chopped up"
-        // text on toggle-off. a plain ForceMeshUpdate doesn't re-fit it. we have to clear the font first
-        // so TMP sees a real change, set the original font + material, mark everything dirty, then force a
-        // FULL regen (ignoreActiveState + forceTextReparsing) so the glyphs are re-requested for the
-        // original atlas and the mesh is rebuilt from scratch.
-        private static void RestoreOne(TMP_Text t, Touched b)
-        {
-            try
-            {
-                if (b.orig == null) return;
-
-                // setting .font to a value TMP already thinks is current can early-out and skip the atlas
-                // rebind. our current font is the BFG asset, so this is a real change — but to be safe,
-                // restore material first so the rebuild below sees the right material.
-                t.font = b.orig;
-                if (b.origSharedMat != null)
-                {
-                    t.fontSharedMaterial = b.origSharedMat;
-                    try { t.fontMaterial = b.origSharedMat; } catch { } // UI path uses fontMaterial
-                }
-                t.outlineColor = b.origOutlineColor;
-                t.outlineWidth = b.origOutlineWidth;
-                // gold reproduction may have turned the per-vertex gradient ON — put it back so a restored
-                // non-gradient nametag doesn't keep the gold->white fade.
-                t.enableVertexGradient = b.origEnableGradient;
-
-                // force a complete rebuild against the original atlas — not just a mesh refresh.
-                try { t.SetAllDirty(); } catch { }
-                t.ForceMeshUpdate(true, true);
-            }
-            catch { }
-        }
-
-        // revert one TMP back to its original font/material if we ever swapped it. used by TimePlacement
-        // when caching a template entry: the live source we cache from may have already been swept, so
-        // without this the cache bakes in a BFG_* font and future clones of it inherit that font no
-        // matter what the master toggle says. reverting before caching ensures the cache holds vanilla.
-        public static void RevertIfTouched(TMP_Text t)
-        {
-            if (t == null) return;
-            if (_touched.TryGetValue(t, out var b))
-            {
-                RestoreOne(t, b);
-                _touched.Remove(t);
-            }
-        }
-
-        private static Material GetRenderingMaterialSafe(TMP_Text t)
-        {
-            try
-            {
-                var cr = t.canvasRenderer;
-                if (cr != null && cr.materialCount > 0)
-                {
-                    var m = cr.GetMaterial(0);
-                    if (m != null) return m;
-                }
-            }
-            catch { }
-            try
-            {
-                var mr = t.GetComponent<MeshRenderer>();
-                if (mr != null)
-                {
-                    var sm = mr.sharedMaterials;
-                    if (sm != null && sm.Length > 0 && sm[0] != null) return sm[0];
-                }
-            }
-            catch { }
-            try { return t.fontSharedMaterial; } catch { return null; }
-        }
-
-        // skip the gold/fame nametag material (and its per-text "(Instance)" copies). its name always
-        // contains "EndFamePass" — the gold-rgb path nulls _FaceTex so we can't detect it by texture,
-        // but the name stem survives instancing. these shaders are bound to their original atlas and
-        // can't render our runtime atlas, so we leave any text using them alone.
-        private static bool IsProtected(Material m) =>
-            m != null && m.name != null &&
-            m.name.IndexOf("EndFamePass", StringComparison.OrdinalIgnoreCase) >= 0;
-
-        // true if ANY material this text is actually rendering with is protected ("fame"/gold). checks
-        // the shared font material, the live UI CanvasRenderer material, AND the 3D MeshRenderer
-        // material — gold nametags assign their material to fontMaterial (UI) or sharedMaterial (3D),
-        // not fontSharedMaterial, so we have to look at the renderer to catch them.
-        private static bool RendersProtected(TMP_Text t)
-        {
-            try { if (IsProtected(t.fontSharedMaterial)) return true; } catch { }
-            try
-            {
-                var cr = t.canvasRenderer;
-                if (cr != null)
-                    for (int i = 0; i < cr.materialCount; i++)
-                        if (IsProtected(cr.GetMaterial(i))) return true;
-            }
-            catch { }
-            try
-            {
-                var mr = t.GetComponent<MeshRenderer>();
-                if (mr != null)
-                {
-                    var sm = mr.sharedMaterials;
-                    if (sm != null) for (int i = 0; i < sm.Length; i++) if (IsProtected(sm[i])) return true;
-                }
-            }
-            catch { }
-            return false;
-        }
-
-        // derived materials keyed by "builtAssetId:origMatId" — the original material (outline/glow/
-        // custom shader) rebuilt onto the new font's atlas. cached; never mutates the original.
-        private static readonly Dictionary<string, Material> _derived =
-            new Dictionary<string, Material>();
-
-        // atlas props copied verbatim from the new font (texture + its dimensions).
-        private static readonly string[] AtlasCopyProps =
-            { "_MainTex", "_TextureWidth", "_TextureHeight", "_WeightNormal", "_WeightBold" };
-
-        // these are measured in SDF spread units, i.e. relative to _GradientScale. when the gradient
-        // scale changes (new font's atlas has different padding), they must be rescaled by the ratio
-        // origGradientScale/newGradientScale or the outline/dilate visually vanishes or explodes.
-        private static readonly string[] SpreadRelativeProps =
-            { "_OutlineWidth", "_OutlineSoftness", "_FaceDilate", "_UnderlayDilate", "_UnderlaySoftness" };
-
-        // is mat just the font's plain default (possibly instanced)? then there's no styling to carry.
-        private static bool IsPlainDefault(TMP_FontAsset font, Material mat)
-        {
-            var def = font != null ? font.material : null;
-            if (def == null || mat == null) return true;
-            if (mat == def) return true;
-            string n = mat.name, d = def.name;
-            return n == d || n == d + " (Instance)";
-        }
-
-        // build (or reuse) a material rendering the new font's atlas with the original's shader+styling.
-        private static Material DeriveMaterial(TMP_FontAsset built, Material origMat)
-        {
-            var fontDefault = built != null ? built.material : null;
-            if (origMat == null) return fontDefault;
-
-            // already a derived [BFG] material? don't derive from a derive — that's how the bloat
-            // snowballed (re-apply on every spawn/fame/view-switch made a new copy of a copy). reuse it.
-            if (origMat.name != null && origMat.name.IndexOf("[BFG]", StringComparison.Ordinal) >= 0)
-                return origMat;
-
-            // KEY ON THE MATERIAL'S NAME ONLY (minus "(Instance)"), NOT its instance id and NOT per-text
-            // outline color/width. each text has its own instanced material AND its own outline props, so
-            // keying on those meant the cache NEVER hit — a fresh Material per text per re-apply (the 570/
-            // 9000 bloat). a derived material is fully defined by its base material + the target atlas, so
-            // all text sharing a base material name collapses onto ONE derived material. the per-text
-            // outline color/width live on the TMP component (t.outlineColor/Width), not the material, and
-            // we leave those untouched — so dropping them here changes nothing visually.
-            string baseName = origMat.name ?? "?";
-            int inst = baseName.IndexOf(" (Instance)", StringComparison.Ordinal);
-            if (inst >= 0) baseName = baseName.Substring(0, inst);
-
-            string key = built.GetInstanceID() + ":" + baseName;
-            if (_derived.TryGetValue(key, out var cached) && cached != null) return cached;
-
-            try
-            {
-                var mat = new Material(origMat) { hideFlags = HideFlags.HideAndDontSave };
-                mat.name = baseName + " [BFG]";
-
-                // new Material(origMat) copies the shader + float/tex/color props, but in IL2CPP it does NOT
-                // reliably carry the enabled SHADER KEYWORDS. the gold/famepass face is rendered by a shader
-                // variant gated on keywords (the face-texture/glow features) — without them the shader falls
-                // back to the plain-white variant, so the gold name renders WHITE even though _FaceTex is
-                // still set. copy the source material's enabled keywords over so the gold variant compiles.
-                try
-                {
-                    var kw = origMat.shaderKeywords;
-                    if (kw != null) mat.shaderKeywords = kw;
-                }
-                catch { }
-
-                if (fontDefault == null) { _derived[key] = mat; return mat; }
-
-                // gradient scales: outline/dilate/softness are relative to these, so we rescale them.
-                float origGS = mat.HasProperty("_GradientScale") ? mat.GetFloat("_GradientScale") : 0f;
-                float newGS = fontDefault.HasProperty("_GradientScale") ? fontDefault.GetFloat("_GradientScale") : 0f;
-
-                // point at the new atlas
-                foreach (var p in AtlasCopyProps)
-                {
-                    if (!fontDefault.HasProperty(p) || !mat.HasProperty(p)) continue;
-                    if (p == "_MainTex") mat.SetTexture(p, fontDefault.GetTexture(p));
-                    else mat.SetFloat(p, fontDefault.GetFloat(p));
-                }
-                if (newGS > 0f && mat.HasProperty("_GradientScale")) mat.SetFloat("_GradientScale", newGS);
-
-                // rescale spread-relative props so the outline keeps the same visual thickness on the
-                // new atlas's spread. ratio = old/new gradient scale. these come from the base material,
-                // so they're the same for every text sharing it — fine to bake into the shared derived mat.
-                if (origGS > 0f && newGS > 0f)
-                {
-                    float ratio = origGS / newGS;
-                    foreach (var p in SpreadRelativeProps)
-                        if (mat.HasProperty(p)) mat.SetFloat(p, mat.GetFloat(p) * ratio);
-                }
-
-                _derived[key] = mat;
-                return mat;
-            }
-            catch (Exception ex) { Plugin.Log.LogWarning("BFGFont: derive: " + ex.Message); return fontDefault; }
-        }
-
-        // ── apply ─────────────────────────────────────────────────────────────
-        // build assets for every enabled override, restore anything no longer covered, then swap.
+        // ── entry point ─────────────────────────────────────────────────────
         public static void RebuildAndApply()
         {
-            _active.Clear();
             _masterOn = SettingsService.Get(KEY_MASTER_ON, "false") == "true";
             Utilities.PatchGate.SetActive(KEY_MASTER_ON, _masterOn);
+
+            RestoreAllHijacks();
+            _active.Clear();
 
             if (_masterOn)
             {
                 foreach (var ov in LoadAll())
                 {
                     if (!ov.enabled || string.IsNullOrEmpty(ov.targetFontName)) continue;
-                    ov.builtAsset = BuildAsset(ov);
-                    if (ov.builtAsset != null) _active[ov.targetFontName] = ov;
+                    _active[ov.targetFontName] = ov;
+                    var games = GetFontAssetsByName(ov.targetFontName);
+                    if (games.Count == 0) { Plugin.Log.LogWarning($"font target not loaded yet: {ov.targetFontName}"); continue; }
+                    foreach (var game in games) HijackFont(game, ov);
                 }
             }
 
-            RestoreUncovered();
-            ApplyToAllLive();
-            ReapplyKnownNametags();
-        }
-
-        // re-apply the font to every nametag we've seen. the general sweep skips nametags, so this is what
-        // makes a plain toggle-on re-apply the font to them (otherwise only a view switch would). when
-        // master is off this is a no-op — RestoreUncovered already put nametags back via _touched.
-        private static void ReapplyKnownNametags()
-        {
-            if (!_masterOn || _active.Count == 0) return;
-            var dead = new List<TMP_Text>();
-            foreach (var t in _knownNametags)
-            {
-                if (t == null) { dead.Add(t); continue; }
-                ApplyToNametag(t);
-            }
-            foreach (var t in dead) _knownNametags.Remove(t);
-        }
-
-        // WATCHDOG. the game's fame/famepass system re-slams the ORIGINAL gold material (asap-bold
-        // sdf_EndFamePass, bound to the original atlas) onto a nametag whenever fame state updates — and
-        // that happens sporadically/animated, NOT just at the spawn/visuals patch points we hook. when it
-        // lands, our font is still the BFG atlas but the material points at the original atlas, so the
-        // glyphs render garbage. that's the "breaks on its own after a few seconds, completely random" bug:
-        // something keeps re-setting the material and none of our event hooks catch that particular re-set.
-        // so instead of chasing every game site, poll the small known-nametag set: any nametag whose font
-        // is ours but whose CURRENT material isn't a derived [BFG] one has drifted — re-derive it. cheap
-        // (only nametags, only when something actually drifted; ApplyToNametag early-outs on correct ones).
-        // BeanMonitorService.Update drives this on a throttle.
-        public static void TickNametagWatchdog()
-        {
-            if (!_masterOn || _active.Count == 0 || _knownNametags.Count == 0) return;
-            List<TMP_Text> dead = null;
-            foreach (var t in _knownNametags)
-            {
-                if (t == null) { (dead ??= new List<TMP_Text>()).Add(t); continue; }
-                try
-                {
-                    var cur = t.font;
-                    if (cur == null || !cur.name.StartsWith(OUR_PREFIX, StringComparison.Ordinal)) continue;
-
-                    Material curMat = GetRenderingMaterialSafe(t);
-
-                    // material is already on our atlas — nothing drifted, leave it.
-                    if (curMat != null && curMat.name != null &&
-                        curMat.name.IndexOf("[BFG]", StringComparison.Ordinal) >= 0) continue;
-
-                    // drifted: the game put a raw (original-atlas) material back on our font. re-derive.
-                    ApplyToNametag(t);
-                }
-                catch { }
-            }
-            if (dead != null) foreach (var t in dead) _knownNametags.Remove(t);
-        }
-
-        // re-run the restore+apply without rebuilding assets. called a few frames after a menu/round
-        // enter so any fame/famepass material the game assigned AFTER our first sweep gets caught and
-        // healed (RestoreUncovered now reverts touched text that turned protected). cheap; no IO.
-        public static void HealAndReapply()
-        {
-            if (!_masterOn) return;
-            RestoreUncovered();
-            ApplyToAllLive();
-        }
-
-        // put back the original font + material on any TMP whose target is no longer active (or master off),
-        // OR that has since become fame/famepass text. the famepass material is assigned by the game AFTER
-        // our startup sweep already swapped the font, so we have to catch it here and undo our swap — that
-        // text must keep its original atlas or its gold shader renders garbage. this is the fix for the
-        // "famepass corrupted on startup, only fixed by toggling the font off/on" bug: the toggle worked
-        // because it hit this restore path; now a deferred re-sweep hits it too, no toggle needed.
-        public static void RestoreUncovered()
-        {
-            var drop = new List<TMP_Text>();
-            foreach (var kv in _touched)
-            {
-                var t = kv.Key;
-                if (t == null) { drop.Add(t); continue; }
-
-                bool stillCovered = _masterOn && kv.Value.origName != null &&
-                                    _active.ContainsKey(kv.Value.origName);
-                // only famepass-revert NON-nametag text (the game's own gold fame-UI). nametags are meant
-                // to get the custom font even when gold (ApplyToNametag re-derives the gold material onto
-                // our atlas), so we never revert them just for being famepass.
-                bool nowProtected = stillCovered && !kv.Value.isNametag &&
-                                    t.isActiveAndEnabled && RendersProtected(t);
-                if (!stillCovered || nowProtected)
-                {
-                    RestoreOne(t, kv.Value);
-                    // famepass text we wrongly swapped: pin it so no future sweep touches it again.
-                    if (nowProtected) _protectedTexts.Add(t);
-                    drop.Add(t);
-                }
-            }
-            foreach (var t in drop) _touched.Remove(t);
-        }
-
-        // sweep every TMP currently in the scene. cheap enough; TMP bakes glyphs lazily.
-        public static void ApplyToAllLive()
-        {
-            if (!_masterOn || _active.Count == 0) return;
-            try
-            {
-                foreach (var t in UnityEngine.Object.FindObjectsOfType<TMP_Text>(true))
-                    TryApplyTo(t);
-            }
-            catch (Exception ex) { Plugin.Log.LogWarning("BetterFG: font sweep: " + ex.Message); }
-        }
-
-        // scoped sweep — only the TMPs under one subtree. used on view switches: only the
-        // freshly rebuilt view needs re-swapping, the rest of the scene already has our font and
-        // a whole-scene FindObjectsOfType every switch is what made menu navigation laggy.
-        public static void ApplyToScope(UnityEngine.Transform scope)
-        {
-            if (!_masterOn || _active.Count == 0 || scope == null) return;
-            try
-            {
-                foreach (var t in scope.GetComponentsInChildren<TMP_Text>(true))
-                    TryApplyTo(t);
-            }
-            catch (Exception ex) { Plugin.Log.LogWarning("BetterFG: font scope sweep: " + ex.Message); }
-        }
-
-        // single-TMP path, used by the OnEnable patch so newly spawned text gets swapped too.
-        public static void TryApplyTo(TMP_Text t)
-        {
-            if (!_masterOn || t == null || _active.Count == 0) return;
-            if (_protectedTexts.Contains(t)) return; // nametag-owned, hands off
-            try
-            {
-                var cur = t.font;
-                if (cur == null) return;
-                // already one of ours
-                if (cur.name.StartsWith(OUR_PREFIX, StringComparison.Ordinal)) return;
-
-                if (_active.TryGetValue(cur.name, out var match) && match.builtAsset != null)
-                {
-                    // leave any "fame"/gold text untouched — keeps its original font + look. checks the
-                    // shared font material plus the live UI/3D renderer materials (gold nametags set
-                    // their material on fontMaterial / sharedMaterial, not fontSharedMaterial). do this
-                    // FIRST, before capturing anything, so we never even record protected text.
-                    if (RendersProtected(t)) return;
-
-                    Material origShared = null;
-                    try { origShared = t.fontSharedMaterial; } catch { }
-                    var origOutlineColor = t.outlineColor;
-                    var origOutlineWidth = t.outlineWidth;
-
-                    if (!_touched.ContainsKey(t))
-                        _touched[t] = new Touched
-                        {
-                            orig = cur,
-                            origName = cur.name,
-                            origSharedMat = origShared,
-                            origOutlineColor = origOutlineColor,
-                            origOutlineWidth = origOutlineWidth,
-                            origEnableGradient = t.enableVertexGradient
-                        };
-
-                    // setting .font rebinds the text to the new font's *default* material, dropping the
-                    // original outline/glow. so after the font swap we rebuild that original material onto
-                    // the new font's atlas (DeriveMaterial) and assign it — unless the original was just a
-                    // plain default, in which case the new font's default is correct and we leave it.
-                    t.font = match.builtAsset;
-                    if (!IsPlainDefault(cur, origShared))
-                    {
-                        var derived = DeriveMaterial(match.builtAsset, origShared);
-                        if (derived != null) t.fontSharedMaterial = derived;
-                    }
-                    t.ForceMeshUpdate();
-                }
-            }
-            catch { }
+            RefreshAllText();
         }
 
         public static void ReapplyFromSettings() => RebuildAndApply();
 
-        // ── persistence ───────────────────────────────────────────────────────
+        public static void HealAndReapply()
+        {
+            if (!_masterOn) return;
+            foreach (var ov in _active.Values)
+                foreach (var game in GetFontAssetsByName(ov.targetFontName))
+                    if (!_hijacked.ContainsKey(game.GetInstanceID())) HijackFont(game, ov);
+            RefreshAllText();
+        }
+
+        private static void HijackFont(TMP_FontAsset game, FontOverride ov)
+        {
+            int id = game.GetInstanceID();
+            if (_hijacked.ContainsKey(id)) return;
+
+            var gAtlas = game.m_AtlasTexture;
+            if (gAtlas == null) { Plugin.Log.LogWarning($"hijack {game.name}: no atlas texture, skipping"); return; }
+            if (gAtlas.format != TextureFormat.Alpha8)
+            {
+                Plugin.Log.LogWarning($"hijack {game.name}: atlas is {gAtlas.format}, only Alpha8 supported — skipping");
+                return;
+            }
+            int w = gAtlas.width, h = gAtlas.height, pad = Mathf.Max(1, game.atlasPadding);
+
+            var donor = BuildDonor(ov, w, h, pad);
+            if (donor == null || donor.m_AtlasTexture == null) return;
+            ov.builtAsset = donor;
+
+            var snap = new HijackSnapshot
+            {
+                game = game,
+                gameAtlas = gAtlas,
+                faceInfo = game.faceInfo,
+                populationMode = game.atlasPopulationMode,
+                glyphTable = game.glyphTable,
+                characterTable = game.characterTable,
+                usedGlyphRects = game.usedGlyphRects,
+                freeGlyphRects = game.freeGlyphRects,
+                fontFeatureTable = game.fontFeatureTable,
+                donor = donor,
+            };
+
+            // stash the original pixels (GPU copy — works even though the game atlas isn't CPU-readable)
+            try
+            {
+                var stash = new Texture2D(w, h, TextureFormat.Alpha8, false, true) { hideFlags = HideFlags.HideAndDontSave, name = game.name + " orig" };
+                Graphics.CopyTexture(gAtlas, stash);
+                snap.stash = stash;
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("stash: " + ex.Message); }
+
+            // OUR glyphs into the game's own atlas texture object — no material is touched.
+            try { Graphics.CopyTexture(donor.m_AtlasTexture, gAtlas); }
+            catch (Exception ex) { Plugin.Log.LogError("hijack blit failed: " + ex.Message); return; }
+
+            // matching tables + metrics so UVs line up with the pixels we just wrote. Static: the pixels
+            // are baked, no dynamic growth into this texture.
+            game.faceInfo = donor.faceInfo;
+            game.glyphTable = donor.glyphTable;
+            game.characterTable = donor.characterTable;
+            game.usedGlyphRects = donor.usedGlyphRects;
+            game.freeGlyphRects = donor.freeGlyphRects;
+            game.fontFeatureTable = donor.fontFeatureTable;
+            game.atlasPopulationMode = AtlasPopulationMode.Static;
+            try { game.InitializeDictionaryLookupTables(); } catch { }
+
+            _hijacked[id] = snap;
+            Plugin.Log.LogInfo($"hijack {game.name}: {w}x{h} atlas repainted from {Path.GetFileName(ov.fontPath)}");
+        }
+
+        private static void RestoreAllHijacks()
+        {
+            if (_hijacked.Count == 0) return;
+            _restoring = true;
+            foreach (var snap in _hijacked.Values)
+            {
+                try
+                {
+                    var g = snap.game;
+                    var gAtlas = snap.gameAtlas;
+
+                    if (gAtlas != null && snap.stash != null)
+                    {
+                        try { Graphics.CopyTexture(snap.stash, gAtlas); }
+                        catch (Exception ex) { Plugin.Log.LogWarning("restore blit: " + ex.Message); }
+                    }
+
+                    if (g != null)
+                    {
+                        g.faceInfo = snap.faceInfo;
+                        g.glyphTable = snap.glyphTable;
+                        g.characterTable = snap.characterTable;
+                        g.usedGlyphRects = snap.usedGlyphRects;
+                        g.freeGlyphRects = snap.freeGlyphRects;
+                        g.fontFeatureTable = snap.fontFeatureTable;
+                        g.atlasPopulationMode = snap.populationMode;
+                        try { g.ReadFontAssetDefinition(); }
+                        catch { try { g.InitializeDictionaryLookupTables(); } catch { } }
+                        try { TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, g); } catch { }
+                    }
+
+                    if (snap.stash != null) { try { UnityEngine.Object.Destroy(snap.stash); } catch { } }
+                    Plugin.Log.LogInfo($"restore {(g != null ? g.name : "<reloaded>")}: atlas repainted to original");
+                }
+                catch (Exception ex) { Plugin.Log.LogWarning("BFGFont: restore: " + ex.Message); }
+            }
+            _hijacked.Clear();
+            _restoring = false;
+        }
+
+        // re-apply after the game re-initialised a hijacked asset (ReadFontAssetDefinition hook).
+        internal static void ReassertHijack(TMP_FontAsset game)
+        {
+            if (game == null) return;
+            if (!_hijacked.TryGetValue(game.GetInstanceID(), out var snap) || snap.donor == null) return;
+            try
+            {
+                var gAtlas = game.m_AtlasTexture;
+                if (gAtlas != null && snap.donor.m_AtlasTexture != null && gAtlas.format == TextureFormat.Alpha8
+                    && gAtlas.width == snap.donor.m_AtlasTexture.width && gAtlas.height == snap.donor.m_AtlasTexture.height)
+                {
+                    snap.gameAtlas = gAtlas;
+                    Graphics.CopyTexture(snap.donor.m_AtlasTexture, gAtlas);
+                }
+                game.faceInfo = snap.donor.faceInfo;
+                game.glyphTable = snap.donor.glyphTable;
+                game.characterTable = snap.donor.characterTable;
+                game.usedGlyphRects = snap.donor.usedGlyphRects;
+                game.freeGlyphRects = snap.donor.freeGlyphRects;
+                game.fontFeatureTable = snap.donor.fontFeatureTable;
+                game.atlasPopulationMode = AtlasPopulationMode.Static;
+                game.InitializeDictionaryLookupTables();
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("BFGFont: reassert: " + ex.Message); }
+        }
+
+        internal static bool IsHijacked(int id) => _hijacked.ContainsKey(id);
+
+        // ── force every live text to rebuild against the changed atlas ───────
+        private static void RefreshAllText()
+        {
+            try
+            {
+                foreach (var t in Resources.FindObjectsOfTypeAll<TMP_Text>())
+                {
+                    if (t == null) continue;
+                    try
+                    {
+                        var ui = t.TryCast<TextMeshProUGUI>();
+                        if (ui != null) ui.UpdateFontAsset();
+                        else { var wr = t.TryCast<TextMeshPro>(); if (wr != null) wr.UpdateFontAsset(); }
+                    }
+                    catch { }
+                    try { t.ForceMeshUpdate(true, true); } catch { }
+                }
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("BetterFG: text refresh: " + ex.Message); }
+        }
+
+        // ── persistence ──────────────────────────────────────────────────────
         public static List<FontOverride> LoadAll()
         {
             var list = new List<FontOverride>();
             if (!int.TryParse(SettingsService.Get(KEY_COUNT, "0"), out int count)) return list;
-
             for (int i = 0; i < count; i++)
-            {
                 list.Add(new FontOverride
                 {
                     entryName = SettingsService.Get(EK(i, "name"), "entry " + i),
@@ -738,7 +407,6 @@ namespace BetterFG.Customization.Menu
                     targetFontName = SettingsService.Get(EK(i, "target"), ""),
                     enabled = SettingsService.Get(EK(i, "enabled"), "1") == "1",
                 });
-            }
             return list;
         }
 
@@ -762,26 +430,29 @@ namespace BetterFG.Customization.Menu
             Utilities.PatchGate.SetActive(KEY_MASTER_ON, on);
         }
 
-        // build a one-off preview asset for the edit form (not registered as an active override).
-        public static TMP_FontAsset BuildPreview(FontOverride ov) => BuildAsset(ov);
+        // ── legacy no-op shims (old per-text swap API) ──
+        public static void ApplyToNametag(TMP_Text t) { }
+        public static void ProtectText(TMP_Text t) { }
+        public static void Protect(TMP_Text t) { }
+        public static void RevertIfTouched(TMP_Text t) { }
+        public static void RestoreUncovered() { }
+        public static void ApplyToScope(UnityEngine.Transform scope) { }
+        public static void ApplyToAllLive() => RefreshAllText();
     }
 
-    // newly spawned / re-enabled TMP text spawns with its original font, so reassert our override
-    // whenever a TMP turns on. this is the fix for HUD/instantiated text resetting. OnEnable is
-    // declared on the concrete types, not the abstract TMP_Text base, so patch both.
+    // the game re-runs ReadFontAssetDefinition when it (re)loads/rebuilds a font asset — that repaints
+    // the atlas from the original source font. cold method, safe to hook: re-apply on a hijacked asset.
     [BetterFG.Utilities.BfgPatchGate(FontReplacementService.KEY_MASTER_ON)]
-    [HarmonyLib.HarmonyPatch]
-    internal static class TMPTextOnEnableFontPatch
+    [HarmonyLib.HarmonyPatch(typeof(TMP_FontAsset), "ReadFontAssetDefinition")]
+    internal static class TMPFontAssetReadDefinitionPatch
     {
-        static System.Collections.Generic.IEnumerable<System.Reflection.MethodBase> TargetMethods()
-        {
-            var u = HarmonyLib.AccessTools.Method(typeof(TextMeshProUGUI), "OnEnable");
-            if (u != null) yield return u;
-            var w = HarmonyLib.AccessTools.Method(typeof(TextMeshPro), "OnEnable");
-            if (w != null) yield return w;
-        }
-
         [HarmonyLib.HarmonyPostfix]
-        public static void Postfix(TMP_Text __instance) => FontReplacementService.TryApplyTo(__instance);
+        public static void Postfix(TMP_FontAsset __instance)
+        {
+            if (__instance == null || !FontReplacementService.MasterOnFast) return;
+            if (FontReplacementService.IsRestoring) return;
+            if (FontReplacementService.IsHijacked(__instance.GetInstanceID()))
+                FontReplacementService.ReassertHijack(__instance);
+        }
     }
 }

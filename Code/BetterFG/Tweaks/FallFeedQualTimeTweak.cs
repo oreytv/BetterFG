@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BetterFG.Features.TimePlacement;
 
 namespace BetterFG.Tweaks
@@ -28,6 +29,15 @@ namespace BetterFG.Tweaks
         const string RaceSprite = "fallfeed-race";
         const string TimeColor = "#FFFF00"; // pure yellow
 
+        // a qualified player's time sits in FeatureTimePlacement for the REST of the round, so
+        // "has a stored qual time" isn't a one-shot qualify signal by itself — a later, unrelated
+        // fall-feed row about the same already-qualified player (e.g. a chat-disabled notice) would
+        // still hit it and get the qualify time wrongly stamped onto it. one stamp per player per
+        // round fixes that; cleared alongside FeatureTimePlacement's own round reset.
+        readonly HashSet<string> _stampedKeys = new HashSet<string>();
+
+        internal void ResetStampedKeys() => _stampedKeys.Clear();
+
         public void Apply(TMPro.TextMeshProUGUI messageBodyText, string primaryPlayerKey)
         {
             if (!IsEnabled || messageBodyText == null) return;
@@ -36,10 +46,12 @@ namespace BetterFG.Tweaks
                 string cur = messageBodyText.text;
                 if (string.IsNullOrEmpty(cur)) return;
                 if (cur.Contains(TimeColor)) return;     // already stamped
+                if (string.IsNullOrEmpty(primaryPlayerKey) || _stampedKeys.Contains(primaryPlayerKey)) return;
 
                 // server qualifyTime for this fallfeed's player, captured by FeatureTimePlacement. no
                 // stored time = don't stamp (don't invent one off the live clock).
                 if (!TryGetQualTime(primaryPlayerKey, out string qualTime)) return;
+                _stampedKeys.Add(primaryPlayerKey);
 
                 string stamp = $" <color={TimeColor}>{qualTime}</color>";
                 int idx = cur.IndexOf("<sprite name=\"" + RaceSprite, StringComparison.OrdinalIgnoreCase);

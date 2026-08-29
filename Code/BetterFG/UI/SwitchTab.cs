@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {
@@ -31,7 +32,7 @@ namespace BetterFG.UI
             // makes one) sitting right next to the title text, over the title bar's own open/close
             // button - eating clicks there for nothing since SwitchNow() is a no-op with no target
             if (string.IsNullOrEmpty(SwitchLabel)) return;
-            _switchLink = UGUIShip.CreateLinkText(titleBar, new Rect(0f, 0f, 90f, TITLE_H), SwitchLabel,
+            _switchLink = UGUIShip.CreateLinkText(title.transform, new Rect(0f, 0f, 90f, TITLE_H), SwitchLabel,
                 new Action(SwitchNow), LINK, UIScale.FS_SM);
             _switchLink.gameObject.SetActive(IsOpen);
             PositionSwitchLink();
@@ -54,14 +55,15 @@ namespace BetterFG.UI
             if (_switchLink != null) _switchLink.gameObject.SetActive(false);
         }
 
-        // sit the link just past the end of the title text
+        // sit the link just past the end of the title text. it's a child of the title label, anchored to
+        // that label's left/middle, so it follows the nudge the label takes when the tab opens
         protected void PositionSwitchLink()
         {
-            if (_switchLink == null || _titleText == null) return;
+            if (_switchLink == null) return;
             var rt = _switchLink.rectTransform;
-            UGUIShip.SetPixelRect(rt, new Rect(
-                _titleText.rectTransform.offsetMin.x + _titleText.preferredWidth + UIScale.PAD * 1.5f,
-                0f, rt.sizeDelta.x, TITLE_H));
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0.5f);
+            rt.sizeDelta = new Vector2(rt.sizeDelta.x, TITLE_H);
+            rt.anchoredPosition = new Vector2(_titleText.preferredWidth + UIScale.PAD * 1.5f, 0f);
         }
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -25,6 +25,7 @@ using UnityEngine.ResourceManagement.ResourceProviders;
 using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.Replay
 {

@@ -214,15 +214,34 @@ namespace BetterFG.Features.MorePlatformIcon
         {
             try
             {
-                if (vm == null || vm.PlayerList == null || vm._cachedPlayersGameObjectList == null) return;
+                if (vm == null || vm.PlayerList == null || vm._cachedPlayersGameObjectList == null)
+                {
+                    Plugin.Log.LogInfo($"PrivateLobbyName: DIAG bail, vm null={vm == null} playerlist null={vm?.PlayerList == null} cache null={vm?._cachedPlayersGameObjectList == null}");
+                    return;
+                }
                 string localKey = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
 
                 int count = Math.Min(vm.PlayerList.Count, vm._cachedPlayersGameObjectList.Count);
+                Plugin.Log.LogInfo($"PrivateLobbyName: DIAG applying to {count} rows (playerlist={vm.PlayerList.Count}, cache={vm._cachedPlayersGameObjectList.Count}), privatelobby setting on={On("privatelobby")}");
                 for (int i = 0; i < count; i++)
                 {
                     var data = vm.PlayerList[i];
                     var row = vm._cachedPlayersGameObjectList[i];
-                    if (data == null || row == null) continue;
+                    if (data == null || row == null)
+                    {
+                        Plugin.Log.LogInfo($"PrivateLobbyName: DIAG row {i} null (data={data == null}, row={row == null})");
+                        continue;
+                    }
+
+                    var textNode = row.transform.Find("Panel/Content/PlayerName");
+                    if (textNode == null)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        foreach (var t in row.transform.GetComponentsInChildren<Transform>(true))
+                            sb.Append(GetPath(t, row.transform)).Append(" [").Append(t.GetComponent<TMPro.TextMeshProUGUI>() != null ? "TMP" : "").Append("]; ");
+                        Plugin.Log.LogInfo($"PrivateLobbyName: DIAG row {i} hierarchy: {sb}");
+                    }
+                    Plugin.Log.LogInfo($"PrivateLobbyName: DIAG row {i} key='{data.PlayerKey}' textFound={textNode != null} spriteName='{SpriteNameForPlayerKey(data.PlayerKey)}'");
 
                     ApplyPrivateLobbyPlatform(row.transform, data.PlayerKey);
                     ApplyPrivateLobbyCustomName(row.transform, data.PlayerKey);
@@ -232,6 +251,15 @@ namespace BetterFG.Features.MorePlatformIcon
             {
                 Plugin.Log.LogWarning("PrivateLobbyName: list " + ex.Message);
             }
+        }
+
+        static string GetPath(Transform t, Transform root)
+        {
+            if (t == root) return ".";
+            var names = new List<string>();
+            while (t != null && t != root) { names.Add(t.name); t = t.parent; }
+            names.Reverse();
+            return string.Join("/", names);
         }
 
         // scene-based driver (foreground timing): each row's name is what it currently shows, so match
@@ -257,8 +285,8 @@ namespace BetterFG.Features.MorePlatformIcon
             try
             {
                 if (row == null || string.IsNullOrEmpty(playerKey)) return;
-                // row may be the VM row (Panel/Content/Text under it) or the Content node directly
-                var text = (row.Find("Panel/Content/Text") ?? row.Find("Text"))?.GetComponent<TextMeshProUGUI>();
+                // row may be the VM row (Panel/Content/PlayerName under it) or the Content node directly
+                var text = (row.Find("Panel/Content/PlayerName") ?? row.Find("PlayerName"))?.GetComponent<TextMeshProUGUI>();
                 if (text == null) return;
 
                 string localKey = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
@@ -298,26 +326,14 @@ namespace BetterFG.Features.MorePlatformIcon
         // build a RemoteNametagInfo from your own live nametag settings so the local row gets the
         // same name+colour+style path as everyone else.
         internal static BetterFG.Network.RemoteNametagInfo LocalNametagInfo()
-        {
-            var ci = System.Globalization.CultureInfo.InvariantCulture;
-            float F(string k, float d) => float.TryParse(BetterFG.Services.SettingsService.Get(k, ""), System.Globalization.NumberStyles.Float, ci, out float v) ? v : d;
-            return new BetterFG.Network.RemoteNametagInfo
-            {
-                customName = LocalPlayerInfo.CustomName,
-                r = F("nametag.color.r", 1f), g = F("nametag.color.g", 1f), b = F("nametag.color.b", 1f),
-                bold = BetterFG.Services.SettingsService.Get("nametag.bold", "false") == "true",
-                italic = BetterFG.Services.SettingsService.Get("nametag.italic", "false") == "true",
-                nameStyle = BetterFG.Services.SettingsService.Get("nametag.namestyle", "default"),
-                iconMode = "none",
-            };
-        }
+            => BetterFG.Nametag.NametagIconApplicator.BuildLocalNametagInfo();
 
         public static void ApplyPrivateLobbyPlatform(Transform row, string playerKey)
         {
             try
             {
                 if (row == null) return;
-                var text = row.Find("Panel/Content/Text")?.GetComponent<TextMeshProUGUI>();
+                var text = row.Find("Panel/Content/PlayerName")?.GetComponent<TextMeshProUGUI>();
                 if (text == null) return;
 
                 string spriteName = On("privatelobby") ? SpriteNameForPlayerKey(playerKey) : "";
@@ -346,7 +362,7 @@ namespace BetterFG.Features.MorePlatformIcon
                 string displayName = BetterFG.Tweaks.StripSizeTagsTweak.Strip(LocalPlayerInfo.DisplayName);
                 if (row == null || string.IsNullOrEmpty(localName) || string.IsNullOrEmpty(displayName)) return;
 
-                var text = row.Find("Panel/Content/Text")?.GetComponent<TextMeshProUGUI>();
+                var text = row.Find("Panel/Content/PlayerName")?.GetComponent<TextMeshProUGUI>();
                 if (text == null) return;
 
                 string visible = text.text ?? "";

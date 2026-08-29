@@ -1,8 +1,9 @@
-using System.Collections;
+﻿using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using UnityEngine;
 using BetterFG.Core;
 using BetterFG.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.Services
 {

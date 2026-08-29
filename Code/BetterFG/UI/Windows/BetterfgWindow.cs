@@ -4,6 +4,7 @@ using System.Reflection;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
@@ -18,7 +19,7 @@ namespace BetterFG.UI.Windows
         protected const int FS_BODY = (int)(11f * S);
         protected const int FS_SM = (int)(10f * S);
 
-        protected static readonly Color WHITE = Color.white;
+        protected static readonly Color WHITE = UGUIShip.WHITE;
         protected static readonly Color HINT = new Color(1f, 1f, 1f, 0.4f);
         protected static readonly Color PANEL_BG = new Color(0f, 0f, 0f, 0.4f);
         protected static readonly Color BTN_DARK = new Color(0.18f, 0.18f, 0.18f, 1f);

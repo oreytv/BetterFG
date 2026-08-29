@@ -241,6 +241,7 @@ namespace BetterFG.Features.TimePlacement
             _disconnectedKeys.Clear();
             _skippedKeys.Clear();
             Nametag.NametagIconApplicator.ForgetRecentKeys();
+            BetterFG.Tweaks.FallFeedQualTimeTweak.Instance?.ResetStampedKeys();
             _nextPlace = 0;
             _lastTaCutoff = -1;
             _soloSig = 0;
@@ -1962,40 +1963,11 @@ namespace BetterFG.Features.TimePlacement
         }
 
         const string HotPink = "#FF1FA6";
-        static string _cachedLocalKey = "";   // remembered while alive so it survives death/spectate
 
-        // the local player's key — pulled off our NetworkPlayerDataClient so it's the SAME playerKey
-        // format the squad members / PlayerScores use (GetLocalPlayerKey returns a different format
-        // that won't match). once we're dead/spectating GetLocalPlayerData() returns null (our fgcc
-        // is gone), so we cache the key the first time we find it and keep using it.
-        static string LocalPlayerKey()
-        {
-            string key = BetterFG.Utilities.PlayerInformation.GetLocalPlayerData()?.playerKey ?? "";
-
-            // data path comes back empty a lot (no fgcc when finished/dead/spectating). fall back to
-            // the GlobalGameStateClient key, which is the SAME playerKey but with a "pc_steam_" (or
-            // other platform) prefix tacked on — strip the prefix so it matches the squad/score
-            // playerKeys. without this our own custom name never gets applied on race finishes,
-            // because the isMe check below never matches an empty key.
-            if (string.IsNullOrEmpty(key))
-            {
-                string ggs = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
-                // ggs is "<platform>_<service>_<bareKey>" (e.g. "pc_steam_zmxnczxcnjzxcnjzx").
-                // everyone else is keyed by just the bareKey, so strip the first two underscore-
-                // delimited segments. don't use LastIndexOf — a bareKey could itself contain '_'
-                // and we'd over-strip it.
-                if (!string.IsNullOrEmpty(ggs))
-                {
-                    int first = ggs.IndexOf('_');
-                    int second = first >= 0 ? ggs.IndexOf('_', first + 1) : -1;
-                    key = second >= 0 && second < ggs.Length - 1 ? ggs.Substring(second + 1) : ggs;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(key)) _cachedLocalKey = key;
-            else if (!string.IsNullOrEmpty(_cachedLocalKey)) key = _cachedLocalKey;
-            return key;
-        }
+        // the local player's key in the same bare format the squad members / PlayerScores use -
+        // GlobalGameStateClient's own key has a platform prefix that won't match. see
+        // PlayerInformation.GetLocalBarePlayerKey for why this isn't a plain one-liner.
+        internal static string LocalPlayerKey() => BetterFG.Utilities.PlayerInformation.GetLocalBarePlayerKey();
 
         // do two playerKeys point at the same player? our local key (myKey) comes out BARE (ggs key
         // with the platform prefix stripped) while squad members / score entries carry the RAW key, so

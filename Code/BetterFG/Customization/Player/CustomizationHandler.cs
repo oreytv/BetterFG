@@ -115,6 +115,8 @@ namespace BetterFG.Customization.Player
         {
             if (p == null || bean == null) yield break;
 
+            BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.ApplyProfileOverride(bean, p);
+
             var app = CustomizationServices.ApplicationService;
             var loader = CustomizationServices.LoaderService;
             if (app == null || loader == null) yield break;

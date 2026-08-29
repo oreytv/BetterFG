@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEngine.UI;
 using Rewired;
@@ -6,6 +6,7 @@ using FGClient;
 using FG.Common.UI;
 using BetterFG.UI;
 using BetterFG.UI.Tabs;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.QualificationTime
 {

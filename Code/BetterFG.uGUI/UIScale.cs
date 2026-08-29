@@ -1,4 +1,4 @@
-﻿namespace BetterFG.UI
+﻿namespace BettrFG.uGUI
 {
     /// <summary>
     /// Change S to scale the entire UI. 1.0 = original, 1.3 = 30% larger, etc.

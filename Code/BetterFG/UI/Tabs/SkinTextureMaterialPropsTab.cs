@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
 using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -36,7 +37,7 @@ namespace BetterFG.UI.Tabs
 
         private static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
         private static readonly Color LABEL = new Color(1f, 1f, 1f, 0.72f);
-        private static readonly Color WHITE = Color.white;
+        private static readonly Color WHITE = UGUIShip.WHITE;
 
         public int EditIndex = -1;
         public string Category = SkinTexCategory.Upper;

@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI
 {
@@ -23,8 +24,8 @@ namespace BetterFG.UI
 
         protected static readonly Color HINT = new Color(1f, 1f, 1f, 0.35f);
         protected static readonly Color LABEL = new Color(1f, 1f, 1f, 0.72f);
-        protected static readonly Color WHITE = Color.white;
-        protected static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        protected static readonly Color WHITE = UGUIShip.WHITE;
+        protected static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
         protected static readonly Color BTN_BLUE = new Color(0.22f, 0.34f, 0.55f, 1f);
         protected static readonly Color ROW_IDLE = new Color(0.12f, 0.12f, 0.12f, 1f);
         protected static readonly Color ROW_SEL = new Color(0.25f, 0.45f, 0.25f, 1f);

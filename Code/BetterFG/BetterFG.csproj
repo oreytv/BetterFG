@@ -16,6 +16,7 @@
 	<UsingTask TaskName="ComputeBettrFGSourceHash" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
 	  <ParameterGroup>
 	    <ProjectDir ParameterType="System.String" Required="true" />
+	    <ExtraDir ParameterType="System.String" Required="false" />
 	    <HashValue ParameterType="System.String" Output="true" />
 	  </ParameterGroup>
 	  <Task>
@@ -24,19 +25,25 @@
 	    <Using Namespace="System.Linq" />
 	    <Using Namespace="System.Security.Cryptography" />
 	    <Code Type="Fragment" Language="cs"><![CDATA[
-	      var files = Directory.GetFiles(ProjectDir, "*.cs", SearchOption.AllDirectories)
-	                           .Where(f => f.IndexOf("\\obj\\", StringComparison.OrdinalIgnoreCase) < 0
-	                                    && f.IndexOf("\\bin\\", StringComparison.OrdinalIgnoreCase) < 0)
-	                           .OrderBy(f => f, StringComparer.Ordinal)
-	                           .ToArray();
+	      var dirs = string.IsNullOrEmpty(ExtraDir)
+	        ? new[] { ProjectDir }
+	        : new[] { ProjectDir, ExtraDir };
 	      using (var sha = SHA256.Create())
 	      {
-	        foreach (var f in files)
+	        foreach (var dir in dirs)
 	        {
-	          var rel = System.Text.Encoding.UTF8.GetBytes(f.Substring(ProjectDir.Length).Replace('\\','/') + "\n");
-	          sha.TransformBlock(rel, 0, rel.Length, null, 0);
-	          var bytes = File.ReadAllBytes(f);
-	          sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+	          var files = Directory.GetFiles(dir, "*.cs", SearchOption.AllDirectories)
+	                               .Where(f => f.IndexOf("\\obj\\", StringComparison.OrdinalIgnoreCase) < 0
+	                                        && f.IndexOf("\\bin\\", StringComparison.OrdinalIgnoreCase) < 0)
+	                               .OrderBy(f => f, StringComparer.Ordinal)
+	                               .ToArray();
+	          foreach (var f in files)
+	          {
+	            var rel = System.Text.Encoding.UTF8.GetBytes(f.Substring(dir.Length).Replace('\\','/') + "\n");
+	            sha.TransformBlock(rel, 0, rel.Length, null, 0);
+	            var bytes = File.ReadAllBytes(f);
+	            sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+	          }
 	        }
 	        sha.TransformFinalBlock(new byte[0], 0, 0);
 	        HashValue = BitConverter.ToString(sha.Hash).Replace("-", "").ToLowerInvariant().Substring(0, 16);
@@ -49,7 +56,7 @@
 	    <BuildHashFile>$(IntermediateOutputPath)BuildHash.g.cs</BuildHashFile>
 	  </PropertyGroup>
 	  <MakeDir Directories="$(IntermediateOutputPath)" />
-	  <ComputeBettrFGSourceHash ProjectDir="$(MSBuildProjectDirectory)\">
+	  <ComputeBettrFGSourceHash ProjectDir="$(MSBuildProjectDirectory)\" ExtraDir="$(MSBuildProjectDirectory)\..\BetterFG.uGUI\">
 	    <Output TaskParameter="HashValue" PropertyName="BuildHashValue" />
 	  </ComputeBettrFGSourceHash>
 	  <ItemGroup>
@@ -184,6 +191,7 @@
   <ItemGroup>
     <EmbeddedResource Include="assets\**\*.png" />
     <EmbeddedResource Include="assets\**\*.wav" />
+    <EmbeddedResource Include="assets\**\*.ttf" />
     <EmbeddedResource Include="assets\bundles\*" />
   </ItemGroup>
 
@@ -199,6 +207,10 @@
     <Reference Include="Libs\*.dll">
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BetterFG.uGUI\BetterFG.uGUI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

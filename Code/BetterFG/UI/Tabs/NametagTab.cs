@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using BetterFG.Core;
 using BetterFG.Nametag;
 using TMPro;
 using UnityEngine;
+using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
@@ -13,8 +14,8 @@ namespace BetterFG.UI.Tabs
         protected override string BgResource => "BetterFG.assets.ui.nametag.bg.png";
         public override string TabTitle => "Nametag";
 
-        private static readonly Color WHITE = Color.white;
-        private static readonly Color BTN_DARK = new Color(0.2f, 0.2f, 0.2f, 1f);
+        private static readonly Color WHITE = UGUIShip.WHITE;
+        private static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
 
         private static TMP_FontAsset _cachedFont;
         private static Material _cachedDefaultMat;

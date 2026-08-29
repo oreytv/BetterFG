@@ -1,3 +1,7 @@
+using System;
+using FG.Common;
+using FG.Common.LevelEditor.Serialization;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using LevelEditor;
 
 namespace BetterFG.UI.Windows.Creative
@@ -72,40 +76,52 @@ namespace BetterFG.UI.Windows.Creative
                 return 0;
             }
 
-            int done = 0, already = 0, full = 0, budget = 0, incompatible = 0, inert = 0;
+            int done = 0, already = 0, budget = 0, incompatible = 0, inert = 0, copies = 0;
+            var activeCtrl = ctrl;
             foreach (var obj in sel)
             {
                 if (obj == null || obj.Pointer == controller.Pointer) continue;
 
                 var rc = obj.LinkController;
                 if (rc == null) { inert++; continue; }
+                if (ctrl.IsReceiverLinkedTo(obj)) { already++; continue; }
 
-                bool ok = ctrl.CanTransmitterLinkToReceiver(rc, out var why);
+                bool ok = activeCtrl.CanTransmitterLinkToReceiver(rc, out var why);
+                if (why == ObjectLinkController.LinkConnectionCheckResult.NoAvailableSlots)
+                {
+                    var copy = CloneController(controller);
+                    if (copy?.LinkController != null)
+                    {
+                        copies++;
+                        activeCtrl = copy.LinkController;
+                        ok = activeCtrl.CanTransmitterLinkToReceiver(rc, out why);
+                    }
+                }
+
                 if (!ok || why != ObjectLinkController.LinkConnectionCheckResult.ValidConnection)
                 {
                     switch (why)
                     {
                         case ObjectLinkController.LinkConnectionCheckResult.AlreadyConnected: already++; break;
-                        case ObjectLinkController.LinkConnectionCheckResult.NoAvailableSlots: full++; break;
                         case ObjectLinkController.LinkConnectionCheckResult.LinkBudgetExceeded: budget++; break;
                         default: incompatible++; break;
                     }
                     continue;
                 }
 
-                entry?.Snaps.Add(new BatchEditHistory.ObjectSnap { Obj = obj, LinkTo = controller, Linked = false });
-                ctrl.LinkReceiver(obj, false);
+                entry?.Snaps.Add(new BatchEditHistory.ObjectSnap { Obj = obj, LinkTo = activeCtrl.PlaceableObject, Linked = false });
+                activeCtrl.LinkReceiver(obj, false);
                 done++;
             }
 
-            if (full > 0) note = full + " over the controller's limit";
-            else if (budget > 0) note = budget + " over the level's link budget";
+            if (budget > 0) note = budget + " over the level's link budget";
             else if (incompatible + inert > 0 && done == 0) note = "nothing selected can be driven by this";
             else if (already > 0 && done == 0) note = "all of them are already linked";
+            else if (copies > 0) note = $"added {copies} more controller(s) to fit them all";
 
             Plugin.Log.LogInfo($"{TypeName(controller)} controller took {done} new link(s)"
+                + (copies > 0 ? $", spread over {copies} extra cop{(copies == 1 ? "y" : "ies")}" : "")
                 + (already > 0 ? $", {already} already on it" : "")
-                + (full > 0 ? $", {full} didn't fit" : "")
                 + (budget > 0 ? $", {budget} blocked by the link budget" : "")
                 + (incompatible + inert > 0 ? $", {incompatible + inert} can't be linked at all" : ""));
             return done;
@@ -129,6 +145,34 @@ namespace BetterFG.UI.Windows.Creative
             }
             Plugin.Log.LogInfo($"cut {done} link(s) off the {TypeName(controller)} controller");
             return done;
+        }
+
+        private static LevelEditorPlaceableObject CloneController(LevelEditorPlaceableObject source)
+        {
+            var mgr = LevelEditorManager.Instance;
+            if (mgr == null) return null;
+
+            var schema = LevelSaver.GetObjectSchema(source);
+            if (schema == null) { Plugin.Log.LogWarning("link controller wouldn't serialise, can't copy it"); return null; }
+
+            schema.GUID = new Il2CppSystem.Nullable<Il2CppSystem.Guid>(Il2CppSystem.Guid.NewGuid());
+            schema.Receivers = new Il2CppReferenceArray<UGCObjectDataSchema>(0);
+            schema.SnapStatus = new Il2CppSystem.Nullable<bool>(false);
+            schema.SnapTargetGuid = new Il2CppSystem.Nullable<Il2CppSystem.Guid>();
+            schema.SnappedWith = new Il2CppSystem.Collections.Generic.List<UGCObjectDataSchema.SnapTarget>();
+            schema.SnapExceptions = new Il2CppSystem.Collections.Generic.List<UGCObjectDataSchema.SnapTarget>();
+
+            var go = LevelLoader.LoadObject(schema, false);
+            var lepo = go != null ? go.GetComponent<LevelEditorPlaceableObject>() : null;
+            if (lepo == null) { Plugin.Log.LogWarning("controller copy didn't come back as a placeable"); return null; }
+
+            try { lepo.OnDeselectInGameEditor(true); }
+            catch (Exception ex) { Plugin.Log.LogWarning($"controller copy finalise threw: {ex.Message}"); }
+
+            if (!LevelIO.IsObjectRegistered(lepo)) mgr.RegisterObject(lepo, true, false, false);
+
+            Plugin.Log.LogInfo($"link controller was full, dropped a copy at {lepo.Position}");
+            return lepo;
         }
 
         public static void SetLinked(ObjectLinkController ctrl, LevelEditorPlaceableObject receiver, bool linked)

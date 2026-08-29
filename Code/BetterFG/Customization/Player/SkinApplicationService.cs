@@ -445,6 +445,18 @@ namespace BetterFG.Customization.Player
         public void ApplySkin(SkinInfo skinInfo, AssetBundle bundle, bool additive = false, ApplyReason reason = ApplyReason.FromMenu)
         {
             if (!additive) RemoveMenuEquippedSlotsOnly();
+
+            // loadedBundles only keys on filename — if whatever's currently active under this
+            // filename came from a DIFFERENT repo, its cached bundle is a different skin's content
+            // and must not survive into GetOrRegisterBundle below, or the freshly downloaded bundle
+            // gets thrown away in favour of the stale one
+            foreach (var s in activeSlots)
+            {
+                if (s?.skinInfo == null || s.skinInfo.file != skinInfo.file) continue;
+                if (s.skinInfo.sourceRepo != skinInfo.sourceRepo) UnloadBundleForFile(skinInfo.file, force: true);
+                break;
+            }
+
             RemoveSlotByFile(skinInfo.file);
 
             SkinType type = SkinTypeParser.FromString(skinInfo.type);
@@ -579,6 +591,19 @@ namespace BetterFG.Customization.Player
             if (string.IsNullOrEmpty(file)) return false;
             foreach (var s in activeSlots)
                 if (s?.skinInfo != null && s.skinInfo.file == file) return true;
+            return false;
+        }
+
+        // same, but also requires the active slot to be from the same repo. two repos can ship a
+        // skin under the same filename — matching on filename alone made a freshly-selected skin
+        // from a different repo look "already equipped", so OnApply skipped it entirely and the
+        // bean kept showing the OLD repo's version while the UI showed the new one selected
+        public bool HasActiveSlotForFile(SkinInfo skinInfo)
+        {
+            if (skinInfo == null || string.IsNullOrEmpty(skinInfo.file)) return false;
+            foreach (var s in activeSlots)
+                if (s?.skinInfo != null && s.skinInfo.file == skinInfo.file && s.skinInfo.sourceRepo == skinInfo.sourceRepo)
+                    return true;
             return false;
         }
 
