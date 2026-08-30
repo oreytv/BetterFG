@@ -79,6 +79,12 @@ namespace BetterFG.Nametag
             [HarmonyPostfix]
             public static void Postfix(PrivateLobbyScreenViewModel __instance)
             {
+                // joining (as opposed to hosting) settles PrivateLobbyOpened asynchronously, so the
+                // state-change push that fires on StateMainMenu -> StatePrivateLobby can land before
+                // it's true for a joiner. re-push once the screen is actually up so the presence
+                // catches up instead of sitting stuck on whatever it was mid-join.
+                BetterFG.Services.DiscordPresenceService.Push();
+
                 var root = __instance?.transform;
                 if (root == null) return;
                 BeanMonitorService.Instance?.StartCoroutine(

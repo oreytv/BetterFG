@@ -22,7 +22,6 @@ namespace BetterFG.Features.QualificationTime
         // Show() navigates to the Customiser backdrop first, which pushes a presence update before our
         // root exists — without this the RPC flashes "Customising their bean" for a beat.
         static bool _opening;
-        static int _svIdxAtHide = -1;
 
         // position of our clone in the nav's _menuTabs (the last slot).
         public static int MenuTabIndex = -1;
@@ -135,14 +134,12 @@ namespace BetterFG.Features.QualificationTime
             // keeps the stock toggles off since none sits at our index.
             if (TabToggle != null) TabToggle.isOn = true;
             _opening = false;
-            Plugin.Log.LogInfo("navprobe PB show done");
             BetterFG.Services.DiscordPresenceService.Push();
         }
 
         public static void Hide()
         {
             if (_root == null) return;
-            _svIdxAtHide = _sv != null ? _sv.CurrentViewIndex : -1;
             UnityEngine.Object.Destroy(_root);
             _root = null;
             _opening = false;
@@ -177,7 +174,6 @@ namespace BetterFG.Features.QualificationTime
             BetterFG.Customization.Menu.MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
 
             if (TabToggle != null) TabToggle.SetIsOnWithoutNotify(false);
-            Plugin.Log.LogInfo($"navprobe PB hide, sv idx {(_svIdxAtHide)}");
             BetterFG.Services.DiscordPresenceService.Push();
         }
     }

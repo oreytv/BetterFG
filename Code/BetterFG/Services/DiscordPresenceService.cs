@@ -99,9 +99,6 @@ namespace BetterFG.Services
                 _skipped = msg.isSkipping;
             }
 
-            if (cgm != null && msg != null && !msg.succeeded && !msg.isSkipping)
-                Plugin.Log.LogInfo($"someone out (id {msg.playerId}, dc={msg.isDisconnected}) — property {cgm.EliminatedPlayerCount}, field {cgm._eliminatedPlayerCount}, target {cgm.RequiredEliminatedPlayerCount}");
-
             if (cgm != null && cgm.IsSquadShow && msg != null && !msg.isSkipping)
             {
                 var idx = cgm._clientPlayerManager?._playerIdIndex;
@@ -116,8 +113,6 @@ namespace BetterFG.Services
                         foreach (var kvp in idx)
                             if (kvp.Value != null && kvp.Value.SquadID == mine) size++;
                         _squadSize = size;
-
-                        Plugin.Log.LogInfo($"squad {mine}: {_squadUp} up, {_squadOut} out of {size}");
                     }
                 }
             }
@@ -271,7 +266,6 @@ namespace BetterFG.Services
                     _lastComposed = activity;
                     Plugin.Log.LogInfo($"presence -> {activity.Details} | {activity.State ?? "-"} | icon {activity.SmallImage ?? "none"}");
                 }
-                Plugin.Log.LogInfo($"navprobe queued at {Environment.TickCount64}: {activity.Details}");
                 DiscordRpcClient.Set(activity);
             }
             catch (Exception ex) { Plugin.Log.LogWarning($"couldn't work out what to tell discord: {ex.Message}"); }
@@ -282,35 +276,35 @@ namespace BetterFG.Services
             if (_inReplayViewer)
             {
                 if (_exportPercent.HasValue)
-                    return Build($"Exporting a replay ({_exportPercent}%)", _replayName, "replay");
+                    return Build(LocalizationService.Format("rpc.exporting_replay_fmt", _exportPercent), _replayName, "replay");
 
                 string mb = (_replaySizeBytes / 1024f / 1024f).ToString("0.0") + " MB";
-                return Build($"Editing a replay ({mb})", _replayName, "replay");
+                return Build(LocalizationService.Format("rpc.editing_replay_fmt", mb), _replayName, "replay");
             }
 
             if (BetterFG.Features.QualificationTime.PBTabView.IsOpen)
-                return Build("Viewing personal bests", null, "tab_home");
+                return Build(LocalizationService.Get("rpc.viewing_personal_bests"), null, "tab_home");
 
             var ggsc = GlobalGameStateClient.Instance;
-            if (ggsc == null) return Build("Booting up", null);
+            if (ggsc == null) return Build(LocalizationService.Get("rpc.booting_up"), null);
 
             if (ggsc.IsInCreativeEditor)
             {
                 string mode = GameModeManager.CurrentGameModeData?.ID switch
                 {
-                    "GAMEMODE_GAUNTLET" => "Race",
-                    "GAMEMODE_SURVIVAL" => "Survival",
-                    "GAMEMODE_POINTS" => "Points",
+                    "GAMEMODE_GAUNTLET" => LocalizationService.Get("rpc.mode_race"),
+                    "GAMEMODE_SURVIVAL" => LocalizationService.Get("rpc.mode_survival"),
+                    "GAMEMODE_POINTS" => LocalizationService.Get("rpc.mode_points"),
                     _ => null
                 };
 
                 var cost = LevelEditorManager.Instance?.CostManager;
-                string budget = cost != null ? $"{cost.UsedBuildPoints}/{cost.TotalBuildPoints} budget" : null;
+                string budget = cost != null ? LocalizationService.Format("rpc.budget_fmt", cost.UsedBuildPoints, cost.TotalBuildPoints) : null;
 
                 var placed = LevelEditorGameObjectManager.Instance?._levelEditorPlaceableObjects;
-                string objects = placed != null ? $"{placed.Count} objects" : null;
+                string objects = placed != null ? LocalizationService.Format("rpc.objects_fmt", placed.Count) : null;
 
-                return Build(mode != null ? $"Building a {mode} level" : "In the Creative editor",
+                return Build(mode != null ? LocalizationService.Format("rpc.building_mode_level_fmt", mode) : LocalizationService.Get("rpc.in_creative_editor"),
                     Join(budget, objects));
             }
 
@@ -326,38 +320,39 @@ namespace BetterFG.Services
                 string level = round.DisplayNameUnindented;
                 if (string.IsNullOrEmpty(level)) level = _roundName;
                 if (string.IsNullOrEmpty(level)) level = gsv.CurrentGameLevelName;
-                if (string.IsNullOrEmpty(level)) level = "A round";
+                if (string.IsNullOrEmpty(level)) level = LocalizationService.Get("rpc.a_round");
 
                 string baseLevel = level;
                 int number = ggsc.RoundCounterInPlaySession;
-                if (number > 0) level += $" (Round {number})";
+                if (number > 0) level += " " + LocalizationService.Format("rpc.round_number_fmt", number);
 
-                string details = cgm.IsSpectatorMode ? "Spectating " + level : level;
+                string details = cgm.IsSpectatorMode ? LocalizationService.Format("rpc.spectating_fmt", level) : level;
                 string effShow = string.Equals(show, baseLevel, StringComparison.OrdinalIgnoreCase) ? null : show;
                 return Build(details, Progress(cgm, effShow), BadgeKey(round), baseLevel);
             }
 
             if (ggsc.PrivateLobbyOpened)
-                return Build("In a private lobby", show);
+                return Build(LocalizationService.Get("rpc.in_private_lobby"), show);
 
             if (ggsc.IsInAnyMatchmakingState)
             {
                 int connected = BetterFG.Tweaks.MatchmakingQueueCountTweak.ConnectedPlayers;
                 int total = BetterFG.Tweaks.MatchmakingQueueCountTweak.TotalPlayers;
                 string filling = connected > 0
-                    ? (total > 0 ? connected + "/" + total + " players" : connected + " players")
+                    ? (total > 0 ? LocalizationService.Format("rpc.players_count_fmt", connected, total) : LocalizationService.Format("rpc.players_count_solo_fmt", connected))
                     : null;
-                return Build("Searching for a match", Join(show, filling));
+                return Build(LocalizationService.Get("rpc.searching_for_match"), Join(show, filling));
             }
 
             if (_inRewards)
             {
                 bool won = ggsc._clientPlayerManager?.LocalPlayerSucceeded ?? false;
-                return Build("Collecting rewards", Join(show, won ? "Just won" : _skipped ? "Skipped" : "Eliminated"));
+                return Build(LocalizationService.Get("rpc.collecting_rewards"),
+                    Join(show, won ? LocalizationService.Get("rpc.just_won") : _skipped ? LocalizationService.Get("rpc.rewards_skipped") : LocalizationService.Get("rpc.rewards_eliminated")));
             }
 
             if (_wonLastShow)
-                return Build(string.IsNullOrEmpty(_roundName) ? "Won the show" : "Just won in " + _roundName, show);
+                return Build(string.IsNullOrEmpty(_roundName) ? LocalizationService.Get("rpc.won_the_show") : LocalizationService.Format("rpc.just_won_in_fmt", _roundName), show);
 
             if (ggsc.IsInGameMatch)
             {
@@ -368,40 +363,39 @@ namespace BetterFG.Services
 
                 string baseNext = next;
                 int number = ggsc.RoundCounterInPlaySession + 1;
-                if (number > 1) next += $" (Round {number})";
-                return Build("Loading into " + next, Join(show, _loadingPlayers), _loadingBadge, baseNext);
+                if (number > 1) next += " " + LocalizationService.Format("rpc.round_number_fmt", number);
+                return Build(LocalizationService.Format("rpc.loading_into_fmt", next), Join(show, _loadingPlayers), _loadingBadge, baseNext);
             }
 
             if (_mainMenu != null)
             {
                 if (_showSelectorOpen)
-                    return Build("Picking a show to play...", null, "tab_home");
+                    return Build(LocalizationService.Get("rpc.picking_a_show"), null, "tab_home");
 
                 // CurrentNavigationView only catches up when the switch animation ends, so leaving the
                 // PB tab reported the Settings view it landed on positionally. the SwitchableView index
                 // is already the destination by the time we're pushing.
                 var sv = _mainMenu.MainMenuBuilder?.SwitchableView;
                 var view = sv != null ? _mainMenu.GetViewType(sv.CurrentViewIndex) : _mainMenu.CurrentNavigationView;
-                Plugin.Log.LogInfo($"navprobe compose: sv {(sv == null ? "null" : sv.CurrentViewIndex.ToString())} -> {view}, prop {_mainMenu.CurrentNavigationView}, prev {_mainMenu.PreviousNavigationView}, animating {MainMenuManager.IsSwitchableViewBeingAnimated}");
                 switch (view)
                 {
                     case MainMenuViews.Customiser:
-                        return Build("Customising their bean", null, "tab_customize");
+                        return Build(LocalizationService.Get("rpc.customising_bean"), null, "tab_customize");
                     case MainMenuViews.Settings:
-                        return Build("Changing their settings", show);
+                        return Build(LocalizationService.Get("rpc.changing_settings"), show);
                     case MainMenuViews.Seasons:
-                        return Build("Looking at Fame Pass", show, "tab_famepass");
+                        return Build(LocalizationService.Get("rpc.looking_fame_pass"), show, "tab_famepass");
                     case MainMenuViews.Shop:
                     case MainMenuViews.SymphonyShop:
-                        return Build("Looking at the shop", show, "tab_shop");
+                        return Build(LocalizationService.Get("rpc.looking_shop"), show, "tab_shop");
                     case MainMenuViews.LiveEvent:
-                        return Build("Checking out a live event", show);
+                        return Build(LocalizationService.Get("rpc.checking_live_event"), show);
                     case MainMenuViews.LevelEditor:
-                        return Build("Heading into Creative", show);
+                        return Build(LocalizationService.Get("rpc.heading_into_creative"), show);
                 }
             }
 
-            return Build("In the main menu", null, "tab_home");
+            return Build(LocalizationService.Get("rpc.in_main_menu"), null, "tab_home");
         }
 
         private static string Progress(ClientGameManager cgm, string show)
@@ -416,21 +410,21 @@ namespace BetterFG.Services
                 int needOut = cgm.RequiredEliminatedPlayerCount;
                 if (needOut > 0 && needOut < initial)
                 {
-                    counts = cgm.EliminatedPlayerCount + "/" + needOut + " eliminated";
+                    counts = LocalizationService.Format("rpc.eliminated_count_fmt", cgm.EliminatedPlayerCount, needOut);
                 }
                 else
                 {
                     int left = initial - cgm._qualifiedPlayerCount - cgm._eliminatedPlayerCount;
-                    counts = left > 0 ? left + (left == 1 ? " player left" : " players left") : null;
+                    counts = left > 0 ? LocalizationService.Format(left == 1 ? "rpc.player_left_singular_fmt" : "rpc.player_left_plural_fmt", left) : null;
                 }
             }
             else
             {
                 int required = cgm.RequiredQualifiedPlayerCount;
                 if (required > 1 && required < initial)
-                    counts = cgm.QualifiedPlayerCount + "/" + required + " qualified";
+                    counts = LocalizationService.Format("rpc.qualified_count_fmt", cgm.QualifiedPlayerCount, required);
                 else
-                    counts = initial > 0 ? cgm.QualifiedPlayerCount + "/" + initial + " qualified" : null;
+                    counts = initial > 0 ? LocalizationService.Format("rpc.qualified_count_fmt", cgm.QualifiedPlayerCount, initial) : null;
             }
 
             string status = null;
@@ -457,9 +451,16 @@ namespace BetterFG.Services
                     : $"status now {status ?? "still playing"}");
             }
 
-            string shown = status;
-            if (status == "QUALIFIED" && _place > 0)
-                shown = $"QUALIFIED {_place}{BetterFG.Features.TimePlacement.FeatureTimePlacement.Suffix(_place)}";
+            string shown = status switch
+            {
+                "QUALIFIED" => _place > 0
+                    ? LocalizationService.Format("rpc.qualified_place_fmt", _place, BetterFG.Features.TimePlacement.FeatureTimePlacement.Suffix(_place))
+                    : LocalizationService.Get("rpc.qualified"),
+                "SKIPPED" => LocalizationService.Get("rpc.status_skipped"),
+                "WAITING FOR NOW" => LocalizationService.Get("rpc.waiting_for_now"),
+                "ELIMINATED" => LocalizationService.Get("rpc.status_eliminated"),
+                _ => null
+            };
 
             string points = null;
             if (status == null && !GameRulesUtils.IsRaceRound() && GameRulesUtils.IsScoringRound())
@@ -478,13 +479,13 @@ namespace BetterFG.Services
                 }
 
                 int target = GameRulesUtils.ScoreTarget();
-                points = target > 0 ? $"{score}/{target} points" : $"{score} points";
+                points = target > 0 ? LocalizationService.Format("rpc.points_fmt", score, target) : LocalizationService.Format("rpc.points_notarget_fmt", score);
             }
 
             string squad = cgm.IsSquadShow && _squadSize > 0
                 ? (_squadOut > 0
-                    ? $"squad {_squadUp}/{_squadSize} up, {_squadOut} out"
-                    : $"squad {_squadUp}/{_squadSize} up")
+                    ? LocalizationService.Format("rpc.squad_status_out_fmt", _squadUp, _squadSize, _squadOut)
+                    : LocalizationService.Format("rpc.squad_status_fmt", _squadUp, _squadSize))
                 : null;
 
             return Join(show, shown, points, counts, squad);

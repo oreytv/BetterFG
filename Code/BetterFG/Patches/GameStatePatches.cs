@@ -1710,9 +1710,6 @@ namespace BetterFG.Patches.GameStates
         {
             // a switch to any view OTHER than our Customiser backdrop means the user navigated away
             // from the PB tab — drop the overlay.
-            if (__instance != null)
-                Plugin.Log.LogInfo($"navprobe SetViewImplementation post: idx {__instance.CurrentViewIndex}, prev {__instance.PreviousViewIndex}, animated {__instance.IsBeingAnimated}, pb {BetterFG.Features.QualificationTime.PBTabView.IsOpen}");
-
             if (BetterFG.Features.QualificationTime.PBTabView.IsOpen && __instance != null
                 && __instance.CurrentViewIndex != BetterFG.Features.QualificationTime.PBTabView.BackdropIndex)
                 BetterFG.Features.QualificationTime.PBTabView.Hide();
@@ -1804,7 +1801,6 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         static void Postfix(SwitchableViewRewiredNavigation __instance, int viewIndex)
         {
-            Plugin.Log.LogInfo($"navprobe rewired SetView({viewIndex})");
             BetterFG.Features.QualificationTime.PBTabView.OnNavIndex(__instance.SwitchableView, viewIndex);
         }
     }

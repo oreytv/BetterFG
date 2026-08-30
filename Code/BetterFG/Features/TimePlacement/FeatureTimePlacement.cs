@@ -1033,7 +1033,7 @@ namespace BetterFG.Features.TimePlacement
                 string pos = !string.IsNullOrEmpty(e.positionString) ? e.positionString : (e.position + Suffix(e.position));
                 string col = e.isInTieEliminatedPosition || e.isInDangerPosition ? "#FF5555" : "#FFFF00";
                 string posText = $"<b><color={col}>{pos}</color></b>";
-                string ptsText = $"<size=120%>{e.points} pts</size>";
+                string ptsText = $"<size=120%>{Services.LocalizationService.Format("leaderboard.pts_fmt", e.points)}</size>";
 
                 // names smaller (-30%)
                 string Small(string s) => $"<size=70%>{s}</size>";
@@ -1211,10 +1211,10 @@ namespace BetterFG.Features.TimePlacement
                 {
                     TimeSpan ts = TimeSpan.FromSeconds(e.qualTime.Value);
                     string timeStr = string.Format("{0:D2}:{1:D2}:{2:D3}", ts.Minutes, ts.Seconds, ts.Milliseconds);
-                    ptsText = $"<size=90%>{e.total}pts</size>  <size=110%><color=#FFFF00>{timeStr}</color></size>";
+                    ptsText = $"<size=90%>{Services.LocalizationService.Format("leaderboard.pts_fmt", e.total)}</size>  <size=110%><color=#FFFF00>{timeStr}</color></size>";
                 }
                 else
-                    ptsText = $"<size=120%>{e.total} pts</size>";
+                    ptsText = $"<size=120%>{Services.LocalizationService.Format("leaderboard.pts_fmt", e.total)}</size>";
                 // qualified rows have "Npts MM:SS.mmm" in the points column — push names right to
                 // clear the wider column instead of overlapping.
                 float nameOffset = e.qualTime.HasValue ? 90f : 0f;
@@ -1349,7 +1349,7 @@ namespace BetterFG.Features.TimePlacement
                     namesText = Small(string.Join(", ", names));
 
                 int place = row + 1;
-                string ptsText = $"<size=120%>{totals[s].pts} pts</size>";
+                string ptsText = $"<size=120%>{Services.LocalizationService.Format("leaderboard.pts_fmt", totals[s].pts)}</size>";
                 SetRow(row, $"<b><color=#FFFF00>{place}{Suffix(place)}</color></b>", namesText, ptsText, 0f, memberKeys);
                 row++;
             }
@@ -1685,9 +1685,9 @@ namespace BetterFG.Features.TimePlacement
                 // would make the number flip on ties even though the row didn't move.
                 int place = row + 1;
                 string posText = $"<b><color=#FFFF00>{place}{Suffix(place)}</color></b>";
-                string ptsText = $"<size=120%>{e.Score} pts</size>";
+                string ptsText = $"<size=120%>{Services.LocalizationService.Format("leaderboard.pts_fmt", e.Score)}</size>";
 
-                string name = "Player";
+                string name = Services.LocalizationService.Get("leaderboard.player_fallback");
                 try
                 {
                     if (p != null && !string.IsNullOrEmpty(p.playerKey))
@@ -1950,9 +1950,9 @@ namespace BetterFG.Features.TimePlacement
                     // shrinks and takes over the time slot as well — a leaver's exact exit time
                     // isn't worth the collision.
                     SetRow(row,
-                        skipped ? $"<b><color={col}>SKIPPED</color></b>"
-                        : dc ? $"<b><color={col}><size=55%>DISCONNECTED</size></color></b>"
-                             : $"<b><color={col}>OUT</color></b>",
+                        skipped ? $"<b><color={col}>{Services.LocalizationService.Get("leaderboard.skipped")}</color></b>"
+                        : dc ? $"<b><color={col}><size=55%>{Services.LocalizationService.Get("leaderboard.disconnected")}</size></color></b>"
+                             : $"<b><color={col}>{Services.LocalizationService.Get("leaderboard.out")}</color></b>",
                         $"<size=85%><color={col}>{e.name}</color></size>",
                         dc || skipped || time.Length == 0 ? "" : $"<size=110%><color={col}>{time}</color></size>", 80f, new List<string> { e.key }, 40f);
                 }
@@ -2029,7 +2029,7 @@ namespace BetterFG.Features.TimePlacement
         static string SquadLabel(uint sid)
         {
             var mine = MySquadId();
-            string text = $"Squad {sid}";
+            string text = Services.LocalizationService.Format("leaderboard.squad_fallback_fmt", sid);
             return (mine.HasValue && mine.Value == sid) ? $"<color={HotPink}>{text}</color>" : text;
         }
 
@@ -2065,7 +2065,7 @@ namespace BetterFG.Features.TimePlacement
         static string ResolvePlayerName(uint remotePlayerId)
         {
             string key = PlayerKeyById(remotePlayerId);
-            if (string.IsNullOrEmpty(key)) return "Player " + remotePlayerId;
+            if (string.IsNullOrEmpty(key)) return Services.LocalizationService.Format("leaderboard.player_id_fmt", remotePlayerId);
             string myKey = LocalPlayerKey();
             if (!string.IsNullOrEmpty(myKey) && KeysMatch(key, myKey))
             {

@@ -42,11 +42,14 @@
     <ItemGroup>
       <LocedDeployTarget Include="$([System.String]::Copy('%(LocedPromptRaw.Identity)').Substring(10))" Condition="$([System.String]::Copy('%(LocedPromptRaw.Identity)').StartsWith('LOCEDDEST:')) And '$(LocedCopyVal)' == '1'" />
     </ItemGroup>
+    <PropertyGroup Condition="'@(LocedDeployTarget)' != ''">
+      <LocedPublishDir>$(MSBuildProjectDirectory)\publish\$(Configuration)\win-x64\</LocedPublishDir>
+    </PropertyGroup>
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\publish_loced.ps1&quot; -Configuration $(Configuration)" Condition="'@(LocedDeployTarget)' != ''" />
     <MakeDir Directories="@(LocedDeployTarget)" Condition="'@(LocedDeployTarget)' != ''" />
-    <Copy SourceFiles="$(TargetDir)$(AssemblyName).exe" DestinationFolder="%(LocedDeployTarget.Identity)" SkipUnchangedFiles="false" Condition="'@(LocedDeployTarget)' != ''" />
-    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb" DestinationFolder="%(LocedDeployTarget.Identity)" SkipUnchangedFiles="false" Condition="'@(LocedDeployTarget)' != '' And Exists('$(TargetDir)$(AssemblyName).pdb')" />
+    <Copy SourceFiles="$(LocedPublishDir)$(AssemblyName).exe" DestinationFolder="%(LocedDeployTarget.Identity)" SkipUnchangedFiles="false" Condition="'@(LocedDeployTarget)' != ''" />
     <Message Importance="high" Text="LocalizationEditor copied to %(LocedDeployTarget.Identity)" Condition="'@(LocedDeployTarget)' != ''" />
-    <Exec Command="explorer.exe &quot;$(TargetDir)$(AssemblyName).exe&quot;" ContinueOnError="true" Condition="'$(LocedKillVal)' == '1'" />
+    <Exec Command="explorer.exe &quot;$(LocedPublishDir)$(AssemblyName).exe&quot;" ContinueOnError="true" Condition="'$(LocedKillVal)' == '1' And '@(LocedDeployTarget)' != ''" />
   </Target>
 
 </Project>

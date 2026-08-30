@@ -24,3 +24,4 @@ Code/BetterFG/Patches/PatchAfkAllow.cs
 Code/BetterFG/build_prompt.state.json
 Code/BetterFG.SkinPackager/creator_deploy.txt
 *.kra
+/Code/BettrFGLocalizationEditor/publish

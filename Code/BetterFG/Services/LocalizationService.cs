@@ -45,6 +45,8 @@ namespace BetterFG.Services
 
             _current = SettingsService.Get(SETTINGS_KEY, "en");
             if (Array.IndexOf(_languages, _current) < 0) _current = _languages.Length > 0 ? _languages[0] : "en";
+
+            Plugin.Log?.LogInfo($"localization loaded from {FilePath}: {_table.Count} keys, lang {_current}");
         }
 
         private static void Parse(string raw)

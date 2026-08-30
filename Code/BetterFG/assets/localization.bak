@@ -823,3 +823,56 @@ ui.background_images	Background Images
 ui.main_sun_rotation	Main Sun Rotation
 ui.bettrfg_credits	Bettrfg Credits
 ui.maxtabs	Maxtabs
+leaderboard.pts_fmt	{0} pts
+leaderboard.player_fallback	Player
+leaderboard.player_id_fmt	Player {0}
+leaderboard.skipped	SKIPPED
+leaderboard.disconnected	DISCONNECTED
+leaderboard.out	OUT
+leaderboard.squad_fallback_fmt	Squad {0}
+rpc.exporting_replay_fmt	Exporting a replay ({0}%)
+rpc.editing_replay_fmt	Editing a replay ({0})
+rpc.viewing_personal_bests	Viewing personal bests
+rpc.booting_up	Booting up
+rpc.mode_race	Race
+rpc.mode_survival	Survival
+rpc.mode_points	Points
+rpc.budget_fmt	{0}/{1} budget
+rpc.objects_fmt	{0} objects
+rpc.building_mode_level_fmt	Building a {0} level
+rpc.in_creative_editor	In the Creative editor
+rpc.a_round	A round
+rpc.round_number_fmt	(Round {0})
+rpc.spectating_fmt	Spectating {0}
+rpc.in_private_lobby	In a private lobby
+rpc.players_count_fmt	{0}/{1} players
+rpc.players_count_solo_fmt	{0} players
+rpc.searching_for_match	Searching for a match
+rpc.collecting_rewards	Collecting rewards
+rpc.just_won	Just won
+rpc.rewards_skipped	Skipped
+rpc.rewards_eliminated	Eliminated
+rpc.won_the_show	Won the show
+rpc.just_won_in_fmt	Just won in {0}
+rpc.loading_into_fmt	Loading into {0}
+rpc.picking_a_show	Picking a show to play...
+rpc.customising_bean	Customising their bean
+rpc.changing_settings	Changing their settings
+rpc.looking_fame_pass	Looking at Fame Pass
+rpc.looking_shop	Looking at the shop
+rpc.checking_live_event	Checking out a live event
+rpc.heading_into_creative	Heading into Creative
+rpc.in_main_menu	In the main menu
+rpc.eliminated_count_fmt	{0}/{1} eliminated
+rpc.player_left_singular_fmt	{0} player left
+rpc.player_left_plural_fmt	{0} players left
+rpc.qualified_count_fmt	{0}/{1} qualified
+rpc.qualified	QUALIFIED
+rpc.qualified_place_fmt	QUALIFIED {0}{1}
+rpc.status_skipped	SKIPPED
+rpc.waiting_for_now	WAITING FOR NOW
+rpc.status_eliminated	ELIMINATED
+rpc.points_fmt	{0}/{1} points
+rpc.points_notarget_fmt	{0} points
+rpc.squad_status_fmt	squad {0}/{1} up
+rpc.squad_status_out_fmt	squad {0}/{1} up, {2} out

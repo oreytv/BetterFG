@@ -47,7 +47,6 @@ namespace BetterFG.Features.CopyCode
         {
             if (Instance == null) return;
             Instance._lobbyVm = vm;
-            Plugin.Log.LogInfo($"private lobby has focus, code reads \"{vm.Code}\"");
         }
 
         public static void OnLobbyBlur()
@@ -133,7 +132,6 @@ namespace BetterFG.Features.CopyCode
         private void Copy()
         {
             GUIUtility.systemCopyBuffer = _code;
-            Plugin.Log.LogInfo($"{_code} -> clipboard");
 
             NavPromptCore.RegisterCmsString("bfg_copycode_title", "Copied");
             NavPromptCore.RegisterCmsString("bfg_copycode_body", "Code copied to your clipboard.");
