@@ -82,6 +82,8 @@ foreach ($junk in $pluginJunk) {
     }
 }
 
+Get-ChildItem -LiteralPath $pluginOnlyFolder -Filter *.bak | Where-Object { $_.Name -ne "localization.bak" } | Remove-Item -Force
+
 if ($BuildOutput -and (Test-Path $BuildOutput)) {
     $filesToReplace = @(
         "BetterFG.dll",

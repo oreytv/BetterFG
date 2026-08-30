@@ -42,6 +42,7 @@ namespace BetterFG.Services
             }
 
             Parse(raw);
+            MergeSideFiles();
 
             _current = SettingsService.Get(SETTINGS_KEY, "en");
             if (Array.IndexOf(_languages, _current) < 0) _current = _languages.Length > 0 ? _languages[0] : "en";
@@ -79,6 +80,78 @@ namespace BetterFG.Services
             }
         }
 
+        private static void MergeSideFiles()
+        {
+            var dir = System.IO.Path.GetDirectoryName(FilePath);
+            if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir)) return;
+
+            var added = new List<string>();
+            foreach (var path in System.IO.Directory.GetFiles(dir, "*.bak"))
+            {
+                if (string.Equals(path, FilePath, StringComparison.OrdinalIgnoreCase)) continue;
+
+                string[] lines;
+                try
+                {
+                    lines = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8)
+                        .Replace("\r\n", "\n").Split('\n');
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log?.LogWarning($"skipped {System.IO.Path.GetFileName(path)}: {ex.Message}");
+                    continue;
+                }
+                if (lines.Length < 2) continue;
+
+                var head = lines[0].Split('\t');
+                var langs = new string[head.Length - 1];
+                for (int c = 1; c < head.Length; c++)
+                {
+                    var code = head[c].Trim();
+                    if (code.Length == 0)
+                        code = System.IO.Path.GetFileNameWithoutExtension(path);
+                    langs[c - 1] = code;
+                }
+                if (langs.Length == 0) continue;
+
+                int rows = 0;
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    if (lines[i].Length == 0) continue;
+                    var cols = lines[i].Split('\t');
+                    string key = Unescape(cols[0]);
+                    if (key.Length == 0) continue;
+                    if (!_table.TryGetValue(key, out var perLang))
+                    {
+                        perLang = new Dictionary<string, string>();
+                        _table[key] = perLang;
+                    }
+                    for (int c = 0; c < langs.Length; c++)
+                    {
+                        if (c + 1 >= cols.Length) continue;
+                        var val = Unescape(cols[c + 1]);
+                        if (val.Length == 0) continue;
+                        perLang[langs[c]] = val;
+                    }
+                    rows++;
+                }
+
+                foreach (var code in langs)
+                    if (Array.IndexOf(_languages, code) < 0 && !added.Contains(code))
+                        added.Add(code);
+
+                Plugin.Log?.LogInfo($"picked up {System.IO.Path.GetFileName(path)} — {string.Join("/", langs)}, {rows} rows");
+            }
+
+            if (added.Count == 0) return;
+
+            var merged = new List<string>(_languages);
+            merged.RemoveAll(l => l == DEBUG_LANG);
+            merged.AddRange(added);
+            merged.Add(DEBUG_LANG);
+            _languages = merged.ToArray();
+        }
+
         private static string Unescape(string s) => s.Replace("\\n", "\n").Replace("\\t", "\t");
         private static string Escape(string s) => s.Replace("\n", "\\n").Replace("\t", "\\t");
 
@@ -91,6 +164,7 @@ namespace BetterFG.Services
             {
                 string raw = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);
                 Parse(raw);
+                MergeSideFiles();
                 if (Array.IndexOf(_languages, _current) < 0)
                     _current = _languages.Length > 0 ? _languages[0] : "en";
                 SettingsService.Set(SETTINGS_KEY, _current);
@@ -139,8 +213,9 @@ namespace BetterFG.Services
         public static string Get(string key)
         {
             if (key == null) return "";
-            if (_table.TryGetValue(key, out var perLang) && perLang.TryGetValue(_current, out var v))
-                return v;
+            if (!_table.TryGetValue(key, out var perLang)) return key;
+            if (perLang.TryGetValue(_current, out var v) && v.Length > 0) return v;
+            if (_current != DEBUG_LANG && perLang.TryGetValue("en", out var en) && en.Length > 0) return en;
             return key;
         }
 
