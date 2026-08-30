@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using BetterFG.Customization.Pets;
@@ -20,8 +20,9 @@ namespace BetterFG.UI.Tabs
         public PetPhrasesTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Pet Phrases";
+        protected override string TitleId => "ui.pet_phrases";
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
-        protected override string SwitchLabel => "< Back";
+        protected override string SwitchLabel => "ui.back_3";
 
         public PetData Snapshot;
         public int EditIndexCarry = -1;
@@ -70,7 +71,7 @@ namespace BetterFG.UI.Tabs
             float w = TabWidth - PAD * 2f;
             float y = VPAD + TITLE_H;
 
-            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, w, BTN_H), "+ Add Phrase", BTN_ADD, WHITE, FS_SM, new Action(AddPhrase));
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, w, BTN_H), "ui.add_phrase", BTN_ADD, WHITE, FS_SM, new Action(AddPhrase));
             y += BTN_H + SH;
 
             float slidersH = (BTN_H + SH) * 2f;
@@ -112,8 +113,8 @@ namespace BetterFG.UI.Tabs
 
         void RefreshIntervalLabels()
         {
-            if (_minValLbl != null) _minValLbl.text = Snapshot.phraseIntervalMin.ToString("0") + "s";
-            if (_maxValLbl != null) _maxValLbl.text = Snapshot.phraseIntervalMax.ToString("0") + "s";
+            if (_minValLbl != null) UGUIShip.RelabelText(_minValLbl, Snapshot.phraseIntervalMin.ToString("0") + "s");
+            if (_maxValLbl != null) UGUIShip.RelabelText(_maxValLbl, Snapshot.phraseIntervalMax.ToString("0") + "s");
         }
 
         void SaveLive() => PetService.Instance?.SavePet(Snapshot, respawnIfActive: false);
@@ -149,7 +150,7 @@ namespace BetterFG.UI.Tabs
 
             var phrases = Snapshot.phrases;
             if (phrases.Count == 0)
-                UGUIShip.CreateLabel(_phraseContent, new Rect(6f, 0f, TabWidth, ROW_H), "no phrases yet", FS_SM, HINT);
+                UGUIShip.CreateLabel(_phraseContent, new Rect(6f, 0f, TabWidth, ROW_H), "ui.no_phrases_yet", FS_SM, HINT);
 
             for (int i = 0; i < phrases.Count; i++)
                 CreateRow(phrases[i], i);
@@ -195,12 +196,12 @@ namespace BetterFG.UI.Tabs
             }
             else
             {
-                UGUIShip.CreateLabel(imgColGo.transform, new Rect(0f, 0f, imgColW, ROW_H - PAD * 2f), "No img", FS_SM, HINT, TextAnchor.MiddleCenter);
+                UGUIShip.CreateLabel(imgColGo.transform, new Rect(0f, 0f, imgColW, ROW_H - PAD * 2f), "ui.no_img", FS_SM, HINT, TextAnchor.MiddleCenter);
             }
 
             float browseBtnH = BTN_H * 0.8f;
             UGUIShip.CreateButton(imgColGo.transform, new Rect(0f, ROW_H - PAD * 2f - browseBtnH, imgColW, browseBtnH),
-                "Browse", new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
+                "ui.browse", new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
                 new Action(() => WinDialogs.PickPng("Select phrase image", path =>
                 {
                     if (string.IsNullOrEmpty(path)) return;
@@ -217,11 +218,11 @@ namespace BetterFG.UI.Tabs
             float textW = leftW - toggleW - PAD;
 
             UGUIShip.CreateButton(rowGo.transform, new Rect(PAD, line1Y, toggleW, RBTN_H),
-                entry.enabled ? "ON" : "OFF", entry.enabled ? TOGGLE_ON : TOGGLE_OFF, WHITE, FS_SM,
+                entry.enabled ? "ui.on" : "ui.off", entry.enabled ? TOGGLE_ON : TOGGLE_OFF, WHITE, FS_SM,
                 new Action(() => { Snapshot.phrases[captured].enabled = !Snapshot.phrases[captured].enabled; SaveLive(); RebuildPhraseRows(); }));
 
             var tf = UGUIShip.CreateInputField(rowGo.transform, new Rect(PAD + toggleW + PAD, line1Y, textW, RBTN_H),
-                "phrase text...", Color.black, WHITE, FS_SM);
+                "ui.phrase_text", Color.black, WHITE, FS_SM);
             tf.text = entry.phraseText;
             tf.onEndEdit.AddListener(new Action<string>(val =>
             {
@@ -234,7 +235,7 @@ namespace BetterFG.UI.Tabs
             float minusW = BTN_H * 1.4f;
 
             UGUIShip.CreateButton(rowGo.transform, new Rect(leftW - minusW - editW, line2Y, editW, RBTN_H),
-                editing ? "Done" : "Edit", editing ? new Color(0.2f, 0.4f, 0.25f, 1f) : new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
+                editing ? "ui.done_2" : "ui.edit", editing ? new Color(0.2f, 0.4f, 0.25f, 1f) : new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
                 new Action(() => { _editingId = editing ? null : entry.id; RebuildPhraseRows(); }));
             UGUIShip.CreateButton(rowGo.transform, new Rect(leftW - minusW + PAD, line2Y, minusW, RBTN_H),
                 "-", BTN_RM, WHITE, FS,

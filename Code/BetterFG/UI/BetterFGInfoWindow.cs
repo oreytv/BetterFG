@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using BetterFG.Core;
 using BetterFG.Services;
@@ -144,7 +144,7 @@ namespace BetterFG.UI
 
             UGUIShip.CreateButton(_root.transform,
                 new Rect(W - 62f, 5f, 52f, 22f),
-                "Close", BTN_CLOSE, WHITE, FS_BTN, new Action(Dismiss));
+                "ui.close_2", BTN_CLOSE, WHITE, FS_BTN, new Action(Dismiss));
 
             float leftW = W - pfpW - pad * 3f;
             var leftGo = new GameObject("Left");
@@ -162,15 +162,15 @@ namespace BetterFG.UI
             vlg.spacing = 4f;
 
             if (!BetterFGInfo.IsPublicRelease)
-                AddFlowLabel(leftGo.transform, "Not for public release", FS_BODY, new Color(1f, 0.35f, 0.35f, 0.9f));
+                AddFlowLabel(leftGo.transform, "ui.not_for_public_release", FS_BODY, new Color(1f, 0.35f, 0.35f, 0.9f));
 
-            AddFlowLabel(leftGo.transform, "Welcome to BetterFG!", FS_BODY, WHITE);
-            AddFlowLabel(leftGo.transform, "BetterFG is a Fall Guys mod made with the ambition", FS_BODY - 2, WHITE);
-            AddFlowLabel(leftGo.transform, "of enhancing customization by letting people create", FS_BODY - 2, WHITE);
-            AddFlowLabel(leftGo.transform, "and use custom skins.", FS_BODY - 2, WHITE);
+            AddFlowLabel(leftGo.transform, "ui.welcome_to_betterfg", FS_BODY, WHITE);
+            AddFlowLabel(leftGo.transform, "ui.betterfg_is_a_fall_guys_mod_made_with_the_ambiti", FS_BODY - 2, WHITE);
+            AddFlowLabel(leftGo.transform, "ui.of_enhancing_customization_by_letting_people_cre", FS_BODY - 2, WHITE);
+            AddFlowLabel(leftGo.transform, "ui.and_use_custom_skins", FS_BODY - 2, WHITE);
             AddFlowLabel(leftGo.transform, "", FS_BODY - 3, TRANSP);
-            AddFlowLabel(leftGo.transform, "Start exploring ways to customize yourself with the", FS_BODY - 2, HINT);
-            AddFlowLabel(leftGo.transform, "Tabs at the bottom of the screen.", FS_BODY - 2, HINT);
+            AddFlowLabel(leftGo.transform, "ui.start_exploring_ways_to_customize_yourself_with", FS_BODY - 2, HINT);
+            AddFlowLabel(leftGo.transform, "ui.tabs_at_the_bottom_of_the_screen", FS_BODY - 2, HINT);
 
             float rightX = W - pfpW - pad;
             var rightGo = new GameObject("Right");

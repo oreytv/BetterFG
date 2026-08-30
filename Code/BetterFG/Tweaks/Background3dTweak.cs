@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -22,8 +22,8 @@ namespace BetterFG.Tweaks
         public Background3dTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "background_3d";
-        public override string TweakLabel => "2D To 3D Background";
-        public override string TweakTooltip => "Swaps the flat backdrop of a creative level for a 3D one";
+        public override string TweakLabel => "tweak.2d_to_3d_background";
+        public override string TweakTooltip => "ui.swaps_the_flat_backdrop_of_a_creative_level_for";
         public override bool DefaultEnabled => true;
 
         private const string RELEASE_URL = "https://github.com/oreyre9000/BettrFG/releases/download/3dbackgrounds/";
@@ -167,7 +167,7 @@ namespace BetterFG.Tweaks
 
         public override List<TweakButton> GetCustomButtons() => new List<TweakButton>
         {
-            new TweakButton { Label = "CFG", Width = 30f, OnClick = OpenConfig }
+            new TweakButton { Label = "ui.cfg", Width = 30f, OnClick = OpenConfig }
         };
 
         // the config window rides the Tweaks sidewheel slot, so its back link lands somewhere sane.
@@ -316,6 +316,11 @@ namespace BetterFG.Tweaks
             _envSaved = false;
         }
 
+        private static readonly HashSet<string> _blockTokens = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Space", "Midnight"
+        };
+
         private static bool Resolve(GameObject root)
         {
             if (root == null) return false;
@@ -324,6 +329,13 @@ namespace BetterFG.Tweaks
             if (!bgName.StartsWith("Background_")) return false;
 
             var tokens = bgName.Substring("Background_".Length).Split('_');
+
+            foreach (var t in tokens)
+                if (_blockTokens.Contains(t))
+                {
+                    Plugin.Log.LogInfo($"3d backdrop skipped for {bgName} (blocked token '{t}')");
+                    return false;
+                }
 
             _swap = null;
             int best = 0;
@@ -345,9 +357,16 @@ namespace BetterFG.Tweaks
             return true;
         }
 
+        private static readonly HashSet<string> _seenBgNames = new HashSet<string>();
+
         internal static void OnThemeLighting(LevelEditorThemeLighting settings)
         {
-            if (!Resolve(settings.transform.root.gameObject)) return;
+            var root = settings.transform.root.gameObject;
+            string raw = root != null ? root.name.Replace("(Clone)", "") : "";
+            if (raw.Length > 0 && _seenBgNames.Add(raw))
+                Plugin.Log.LogInfo($"theme background seen: {raw}");
+
+            if (!Resolve(root)) return;
 
             _envSaved = false;
             _prevSkybox = null;

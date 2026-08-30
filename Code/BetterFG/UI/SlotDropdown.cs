@@ -1,4 +1,4 @@
-﻿using BetterFG.Services;
+using BetterFG.Services;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -80,11 +80,12 @@ namespace BetterFG.UI
             var cg = _go.AddComponent<CanvasGroup>();
             cg.blocksRaycasts = true;
 
-            // pinned header (NOT inside the scroll rect)
+            // pinned header (NOT inside the scroll rect) — styled to match a real tab title exactly
             float headerH = ITEM_H + 4f;
-            var titleTxt = UGUIShip.CreateLabel(_go.transform, default, "SWITCH TAB", 15,
-                new Color(1f, 1f, 1f, 1f), TextAnchor.MiddleLeft);
+            var titleTxt = UGUIShip.CreateLabel(_go.transform, default, "ui.switch_tab", UIScale.FS_TITLE,
+                new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
             titleTxt.fontStyle = FontStyle.Bold;
+            UGUIShip.Unstylize(titleTxt); // tab titles stay Arial
             var titleRt = titleTxt.rectTransform;
             titleRt.anchorMin = new Vector2(0f, 1f);
             titleRt.anchorMax = new Vector2(1f, 1f);
@@ -92,6 +93,8 @@ namespace BetterFG.UI
             titleRt.sizeDelta = new Vector2(0f, headerH);
             titleRt.anchoredPosition = Vector2.zero;
             titleRt.offsetMin = new Vector2(10f, titleRt.offsetMin.y);
+            titleRt.localRotation = Quaternion.Euler(22f, 345f, 0f);
+            titleRt.localScale = new Vector3(1.2f, 1.3f, 1.3f);
 
             // scroll (below the header)
             var scrollGo = new GameObject("Scroll");
@@ -148,8 +151,8 @@ namespace BetterFG.UI
                 string tabTitle = (tabTitles != null && i < tabTitles.Length && !string.IsNullOrEmpty(tabTitles[i]))
                     ? tabTitles[i] : tabName;
 
-                bool isCurrentSlot = tabTitle == ownerName;
-                bool blocked = occupied.Contains(tabTitle) && !isCurrentSlot;
+                bool isCurrentSlot = tabName == ownerName;
+                bool blocked = occupied.Contains(tabName) && !isCurrentSlot;
                 string capturedName = tabName;
                 int capturedIdx = ownerIdx;
 

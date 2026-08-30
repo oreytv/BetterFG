@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -16,7 +16,7 @@ namespace BetterFG.Tweaks
         public ChangeSplashScreenTweak(System.IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "custom_splash";
-        public override string TweakLabel => "Custom Splash Screen";
+        public override string TweakLabel => "tweak.custom_splash_screen";
         public override bool DefaultEnabled => true;
 
         private const string PathKey = "tweak.custom_splash.path";
@@ -30,7 +30,7 @@ namespace BetterFG.Tweaks
 
         public override List<TweakButton> GetCustomButtons() => new List<TweakButton>
         {
-            new TweakButton { Label = "Load PNG", Width = 46f, OnClick = PickAndReload }
+            new TweakButton { Label = "ui.load_png", Width = 46f, OnClick = PickAndReload }
         };
 
         private void PickAndReload()

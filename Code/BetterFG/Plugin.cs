@@ -47,6 +47,7 @@ namespace BetterFG
             BugReportService.Init();
             BetterFGConfig.Init();
             AudioService.Init();
+            LocalizationService.Init();
             MenuMusicService.Init();
             DiscordPresenceService.Init();
 
@@ -103,6 +104,13 @@ namespace BetterFG
                 var trig = go.AddComponent<TooltipTrigger>();
                 trig.text = tip;
                 trig.instant = true;
+            };
+            UGUIShip.LocalizeGet = LocalizationService.Get;
+            UGUIShip.BindLocalized = (go, id) =>
+            {
+                var c = go.GetComponent<BetterFG.UI.Components.BfgLocalizedText>()
+                    ?? go.AddComponent<BetterFG.UI.Components.BfgLocalizedText>();
+                c.SetKey(id);
             };
         }
 
@@ -164,6 +172,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<Tooltip>();
             ClassInjector.RegisterTypeInIl2Cpp<TooltipTrigger>();
             ClassInjector.RegisterTypeInIl2Cpp<GradientImage>();
+            ClassInjector.RegisterTypeInIl2Cpp<BetterFG.UI.Components.BfgLocalizedText>();
             ClassInjector.RegisterTypeInIl2Cpp<MovePulseContinuous>();
             ClassInjector.RegisterTypeInIl2Cpp<AlphaPulseContinuousFade>();
             ClassInjector.RegisterTypeInIl2Cpp<MoveScrollUvRaw>();
@@ -249,6 +258,7 @@ namespace BetterFG
             ClassInjector.RegisterTypeInIl2Cpp<Background3dWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<OptionsWindow>();
             ClassInjector.RegisterTypeInIl2Cpp<PresetsWindow>();
+            ClassInjector.RegisterTypeInIl2Cpp<CreditsWindow>();
 #if PROFILES
             ClassInjector.RegisterTypeInIl2Cpp<ProfilesWindow>();
 #endif

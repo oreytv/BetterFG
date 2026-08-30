@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Menu;
 using BetterFG.Utilities;
@@ -12,9 +12,10 @@ namespace BetterFG.UI.Tabs
         public PlinthsInGameTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Plinths";
+        protected override string TitleId => "ui.plinths";
         protected override string TitleDisplay => "Plinths - In-game";
 
-        protected override string SwitchLabel => "UGC →";
+        protected override string SwitchLabel => "ui.ugc";
         protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<PlinthsUgcTab>();
 
         static readonly Dictionary<string, Texture2D> _covers = new Dictionary<string, Texture2D>();
@@ -37,7 +38,7 @@ namespace BetterFG.UI.Tabs
                     if (tex != null) _covers[gp.Id] = tex;
                 }
                 if (tex != null) ApplyCover(img, tex);
-                else UGUIShip.CreateStretchLabel(img.transform, "No Preview", FS_SM, HINT);
+                else UGUIShip.CreateStretchLabel(img.transform, "ui.no_preview", FS_SM, HINT);
             }
 
             SetStatus($"{MenuCustomizationApplication.GamePlinths.Length} game plinths.");

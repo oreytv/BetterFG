@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -18,7 +18,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 220f;
-        protected override string WindowTitle => "3D Backgrounds";
+        protected override string WindowTitle => "ui.3d_backgrounds";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         protected override BetterFGWindow MakeBackTarget() => Spawn<TweaksWindow>();
@@ -82,7 +82,7 @@ namespace BetterFG.UI.Windows
         {
             _bars.Clear();
 
-            BuildHeader("BACKDROPS");
+            BuildHeader("ui.backdrops");
 
             int i = 0;
             foreach (var kv in Background3dTweak.Catalogue)
@@ -145,7 +145,7 @@ namespace BetterFG.UI.Windows
             if (File.Exists(Path.Combine(Background3dTweak.BundleDir, bundle)))
             {
                 UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, BTN_W, BTN_H),
-                    "Delete", DEL_COL, WHITE, 9)
+                    "ui.delete_2", DEL_COL, WHITE, 9)
                     .onClick.AddListener(new Action(() =>
                     {
                         Background3dTweak.Delete(captured);
@@ -156,7 +156,7 @@ namespace BetterFG.UI.Windows
 
             bool busy = Background3dTweak.Downloading.ContainsKey(bundle);
             var btn = UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, BTN_W, BTN_H),
-                busy ? "..." : "Get", DL_COL, WHITE, 9);
+                busy ? "..." : "ui.get", DL_COL, WHITE, 9);
             btn.interactable = !busy;
             btn.onClick.AddListener(new Action(() =>
             {

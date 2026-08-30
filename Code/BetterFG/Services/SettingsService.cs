@@ -234,6 +234,8 @@ namespace BetterFG.Services
 
         public static string SettingsFilePath => FilePath;
 
+        public static string SettingsFolderPath => SettingsDir;
+
         // copies last.txt into Settings/Backup with a timestamped name. cheap insurance against
         // the file getting clobbered mid-session.
         private static void BackupNow(string reason)

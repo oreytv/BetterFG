@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -17,7 +17,7 @@ namespace BetterFG.Tweaks
         public CreativeIntroCameraTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "creative_intro_camera";
-        public override string TweakLabel => "Creative Intro Cameras";
+        public override string TweakLabel => "tweak.creative_intro_cameras";
         public override bool DefaultEnabled => true;
 
         public static CreativeIntroCameraTweak Instance { get; private set; }
@@ -34,8 +34,9 @@ namespace BetterFG.Tweaks
         const float OrbitSpeed = 0.17f;
         const float EyeHeight = 1.2f;
         const float Clearance = 9f;
-        const float MinRise = 7f;
-        const float MaxRise = 34f;
+        const float MinRise = 12f;
+        const float MaxRise = 26f;
+        const int RiseLookahead = 6;
         const float Weave = 13f;
         const float BackOff = 20f;
         const float EndBackOff = 38f;
@@ -100,7 +101,15 @@ namespace BetterFG.Tweaks
 
         public static void OnCleanupLoadingScreens()
         {
-            if (Instance != null) Instance.Stop();
+            if (Instance == null || Instance._running) return;
+
+            for (int i = 0; i < Instance._hidden.Count; i++)
+            {
+                var cg = Instance._hidden[i];
+                if (cg != null) { cg.alpha = 1f; cg.blocksRaycasts = true; }
+            }
+            Instance._hidden.Clear();
+            Instance._faders.Clear();
         }
 
         public override void OnStateChanged(GameStateMachine.IGameState newState)
@@ -289,6 +298,15 @@ namespace BetterFG.Tweaks
             _lookPath = new Vector3[n];
             float spacing = route.Length / Mathf.Max(n - 1, 1);
 
+            var forwardMax = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float m = pts[i].y;
+                int end = Mathf.Min(n - 1, i + RiseLookahead);
+                for (int j = i; j <= end; j++) if (pts[j].y > m) m = pts[j].y;
+                forwardMax[i] = m;
+            }
+
             for (int i = 0; i < n; i++)
             {
                 Vector3 fwd = Tangent(pts, i);
@@ -299,7 +317,7 @@ namespace BetterFG.Tweaks
                 tail = tail * tail * (3f - 2f * tail);
 
                 float weave = Mathf.Sin(f * Mathf.PI * 2.6f + _phase) * _side * _swing * Weave * (1f - tail * 0.65f);
-                float rise = Mathf.Clamp((route.Ceiling[i] + Clearance - pts[i].y) * _heightScale, MinRise, MaxRise);
+                float rise = Mathf.Clamp((forwardMax[i] - pts[i].y) + Clearance, MinRise, MaxRise);
 
                 _path[i] = pts[i] + right * weave + Vector3.up * (rise + EndRise * tail)
                            - fwd * (BackOff * Mathf.Max(0f, 1f - f * 4f) + EndBackOff * tail);
@@ -354,7 +372,7 @@ namespace BetterFG.Tweaks
                 float tail = Mathf.Max(0f, (f - TailStart) / (1f - TailStart));
                 tail = tail * tail * (3f - 2f * tail);
 
-                Vector3 spine = _start + flat * f - fwd * (BackOff * (1f - f) + EndBackOff * tail);
+                Vector3 spine = Vector3.Lerp(_start, _finish, f) - fwd * (BackOff * (1f - f) + EndBackOff * tail);
                 _path[i] = spine + right * (Shape[i, 1] * lat * (1f - tail * 0.65f))
                            + Vector3.up * (Shape[i, 2] * _heightScale + EndRise * tail);
                 _lookPath[i] = Vector3.Lerp(_start, _finish, Shape[i, 3]) + Vector3.up * EyeHeight;

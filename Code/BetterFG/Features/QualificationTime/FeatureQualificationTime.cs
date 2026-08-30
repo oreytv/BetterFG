@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Wushu.Framework.ExtensionMethods;
+using BettrFG.uGUI;
 using TMPro;
 using FallGuysLib.UI;
 using SRF;
@@ -38,34 +39,34 @@ namespace BetterFG.Features.QualificationTime
 {
     internal class FeatureQualificationTime
     {
-        public static readonly BfgFeature feature = new BfgFeature("pb", "Personal Bests", true, new List<FeatureSetting>
+        public static readonly BfgFeature feature = new BfgFeature("pb", "ui.personal_bests", true, new List<FeatureSetting>
         {
-            new FeatureSetting { id = "store", label = "Store PBs", defaultOn = true },
-            new FeatureSetting { id = "qual", label = "Show PB on qual", defaultOn = true },
-            new FeatureSetting { id = "loadscreen", label = "Show PB on load screen", defaultOn = true },
-            new FeatureSetting { id = "play", label = "Show PB during play", defaultOn = true },
-            new FeatureSetting { id = "timer", label = "Show live timer", defaultOn = true },
-            new FeatureSetting { id = "menu", label = "Show PB button on menu", defaultOn = true },
-            new FeatureSetting { id = "favprompt", label = "Show favorite button on qual", defaultOn = true },
-            new FeatureSetting { id = "asksave", label = "Ask to save PB", defaultOn = false },
-            new FeatureSetting { id = "ghost", label = "Ghost run", defaultOn = true },
+            new FeatureSetting { id = "store", label = "ui.store_pbs", defaultOn = true },
+            new FeatureSetting { id = "qual", label = "ui.show_pb_on_qual", defaultOn = true },
+            new FeatureSetting { id = "loadscreen", label = "ui.show_pb_on_load_screen", defaultOn = true },
+            new FeatureSetting { id = "play", label = "ui.show_pb_during_play", defaultOn = true },
+            new FeatureSetting { id = "timer", label = "ui.show_live_timer", defaultOn = true },
+            new FeatureSetting { id = "menu", label = "ui.show_pb_button_on_menu", defaultOn = true },
+            new FeatureSetting { id = "favprompt", label = "ui.show_favorite_button_on_qual", defaultOn = true },
+            new FeatureSetting { id = "asksave", label = "ui.ask_to_save_pb", defaultOn = false },
+            new FeatureSetting { id = "ghost", label = "ui.ghost_run", defaultOn = true },
         },
         choices: new List<FeatureChoice>
         {
             new FeatureChoice
             {
                 id = "ghostmode",
-                label = "Ghost run to show",
+                label = "ui.ghost_run_to_show",
                 optionIds = new List<string> { "current", "solos", "duos", "squads", "fastest", "all" },
-                optionLabels = new List<string> { "Current", "Solos", "Duos", "Squads", "Fastest", "All" },
+                optionLabels = new List<string> { "ui.current", "ui.solos", "ui.duos", "ui.squads", "ui.fastest", "ui.all" },
                 defaultId = "current",
             },
             new FeatureChoice
             {
                 id = "livepbmode",
-                label = "Which timer to show",
+                label = "ui.which_timer_to_show",
                 optionIds = new List<string> { "current", "fastest" },
-                optionLabels = new List<string> { "Current", "Fastest" },
+                optionLabels = new List<string> { "ui.current", "ui.fastest" },
                 defaultId = "current",
             },
         });
@@ -672,7 +673,7 @@ namespace BetterFG.Features.QualificationTime
                 hintRt.anchoredPosition = new Vector2(0f, -145f);
                 hintRt.sizeDelta = new Vector2(700f, 40f);
 
-                hint.text = "Press B to favorite this personal best!";
+                UGUIShip.RelabelText(hint, "ui.press_b_to_favorite_this_personal_best");
                 hint.color = new Color(0.3f, 1f, 0.3f);
                 hint.transform.localScale *= 0.6f;
                 hint.alignment = TMPro.TextAlignmentOptions.Center;
@@ -955,7 +956,7 @@ namespace BetterFG.Features.QualificationTime
             if (!TryGetLiveRoundIds(out string cacheId, out string roundName, out _)) return;
 
             bool found = TryGetLiveTimerPb(cacheId, roundName, out float pb);
-            lbl.text = FormatPbText(found, pb);
+            UGUIShip.RelabelText(lbl, FormatPbText(found, pb));
             lbl.ForceMeshUpdate();
         }
 
@@ -1089,7 +1090,7 @@ namespace BetterFG.Features.QualificationTime
                 }
                 else
                 {
-                    pbText.text = "PB --:--:---";
+                    UGUIShip.RelabelText(pbText, "ui.pb");
                 }
 
                 pbText.color = new Color(1f, 1f, 1f, 0.8f);
@@ -1978,7 +1979,7 @@ namespace BetterFG.Features.QualificationTime
             // setting text inline gets clobbered back to the round name. setting next frame races
             // past the binding's last tick.
             yield return null;
-            if (labelTmp != null) labelTmp.text = text;
+            if (labelTmp != null) UGUIShip.RelabelText(labelTmp, text);
 
             Plugin.Log.LogInfo("QualTime: loadscreen PB " + text + " (" + info.cacheId + " " + info.type + ")");
         }

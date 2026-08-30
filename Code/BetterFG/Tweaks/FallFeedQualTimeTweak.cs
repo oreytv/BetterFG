@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Features.TimePlacement;
 
 namespace BetterFG.Tweaks
@@ -15,7 +17,7 @@ namespace BetterFG.Tweaks
         public FallFeedQualTimeTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "fallfeed_qual_time";
-        public override string TweakLabel => "Fall Feed Qualification Time";
+        public override string TweakLabel => "tweak.fall_feed_qualification_time";
         public override bool DefaultEnabled => false;
 
         public static FallFeedQualTimeTweak Instance { get; private set; }
@@ -48,18 +50,42 @@ namespace BetterFG.Tweaks
                 if (cur.Contains(TimeColor)) return;     // already stamped
                 if (string.IsNullOrEmpty(primaryPlayerKey) || _stampedKeys.Contains(primaryPlayerKey)) return;
 
-                // server qualifyTime for this fallfeed's player, captured by FeatureTimePlacement. no
-                // stored time = don't stamp (don't invent one off the live clock).
-                if (!TryGetQualTime(primaryPlayerKey, out string qualTime)) return;
+                // server qualifyTime for this fallfeed's player, captured by FeatureTimePlacement. the
+                // row is created off the unspawn message, which lands a frame or two BEFORE the
+                // HandleServerPlayerProgress message that actually stores the qual time - so a miss
+                // here isn't "no time exists", it's "not yet". retry for a couple seconds instead of
+                // giving up on the one shot we get.
+                if (!TryGetQualTime(primaryPlayerKey, out string qualTime))
+                {
+                    StartCoroutine(RetryStamp(messageBodyText, primaryPlayerKey).WrapToIl2Cpp());
+                    return;
+                }
                 _stampedKeys.Add(primaryPlayerKey);
-
-                string stamp = $" <color={TimeColor}>{qualTime}</color>";
-                int idx = cur.IndexOf("<sprite name=\"" + RaceSprite, StringComparison.OrdinalIgnoreCase);
-                messageBodyText.text = idx >= 0 ? cur.Insert(idx, stamp + " ") : cur + stamp;
+                Stamp(messageBodyText, cur, qualTime);
             }
             catch (Exception ex)
             {
                 Plugin.Log.LogWarning("FallFeed: qualtime " + ex.Message);
+            }
+        }
+
+        static void Stamp(TMPro.TextMeshProUGUI messageBodyText, string cur, string qualTime)
+        {
+            string stamp = $" <color={TimeColor}>{qualTime}</color>";
+            int idx = cur.IndexOf("<sprite name=\"" + RaceSprite, StringComparison.OrdinalIgnoreCase);
+            messageBodyText.text = idx >= 0 ? cur.Insert(idx, stamp + " ") : cur + stamp;
+        }
+
+        IEnumerator RetryStamp(TMPro.TextMeshProUGUI messageBodyText, string primaryPlayerKey)
+        {
+            for (int i = 0; i < 120 && messageBodyText != null; i++)
+            {
+                yield return null;
+                if (!TryGetQualTime(primaryPlayerKey, out string qualTime)) continue;
+                _stampedKeys.Add(primaryPlayerKey);
+                string cur = messageBodyText.text;
+                if (!string.IsNullOrEmpty(cur) && !cur.Contains(TimeColor)) Stamp(messageBodyText, cur, qualTime);
+                yield break;
             }
         }
 

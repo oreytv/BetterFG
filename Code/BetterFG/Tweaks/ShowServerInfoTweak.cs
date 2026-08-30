@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Threading;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -15,7 +15,7 @@ namespace BetterFG.Tweaks
         public ShowServerInfoTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "show_server_info";
-        public override string TweakLabel => "Show Server Info";
+        public override string TweakLabel => "tweak.show_server_info";
         public override bool DefaultEnabled => true;
 
         public static ShowServerInfoTweak Instance { get; private set; }

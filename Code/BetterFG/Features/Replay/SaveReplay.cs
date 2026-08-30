@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -292,7 +292,7 @@ namespace BetterFG.Features.Replay
         {
             string label = string.IsNullOrEmpty(rec.name) ? rec.roundName : rec.name;
             if (string.IsNullOrEmpty(label)) label = rec.roundId;
-            if (string.IsNullOrEmpty(label)) label = "round";
+            if (string.IsNullOrEmpty(label)) label = "ui.round";
             label = string.Concat(label.Split(Path.GetInvalidFileNameChars()));
             return DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + "_" + label + Extension;
         }

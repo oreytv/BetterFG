@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -10,6 +10,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.UnityRound
 {
@@ -350,7 +351,7 @@ namespace BetterFG.Features.UnityRound
                 if (loading == null || loading.transform.childCount == 0) return;
                 var descT = loading.transform.GetChild(0).Find("SafeArea/InfoGroup/Description_Text");
                 var tmp = descT != null ? descT.GetComponent<TMPro.TMP_Text>() : null;
-                if (tmp != null) tmp.text = text;
+                if (tmp != null) UGUIShip.RelabelText(tmp, text);
             }
             catch { }
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Reflection;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -28,7 +28,7 @@ namespace BetterFG.UI.Windows
 
         protected virtual float WindowWidth => 300f;
         protected virtual float WindowHeight => 200f;
-        protected virtual string WindowTitle => "Window";
+        protected virtual string WindowTitle => "ui.window";
         protected virtual string BgResourceName => "";
         protected virtual string BgHoverResourceName => "BetterFG.assets.ui.windows.generalbg_hover.png";
 
@@ -372,7 +372,7 @@ namespace BetterFG.UI.Windows
                 dragGo.AddComponent<WindowDragHandle>().Init(_rootRt, _hoverImage);
             }
 
-            var t = UGUIShip.CreateLabel(titleGo.transform, default, WindowTitle.ToUpper(), FS_TITLE,
+            var t = UGUIShip.CreateLabel(titleGo.transform, default, WindowTitle, FS_TITLE,
                 new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
             t.fontStyle = FontStyle.Bold;
             _titleText = t;

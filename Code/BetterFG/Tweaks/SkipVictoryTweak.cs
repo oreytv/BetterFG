@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using FG.Common;
 using FGClient;
 using HarmonyLib;
@@ -14,7 +14,7 @@ namespace BetterFG.Tweaks
         public SkipVictoryTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "skip_victory";
-        public override string TweakLabel => "Quick Skip Victory Scene";
+        public override string TweakLabel => "tweak.quick_skip_victory_scene";
         public override bool DefaultEnabled => false;
 
         public static SkipVictoryTweak Instance { get; private set; }

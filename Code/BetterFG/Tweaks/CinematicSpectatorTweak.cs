@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Core;
 using BetterFG.Features.QualificationTime;
@@ -20,9 +20,9 @@ namespace BetterFG.Tweaks
         public CinematicSpectatorTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "cinematic_spectator";
-        public override string TweakLabel => "Custom Spectating";
+        public override string TweakLabel => "tweak.custom_spectating";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Take the camera over while spectating. Cinematic auto-frames whoever you're watching and cuts to a new angle as they move; Free-cam hands you full manual control, mouse/keyboard or pad.";
+        public override string TweakTooltip => "ui.take_the_camera_over_while_spectating_cinematic";
 
         public static CinematicSpectatorTweak Instance { get; private set; }
         void Awake() => Instance = this;
@@ -471,8 +471,8 @@ namespace BetterFG.Tweaks
         {
             new TweakSetting
             {
-                Label = "Mode",
-                Options = new[] { "Cinematic", "Free-cam" },
+                Label = "ui.mode",
+                Options = new[] { "ui.cinematic", "ui.free_cam" },
                 Selected = () => (int)Mode,
                 OnPick = i => Mode = (SpectateCamMode)i
             }

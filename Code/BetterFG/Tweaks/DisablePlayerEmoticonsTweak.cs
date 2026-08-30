@@ -7,9 +7,9 @@ namespace BetterFG.Tweaks
         public DisablePlayerEmoticonsTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "disable_player_emoticons";
-        public override string TweakLabel => "Disable Player Emoticons";
+        public override string TweakLabel => "tweak.disable_player_emoticons";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Drops every emoticon anyone plays, yours included. No bubble above the bean, no sound, no fall feed entry.";
+        public override string TweakTooltip => "ui.drops_every_emoticon_anyone_plays_yours_included";
 
         internal static bool Active;
 

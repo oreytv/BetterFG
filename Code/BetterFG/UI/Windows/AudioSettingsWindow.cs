@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
@@ -12,7 +12,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 340f;
         protected override float WindowHeight => 90f;
-        protected override string WindowTitle => "Audio Settings";
+        protected override string WindowTitle => "ui.audio_settings";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.audiosettingsbg.png";
 
         private const string KEY_MASTER_VOL = "audio.master.volume";
@@ -33,7 +33,7 @@ namespace BetterFG.UI.Windows
 
             // ── Left: master volume ───────────────────────────────────────────
             float vol = LoadFloat(KEY_MASTER_VOL, 1f);
-            MakeLabel(contentRoot, new Rect(PAD, cy, halfW, lh), "MASTER VOLUME", FS_SM, HINT_COL);
+            MakeLabel(contentRoot, new Rect(PAD, cy, halfW, lh), "ui.master_volume", FS_SM, HINT_COL);
             cy += lh + 2f;
 
             UGUIShip.CreateSlider(contentRoot, PAD, cy, halfW,
@@ -50,18 +50,18 @@ namespace BetterFG.UI.Windows
             float rx = PAD + halfW + PAD;
             float rcy = PAD;
 
-            MakeLabel(contentRoot, new Rect(rx, rcy, halfW, lh), "SOUNDS", FS_SM, HINT_COL);
+            MakeLabel(contentRoot, new Rect(rx, rcy, halfW, lh), "ui.sounds", FS_SM, HINT_COL);
             rcy += lh + 2f;
 
-            BuildToggleRow(contentRoot, rx, rcy, halfW, tbw, bh, "Hover", KEY_SFX_HOVER,
+            BuildToggleRow(contentRoot, rx, rcy, halfW, tbw, bh, "ui.hover", KEY_SFX_HOVER,
                 v => AudioService.SetHoverEnabled(v));
             rcy += bh + 1f;
 
-            BuildToggleRow(contentRoot, rx, rcy, halfW, tbw, bh, "Click", KEY_SFX_CLICK,
+            BuildToggleRow(contentRoot, rx, rcy, halfW, tbw, bh, "ui.click", KEY_SFX_CLICK,
                 v => AudioService.SetClickEnabled(v));
             rcy += bh + 1f;
 
-            BuildToggleRow(contentRoot, rx, rcy, halfW, tbw, bh, "Tab", KEY_SFX_TAB,
+            BuildToggleRow(contentRoot, rx, rcy, halfW, tbw, bh, "ui.tab_2", KEY_SFX_TAB,
                 v => AudioService.SetTabEnabled(v));
         }
 
@@ -74,7 +74,7 @@ namespace BetterFG.UI.Windows
 
             var btn = UGUIShip.CreateButton(parent,
                 new Rect(x + w - tbw, y, tbw, bh),
-                on ? "ON" : "OFF",
+                on ? "ui.on" : "ui.off",
                 on ? SEL_COL : BTN_DARK,
                 WHITE, FS_SM,
                 new Action(() =>
@@ -92,7 +92,7 @@ namespace BetterFG.UI.Windows
                 bool cur = LoadBool(capturedKey, true);
                 UGUIShip.SetButtonSelected(capturedBtn, cur, SEL_COL);
                 var lbl = capturedBtn.GetComponentInChildren<Text>();
-                if (lbl != null) lbl.text = cur ? "ON" : "OFF";
+                if (lbl != null) UGUIShip.RelabelText(lbl, cur ? "ui.on" : "ui.off");
             }));
         }
 

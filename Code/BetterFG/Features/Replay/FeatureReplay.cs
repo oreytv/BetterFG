@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -438,9 +438,9 @@ namespace BetterFG.Features.Replay
         public const float SampleHz = 30f;
         const float THUMB_AT = 10f;
 
-        public static readonly BfgFeature feature = new BfgFeature("replay", "Replays", true, new List<FeatureSetting>
+        public static readonly BfgFeature feature = new BfgFeature("replay", "ui.replays_2", true, new List<FeatureSetting>
         {
-            new FeatureSetting { id = "record", label = "Auto-record rounds", defaultOn = false },
+            new FeatureSetting { id = "record", label = "ui.auto_record_rounds", defaultOn = false },
         },
         note: "Saves what happened each round to AppData/BettrFG/Replays.");
 

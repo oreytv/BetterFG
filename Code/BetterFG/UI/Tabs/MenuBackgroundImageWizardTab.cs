@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using BetterFG.Customization.Menu;
 using UnityEngine;
@@ -17,9 +17,9 @@ namespace BetterFG.UI.Tabs
         private enum WizardStep { Image, Transform, Name }
         protected override string[] StepTitles => new[]
         {
-            "Pick the image",
-            "Position it",
-            "Name it"
+            "ui.pick_the_image",
+            "ui.position_it",
+            "ui.name_it"
         };
 
         private string _path = "";
@@ -119,14 +119,14 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Pick the image to use as a background", FS_SM, LABEL);
+                "ui.pick_the_image_to_use_as_a_background", FS_SM, LABEL);
             cy += LH + SH;
 
             float browseW = 80f * UIScale.S;
             UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, browseW, BTN_H),
-                "BROWSE", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowse));
+                "ui.browse_2", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowse));
             _pathLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD + browseW + PAD, cy, w - browseW - PAD, BTN_H),
-                "no file picked", FS_SM, HINT, TextAnchor.MiddleLeft);
+                "ui.no_file_picked", FS_SM, HINT, TextAnchor.MiddleLeft);
             cy += BTN_H + SH * 2f;
 
             float previewSz = Mathf.Min(bodyH - cy - SH, w);
@@ -166,8 +166,7 @@ namespace BetterFG.UI.Tabs
 
         private void LoadPreview()
         {
-            if (_pathLbl != null)
-                _pathLbl.text = string.IsNullOrEmpty(_path) ? "no file picked" : Path.GetFileName(_path);
+            if (_pathLbl != null) UGUIShip.RelabelText(_pathLbl, string.IsNullOrEmpty(_path) ? "no file picked" : Path.GetFileName(_path));
             if (string.IsNullOrEmpty(_path) || !File.Exists(_path) || _preview == null) return;
 
             try
@@ -186,7 +185,7 @@ namespace BetterFG.UI.Tabs
             var (scrollRect, content) = UGUIShip.CreateScrollView(root, new Rect(0f, 0f, TabWidth, bodyH));
             float cy = SH;
 
-            UGUIShip.CreateLabel(content, new Rect(PAD, cy, w, LH), "POSITION", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(PAD, cy, w, LH), "ui.position", FS_SM, HINT);
             cy += LH + SH;
             Sl(0, content, cy, w, "X", _posX, MenuCustomizationApplication.BG_IMG_POS_MIN, MenuCustomizationApplication.BG_IMG_POS_MAX,
                 v => { _posX = v; UpdateWorldPreview(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
@@ -198,7 +197,7 @@ namespace BetterFG.UI.Tabs
                 v => { _posZ = v; UpdateWorldPreview(); }, MenuCustomizationApplication.BG_IMG_POS_DEFAULT);
             cy += LH + PAD;
 
-            UGUIShip.CreateLabel(content, new Rect(PAD, cy, w, LH), "ROTATION", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(PAD, cy, w, LH), "ui.rotation", FS_SM, HINT);
             cy += LH + SH;
             Sl(3, content, cy, w, "X", _rotX, 0f, 360f, v => { _rotX = v; UpdateWorldPreview(); }, 0f);
             cy += LH + SH;
@@ -207,7 +206,7 @@ namespace BetterFG.UI.Tabs
             Sl(5, content, cy, w, "Z", _rotZ, 0f, 360f, v => { _rotZ = v; UpdateWorldPreview(); }, 0f);
             cy += LH + PAD;
 
-            UGUIShip.CreateLabel(content, new Rect(PAD, cy, w, LH), "SCALE", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(PAD, cy, w, LH), "ui.scale", FS_SM, HINT);
             cy += LH + SH;
             Sl(6, content, cy, w, "Uniform", _scale, MenuCustomizationApplication.BG_IMG_SCALE_MIN, MenuCustomizationApplication.BG_IMG_SCALE_MAX,
                 v => { _scale = v; UpdateWorldPreview(); }, MenuCustomizationApplication.BG_IMG_SCALE_DEFAULT);
@@ -238,11 +237,11 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "What should this background be called?", FS_SM, LABEL);
+                "ui.what_should_this_background_be_called", FS_SM, LABEL);
             cy += LH + SH;
 
             _nameField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "my background", Color.black, WHITE, FS_SM);
+                "ui.my_background", Color.black, WHITE, FS_SM);
             cy += BTN_H + SH * 2f;
 
             _summaryLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH * 4f), "", FS_SM, HINT);
@@ -261,13 +260,13 @@ namespace BetterFG.UI.Tabs
         protected override bool Save()
         {
             string name = _nameField.text?.Trim() ?? "";
-            if (string.IsNullOrEmpty(name)) { SetStatus("give it a name first"); return false; }
+            if (string.IsNullOrEmpty(name)) { SetStatus("ui.give_it_a_name_first"); return false; }
 
             var entries = MenuCustomizationApplication.LoadBgImageEntries();
             for (int i = 0; i < entries.Count; i++)
             {
                 if (i == EditIndex) continue;
-                if (entries[i].entryName == name) { SetStatus("you already have one called that"); return false; }
+                if (entries[i].entryName == name) { SetStatus("ui.you_already_have_one_called_that"); return false; }
             }
 
             bool editing = EditIndex >= 0 && EditIndex < entries.Count;

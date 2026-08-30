@@ -6,6 +6,7 @@ using FGClient;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
+using BettrFG.uGUI;
 
 namespace BetterFG.Tweaks
 {
@@ -18,7 +19,7 @@ namespace BetterFG.Tweaks
         public LevelDescriptionOnPauseTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "level_desc_on_pause";
-        public override string TweakLabel => "Show Level Description on Pause";
+        public override string TweakLabel => "tweak.show_level_description_on_pause";
         public override bool DefaultEnabled => true;
 
         public static LevelDescriptionOnPauseTweak Instance { get; private set; }
@@ -102,7 +103,7 @@ namespace BetterFG.Tweaks
             title.fontSize = 32f;
             title.color = Color.white;
             title.alignment = TextAlignmentOptions.BottomRight;
-            title.text = "LEVEL DESCRIPTION";
+            UGUIShip.RelabelText(title, "ui.level_description");
             title.raycastTarget = false;
 
             return true;

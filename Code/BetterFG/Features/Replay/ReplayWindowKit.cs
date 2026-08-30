@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.UI;
 using BetterFG.Utilities;
 using UnityEngine;

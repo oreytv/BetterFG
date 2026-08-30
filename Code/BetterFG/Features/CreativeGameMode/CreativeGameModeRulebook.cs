@@ -11,6 +11,7 @@ using FGClient;
 using FGClient.UI;
 using TMPro;
 using UnityEngine;
+using BettrFG.uGUI;
 
 namespace BetterFG.Features.CreativeGameMode
 {
@@ -417,7 +418,7 @@ namespace BetterFG.Features.CreativeGameMode
 
         private void Paint()
         {
-            if (_label != null) _label.text = "Game Mode";
+            if (_label != null) UGUIShip.RelabelText(_label, "ui.game_mode");
             if (_value != null)
             {
                 string t = CreativeGameModeRulebook.SelectedTitle;

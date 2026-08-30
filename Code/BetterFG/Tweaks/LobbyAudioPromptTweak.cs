@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Core;
 using FG.Common;
 using FGClient;
@@ -15,8 +17,12 @@ namespace BetterFG.Tweaks
         public LobbyAudioPromptTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "lobby_audio_prompt";
-        public override string TweakLabel => "Audio Settings Prompt In Lobby";
+        public override string TweakLabel => "tweak.audio_settings_prompt_in_lobby";
         public override bool DefaultEnabled => true;
+
+        public static LobbyAudioPromptTweak Instance { get; private set; }
+        void Awake() => Instance = this;
+        public bool IsOpen => _settingsOpen;
 
         private const string UiRootPath = "UICanvas_Client_V2(Clone)/Default";
         private const string LobbyCanvasSub = "Prime_UI_PrivateLobby_Canvas(Clone)";
@@ -28,6 +34,7 @@ namespace BetterFG.Tweaks
         private GameObject _settingsViewGo;
         private int _lobbyViewIndex = -1;
         private PrivateLobbyScreenViewModel _lobbyVm;
+        private SettingsScreenViewModel _screen;
         private float _settingsOpenedAt;
 
         public override void OnStateChanged(GameStateMachine.IGameState newState)
@@ -40,6 +47,7 @@ namespace BetterFG.Tweaks
                 _settingsViewGo = null;
                 _lobbyViewIndex = -1;
                 _lobbyVm = null;
+                _screen = null;
             }
         }
 
@@ -49,15 +57,40 @@ namespace BetterFG.Tweaks
             DestroyPrompt();
         }
 
+        void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus || !_settingsOpen) return;
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+            StartCoroutine(RegainSettingsFocusDelayed().WrapToIl2Cpp());
+        }
+
+        private IEnumerator RegainSettingsFocusDelayed()
+        {
+            for (int i = 0; i < 5; i++) yield return null;
+            if (_settingsOpen) _screen?.OnGainFocus();
+        }
+
         void Update()
         {
             if (!IsEnabled || !_inLobby) { DestroyPrompt(); return; }
 
-            if (_settingsOpen && Time.unscaledTime - _settingsOpenedAt > 0.5f
-                && (_settingsViewGo == null || !_settingsViewGo.activeInHierarchy))
-                CloseSettings();
+            if (_settingsOpen)
+            {
+                bool pastGrace = Time.unscaledTime - _settingsOpenedAt > 0.5f;
+                bool viewGone = _settingsViewGo == null || !_settingsViewGo.activeInHierarchy;
+                bool backedToHub = _screen != null && _screen._switchableView != null
+                    && _screen._switchableView.CurrentViewIndex == (int)SettingsScreens.SelectButtons;
 
-            if (!_settingsOpen && LobbyCustomiserTweak.PopupOpen) { DestroyPrompt(); return; }
+                if (pastGrace && (viewGone || backedToHub))
+                {
+                    CloseSettings();
+                    return;
+                }
+
+                if (_lobbyVm != null && _lobbyVm._isInFocus) _lobbyVm.OnLoseFocus();
+            }
+
+            if (!_settingsOpen && (LobbyCustomiserTweak.PopupOpen || (LobbyCustomiserTweak.Instance?.IsBrowsing ?? false))) { DestroyPrompt(); return; }
 
             if (_prompt == null || !_prompt.IsAlive)
             {
@@ -103,8 +136,10 @@ namespace BetterFG.Tweaks
                 Plugin.Log.LogWarning($"lobby audio prompt: settings page not found (index={index}, screen={(screen != null)})");
                 return;
             }
+            _screen = screen;
 
             _lobbyViewIndex = view.CurrentViewIndex;
+            if (_lobbyViewIndex < 0) _lobbyViewIndex = 0;
             SetLobbyVisible(false);
 
             _settingsViewGo = views[index];
@@ -128,9 +163,17 @@ namespace BetterFG.Tweaks
             Plugin.Log.LogInfo($"lobby audio prompt: closed, back to view {_lobbyViewIndex}, settings still active after SetView alone={stillActiveAfterSetView}");
 
             _settingsViewGo = null;
+            _screen = null;
             _settingsOpen = false;
             SetLobbyVisible(true);
             Customization.Player.SkinApplicationService.Instance?.ApplyGameColourPatternToAllBeans();
+            StartCoroutine(RegainLobbyFocusDelayed().WrapToIl2Cpp());
+        }
+
+        private IEnumerator RegainLobbyFocusDelayed()
+        {
+            for (int i = 0; i < 5; i++) yield return null;
+            if (!_settingsOpen) FindLobbyVm()?.OnGainFocus();
         }
 
         private void SetLobbyVisible(bool visible)
@@ -153,8 +196,11 @@ namespace BetterFG.Tweaks
             if (visible && EventSystem.current != null)
             {
                 EventSystem.current.sendNavigationEvents = true;
-                var back = _lobbyVm?._inputHandler?._lastSelectedGameObject;
-                if (back != null && back.activeInHierarchy) EventSystem.current.SetSelectedGameObject(back);
+                if (!(LobbyCustomiserTweak.Instance?.IsOnTabs ?? false))
+                {
+                    var back = _lobbyVm?._inputHandler?._lastSelectedGameObject;
+                    if (back != null && back.activeInHierarchy) EventSystem.current.SetSelectedGameObject(back);
+                }
             }
         }
 
@@ -167,7 +213,7 @@ namespace BetterFG.Tweaks
 
         private static PrivateLobbyScreenViewModel FindLobbyVm()
         {
-            var go = GameObject.Find("Menu_Screen_Lobby(Clone)");
+            var go = GameObject.Find(UiRootPath + "/" + LobbyCanvasSub);
             return go == null ? null : go.GetComponentInChildren<PrivateLobbyScreenViewModel>(true);
         }
 

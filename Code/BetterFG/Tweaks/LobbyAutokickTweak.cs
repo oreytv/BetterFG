@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Catapult.Protocol;
 using FallGuys.Lobby.Protocol.Client.Lobbies;
@@ -22,12 +22,12 @@ namespace BetterFG.Tweaks
         public LobbyAutokickTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "lobby_autokick";
-        public override string TweakLabel => "Lobby Autokick Bad Names";
+        public override string TweakLabel => "tweak.lobby_autokick_bad_names";
         public override bool DefaultEnabled => true;
 
         public override List<TweakButton> GetCustomButtons() => new List<TweakButton>
         {
-            new TweakButton { Label = "CFG", Width = 30f, OnClick = OpenConfig }
+            new TweakButton { Label = "ui.cfg", Width = 30f, OnClick = OpenConfig }
         };
 
         public override void EnableTweak()

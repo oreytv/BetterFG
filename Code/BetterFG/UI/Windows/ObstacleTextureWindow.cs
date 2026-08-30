@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using BetterFG.Features.UnityRound.Editor;
@@ -20,7 +20,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 340f;
         protected override float WindowHeight => 240f;
-        protected override string WindowTitle => "Obstacle Textures";
+        protected override string WindowTitle => "ui.obstacle_textures";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
         protected override bool DraggableFromTitle => true;
 
@@ -112,7 +112,7 @@ namespace BetterFG.UI.Windows
             float y = PAD * 0.5f;
 
             MakeLabel(contentRoot, new Rect(PAD, y, w, 16f),
-                "Obstacle textures  (Enter=set PNG, Shift=save PNG)", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+                "ui.obstacle_textures_enter_set_png_shift_save_png", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             y += 18f;
 
             // scroll list
@@ -151,13 +151,13 @@ namespace BetterFG.UI.Windows
             _scroll.content = listRt;
 
             if (_texNames.Count == 0)
-                MakeLabel(listRt, new Rect(6f, 0f, w, ROW_H), "no placeable textures found — load a round first", FS_SM, HINT_COL);
+                MakeLabel(listRt, new Rect(6f, 0f, w, ROW_H), "ui.no_placeable_textures_found_load_a_round_first", FS_SM, HINT_COL);
             else
                 for (int i = 0; i < _texNames.Count; i++)
                     BuildRow(listRt, i);
 
             _statusLabel = MakeLabel(contentRoot, new Rect(PAD, WindowHeight - TITLE_H - 22f, w - 76f, 16f),
-                _awaitingPng ? "pick a PNG..." : "", FS_SM, HINT_COL);
+                _awaitingPng ? "ui.pick_a_png" : "", FS_SM, HINT_COL);
 
             // refresh bottom-right
             var windowRt = contentRoot.parent?.GetComponent<RectTransform>();
@@ -172,7 +172,7 @@ namespace BetterFG.UI.Windows
                 rt.sizeDelta = new Vector2(bw, bh);
                 rt.anchoredPosition = new Vector2(-PAD, PAD);
                 UGUIShip.CreateButton(go.transform, new Rect(0f, 0f, bw, bh),
-                    "REFRESH", BTN_REFRESH, WHITE, FS_SM, new Action(OnRefresh));
+                    "ui.refresh", BTN_REFRESH, WHITE, FS_SM, new Action(OnRefresh));
             }
         }
 
@@ -258,7 +258,7 @@ namespace BetterFG.UI.Windows
             WinDialogs.PickPng("Select PNG for " + _pendingTex, path =>
             {
                 _awaitingPng = false;
-                if (string.IsNullOrEmpty(path)) { SetStatus("cancelled", HINT_COL); return; }
+                if (string.IsNullOrEmpty(path)) { SetStatus("ui.cancelled", HINT_COL); return; }
 
                 if (ObstacleTextureLoader.SetOverride(_pendingTex, path, out string error))
                     SetStatus("set " + _pendingTex, OK_COL);

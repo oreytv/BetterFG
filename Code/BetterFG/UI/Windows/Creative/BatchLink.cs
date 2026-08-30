@@ -115,8 +115,8 @@ namespace BetterFG.UI.Windows.Creative
             }
 
             if (budget > 0) note = budget + " over the level's link budget";
-            else if (incompatible + inert > 0 && done == 0) note = "nothing selected can be driven by this";
-            else if (already > 0 && done == 0) note = "all of them are already linked";
+            else if (incompatible + inert > 0 && done == 0) note = "ui.nothing_selected_can_be_driven_by_this";
+            else if (already > 0 && done == 0) note = "ui.all_of_them_are_already_linked";
             else if (copies > 0) note = $"added {copies} more controller(s) to fit them all";
 
             Plugin.Log.LogInfo($"{TypeName(controller)} controller took {done} new link(s)"

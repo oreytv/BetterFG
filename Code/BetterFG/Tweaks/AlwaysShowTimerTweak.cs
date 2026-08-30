@@ -14,7 +14,7 @@ namespace BetterFG.Tweaks
         public AlwaysShowTimerTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "always_show_timer";
-        public override string TweakLabel => "Always Show Ingame Timer";
+        public override string TweakLabel => "tweak.always_show_ingame_timer";
         public override bool DefaultEnabled => false;
 
         public static AlwaysShowTimerTweak Instance { get; private set; }

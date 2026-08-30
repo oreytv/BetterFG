@@ -75,7 +75,7 @@ if (-not $folders -or $folders.Count -eq 0) {
     return
 }
 
-$files = @("BetterFG.dll", "BetterFG.pdb", "uGUIship.dll", "uGUIship.pdb", "FallGuysLib.dll")
+$files = @("BetterFG.dll", "BetterFG.pdb", "uGUIship.dll", "uGUIship.pdb", "FallGuysLib.dll", "localization.bak")
 
 foreach ($game in $folders) {
     $pluginDir = Join-Path $game "BepInEx\plugins\BetterFG"

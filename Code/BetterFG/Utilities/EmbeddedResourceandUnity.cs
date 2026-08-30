@@ -34,6 +34,21 @@ namespace BetterFG.Utilities
             }
         }
 
+        public static string LoadText(string resourcePath)
+        {
+            using (Stream stream = asm.GetManifestResourceStream(resourcePath))
+            {
+                if (stream == null)
+                {
+                    Plugin.Log.LogWarning($"EmbeddedRes: no resource at '{resourcePath}'");
+                    return null;
+                }
+
+                using (var reader = new StreamReader(stream, System.Text.Encoding.UTF8))
+                    return reader.ReadToEnd();
+            }
+        }
+
         public static Sprite LoadSprite(string resourcePath, float pixelsPerUnit = 100f)
         {
             Texture2D tex = LoadTexture(resourcePath);

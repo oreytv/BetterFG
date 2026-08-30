@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Menu;
 using BetterFG.Customization.Player;
@@ -101,7 +101,7 @@ namespace BetterFG.UI.Tabs
             float statusH = UIScale.LH;
             float statusY = TabHeight - PAD - statusH;
             float removeW = 64f;
-            UGUIShip.CreateButton(contentRoot, new Rect(PAD + ListW - removeW, statusY, removeW, statusH), "Remove",
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD + ListW - removeW, statusY, removeW, statusH), "ui.remove_2",
                 BTN_REMOVE, WHITE, FS_SM, new Action(OnRemove));
             _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, statusY, ListW - removeW - PAD, statusH),
                 "", FS_SM, HINT, TextAnchor.MiddleLeft);
@@ -145,7 +145,7 @@ namespace BetterFG.UI.Tabs
                 iImg.raycastTarget = false;
             }
 
-            _searchPlaceholder = UGUIShip.CreateLabel(go.transform, default, "search...", FS_SM,
+            _searchPlaceholder = UGUIShip.CreateLabel(go.transform, default, "ui.search_2", FS_SM,
                 new Color(1f, 1f, 1f, 0.2f), TextAnchor.MiddleLeft);
             _searchPlaceholder.fontStyle = FontStyle.Italic;
             var phRt = _searchPlaceholder.rectTransform;
@@ -215,14 +215,14 @@ namespace BetterFG.UI.Tabs
 
         protected void SetStatus(string msg)
         {
-            if (_statusLbl != null) _statusLbl.text = msg;
+            if (_statusLbl != null) UGUIShip.RelabelText(_statusLbl, msg);
         }
 
         void OnRemove()
         {
             PlinthApp?.RemovePlinth();
             Rebuild();
-            SetStatus("Plinth removed.");
+            SetStatus("ui.plinth_removed");
         }
 
         protected void Rebuild()
@@ -241,7 +241,7 @@ namespace BetterFG.UI.Tabs
         protected void FilterRows()
         {
             int shown = ApplySearchFilter(SearchQuery);
-            if (!string.IsNullOrEmpty(SearchQuery) && shown == 0) SetStatus("no matches");
+            if (!string.IsNullOrEmpty(SearchQuery) && shown == 0) SetStatus("ui.no_matches");
         }
 
         protected virtual void BuildRows() { }
@@ -299,7 +299,7 @@ namespace BetterFG.UI.Tabs
             var coverImg = coverGo.AddComponent<Image>();
             coverImg.color = COVER_BG;
 
-            var selBtn = UGUIShip.CreateButton(rowGo.transform, "Select",
+            var selBtn = UGUIShip.CreateButton(rowGo.transform, "ui.select",
                 BTN_DARK, isActive ? ORANGE : WHITE, FS_SM, onSelect);
             var selLE = selBtn.gameObject.AddComponent<LayoutElement>();
             selLE.preferredWidth = SEL_W;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -16,6 +16,7 @@ namespace BetterFG.UI.Tabs
         public NametagIconTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Nametag - Icon";
+        protected override string TitleId => "ui.nametag_icon";
         protected override string BgResource => "BetterFG.assets.ui.nametag.bg.png";
 
         private const string KEY_ICON_MODE = "nametag.icon.mode";
@@ -59,7 +60,7 @@ namespace BetterFG.UI.Tabs
         private Slider _sliderIconScale, _sliderIconOffX, _sliderIconOffY;
         private Button _btnPlatNone, _btnPlatSelf, _btnPlatEveryone;
 
-        protected override string[] StepTitles => new[] { "Icon source", "Hide platform icon", "Custom platform icon" };
+        protected override string[] StepTitles => new[] { "ui.icon_source", "ui.hide_platform_icon", "ui.custom_platform_icon" };
         protected override bool HasRemove => true;
         protected override Tab MakeListTarget() => BetterFGTabRegistry.NewTab<NametagTab>();
 
@@ -94,14 +95,14 @@ namespace BetterFG.UI.Tabs
         private void BuildIconSourceStep(RectTransform c, float w)
         {
             float x = PAD, cy = PAD;
-            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "ICON", FS_SM, HINT);
+            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "ui.icon", FS_SM, HINT);
             cy += LH + SH;
             float modew = (w - PAD) / 3f;
-            _btnNone = UGUIShip.CreateButton(c, new Rect(x, cy, modew, BTN_H), "None",
+            _btnNone = UGUIShip.CreateButton(c, new Rect(x, cy, modew, BTN_H), "ui.none_2",
                 _iconMode == IconMode.None ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(() => SetIconMode(IconMode.None)));
-            _btnFlag = UGUIShip.CreateButton(c, new Rect(x + modew + PAD * 0.5f, cy, modew, BTN_H), "Flag",
+            _btnFlag = UGUIShip.CreateButton(c, new Rect(x + modew + PAD * 0.5f, cy, modew, BTN_H), "ui.flag",
                 _iconMode == IconMode.Flag ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(() => SetIconMode(IconMode.Flag)));
-            _btnCustom = UGUIShip.CreateButton(c, new Rect(x + (modew + PAD * 0.5f) * 2f, cy, modew, BTN_H), "Custom",
+            _btnCustom = UGUIShip.CreateButton(c, new Rect(x + (modew + PAD * 0.5f) * 2f, cy, modew, BTN_H), "ui.custom",
                 _iconMode == IconMode.Custom ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(() => SetIconMode(IconMode.Custom)));
             cy += BTN_H + PAD;
             UGUIShip.CreatePanel(c, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -128,14 +129,14 @@ namespace BetterFG.UI.Tabs
         private void BuildPlatformHideStep(RectTransform c, float w)
         {
             float x = PAD, cy = PAD;
-            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "DISABLE PLATFORM ICON", FS_SM, HINT);
+            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "ui.disable_platform_icon", FS_SM, HINT);
             cy += LH + SH;
             float modew = (w - PAD) / 3f;
-            _btnPlatNone = UGUIShip.CreateButton(c, new Rect(x, cy, modew, BTN_H), "None",
+            _btnPlatNone = UGUIShip.CreateButton(c, new Rect(x, cy, modew, BTN_H), "ui.none_2",
                 _platformHide == PlatformHideMode.None ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(() => SetPlatformHide(PlatformHideMode.None)));
-            _btnPlatSelf = UGUIShip.CreateButton(c, new Rect(x + modew + PAD * 0.5f, cy, modew, BTN_H), "Yourself",
+            _btnPlatSelf = UGUIShip.CreateButton(c, new Rect(x + modew + PAD * 0.5f, cy, modew, BTN_H), "ui.yourself",
                 _platformHide == PlatformHideMode.Self ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(() => SetPlatformHide(PlatformHideMode.Self)));
-            _btnPlatEveryone = UGUIShip.CreateButton(c, new Rect(x + (modew + PAD * 0.5f) * 2f, cy, modew, BTN_H), "Everyone",
+            _btnPlatEveryone = UGUIShip.CreateButton(c, new Rect(x + (modew + PAD * 0.5f) * 2f, cy, modew, BTN_H), "ui.everyone",
                 _platformHide == PlatformHideMode.Everyone ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(() => SetPlatformHide(PlatformHideMode.Everyone)));
             cy += BTN_H + PAD;
             c.sizeDelta = new Vector2(0f, cy + PAD);
@@ -144,7 +145,7 @@ namespace BetterFG.UI.Tabs
         private void BuildPlatformGridStep(RectTransform c, float w)
         {
             float x = PAD, cy = PAD;
-            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "CUSTOM PLATFORM ICON (local)", FS_SM, HINT);
+            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "ui.custom_platform_icon_local", FS_SM, HINT);
             cy += LH + SH;
             BuildPlatformIconButtons(c, x, cy, w, PLATFORM_ICON_GRID_H);
             cy += PLATFORM_ICON_GRID_H + PAD;
@@ -234,7 +235,7 @@ namespace BetterFG.UI.Tabs
             float cy = 0f;
             float btnW = w * 0.45f;
 
-            UGUIShip.CreateButton(parent, new Rect(0f, cy, btnW, BTN_H), "Browse...",
+            UGUIShip.CreateButton(parent, new Rect(0f, cy, btnW, BTN_H), "ui.browse_3",
                 new Color(0.25f, 0.35f, 0.45f, 1f), WHITE2, FS_SM, new Action(OnBrowseCustomIcon));
 
             _customIconLabel = UGUIShip.CreateLabel(parent, new Rect(btnW + PAD, cy, w - btnW - PAD, BTN_H),
@@ -460,7 +461,7 @@ namespace BetterFG.UI.Tabs
             {
                 if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
                 _customIconPath = path;
-                if (_customIconLabel != null) _customIconLabel.text = Path.GetFileName(_customIconPath);
+                if (_customIconLabel != null) UGUIShip.RelabelText(_customIconLabel, Path.GetFileName(_customIconPath));
                 RefreshPreview();
             });
         }

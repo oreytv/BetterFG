@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -16,9 +16,9 @@ namespace BetterFG.Features.MorePlatformIcon
 {
     internal static class FeatureMorePlatformIcon
     {
-        public static readonly BfgFeature feature = new BfgFeature("moreplatformicon", "More platform icons", true, new List<FeatureSetting>
+        public static readonly BfgFeature feature = new BfgFeature("moreplatformicon", "ui.more_platform_icons", true, new List<FeatureSetting>
         {
-            new FeatureSetting { id = "privatelobby", label = "Private lobby player list", defaultOn = true },
+            new FeatureSetting { id = "privatelobby", label = "ui.private_lobby_player_list", defaultOn = true },
         }, onOpen: NametagIconApplicator.ApplyKnownPlatformIcons, onClosed: NametagIconApplicator.RestoreKnownPlatformIcons);
 
         const string Res = "BetterFG.assets.ui.feature.moreplatformicon.featuremoreplatformicon_platformicons.png";

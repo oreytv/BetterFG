@@ -23,7 +23,7 @@ namespace BetterFG.Features.AllCosmetics
     
     public static class FeatureAllCosmetics
     {
-        public static readonly BfgFeature feature = new BfgFeature("allcosmetics", "All Cosmetics");
+        public static readonly BfgFeature feature = new BfgFeature("allcosmetics", "ui.all_cosmetics");
 
         /*
         static EventSystem.Handle _menuHandle;

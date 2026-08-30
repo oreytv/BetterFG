@@ -13,6 +13,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 using LB = Wushu.LevelEditor.Runtime.UI.LevelBrowser;
 
 namespace BetterFG.Features.LevelPort
@@ -97,14 +98,14 @@ namespace BetterFG.Features.LevelPort
             var variant = vm.transform.Find("Generic_UI_LE_ReportRoundPopup_Prefab_Variant");
             if (variant != null)
             {
-                SetText(variant, "TitleContainer/TitleText", "LEVEL IMPORT / EXPORT");
+                SetText(variant, "TitleContainer/TitleText", "ui.level_import_export");
                 SetText(variant, "BodyText", $"Choose an action for \"{name}\"" + (string.IsNullOrEmpty(code) ? "." : $" [{code}]."));
-                SetText(variant, "ButtonContainer/RightButton/Content/Text", "CONFIRM");
-                SetText(variant, "ButtonContainer/LeftButton/Content/Text", "CLOSE");
+                SetText(variant, "ButtonContainer/RightButton/Content/Text", "ui.confirm");
+                SetText(variant, "ButtonContainer/LeftButton/Content/Text", "ui.close");
             }
 
-            WireRow(_importElem, "IMPORT FROM FILE", _importAct);
-            WireRow(_exportElem, "EXPORT TO FILE", _exportAct);
+            WireRow(_importElem, "ui.import_from_file", _importAct);
+            WireRow(_exportElem, "ui.export_to_file", _exportAct);
             for (int i = 2; i < elems.Count; i++) elems[i].gameObject.SetActive(false);
 
             // also drive off the popup's own confirm button, in case the controller flow is
@@ -139,7 +140,7 @@ namespace BetterFG.Features.LevelPort
             var bind = go.GetComponent("TMPTextBinding")?.TryCast<Behaviour>();
             if (bind != null) bind.enabled = false;
             var tmp = go.GetComponent<TextMeshProUGUI>();
-            if (tmp != null) tmp.text = text;
+            if (tmp != null) UGUIShip.RelabelText(tmp, text);
         }
 
         private static void WireRow(ReportUGCConfigurationElementViewModel e, string label, Action act)

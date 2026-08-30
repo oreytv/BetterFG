@@ -10,9 +10,9 @@ namespace BetterFG.Tweaks
         public UpcomingShowsTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "upcoming_shows";
-        public override string TweakLabel => "Show upcoming shows";
+        public override string TweakLabel => "tweak.show_upcoming_shows";
         public override bool DefaultEnabled => true;
-        public override string TweakTooltip => "Adds a row to the show selector for scheduled shows that haven't opened yet, like next week's LTMs.";
+        public override string TweakTooltip => "ui.adds_a_row_to_the_show_selector_for_scheduled_sh";
 
         public static UpcomingShowsTweak Instance { get; private set; }
         void Awake() => Instance = this;

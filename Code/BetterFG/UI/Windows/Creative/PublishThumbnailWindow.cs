@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -27,7 +27,7 @@ namespace BetterFG.UI.Windows.Creative
 
         protected override float WindowWidth => 310f;
         protected override float WindowHeight => 340f;
-        protected override string WindowTitle => "Level Thumbnail";
+        protected override string WindowTitle => "ui.level_thumbnail";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg_2.png";
         protected override string BgHoverResourceName => "BetterFG.assets.ui.windows.generalbg_2_hover.png";
         protected override bool DraggableFromTitle => true;
@@ -132,7 +132,7 @@ namespace BetterFG.UI.Windows.Creative
             float w = WindowWidth - PAD * 2f;
             float y = PAD * 0.5f;
 
-            MakeLabel(contentRoot, new Rect(PAD, y, w, 14f), "the picture on your level's tile in-game", FS_SM, HINT_COL);
+            MakeLabel(contentRoot, new Rect(PAD, y, w, 14f), "ui.the_picture_on_your_level_s_tile_in_game", FS_SM, HINT_COL);
             y += 17f;
             MakeSeparator(contentRoot, new Rect(PAD, y, w, 1f));
             y += 6f;
@@ -144,7 +144,7 @@ namespace BetterFG.UI.Windows.Creative
 
             _statusLabel = MakeLabel(contentRoot, new Rect(PAD, footY - 20f, w, 16f), "", FS_SM, HINT_COL, TextAnchor.MiddleCenter);
             _defaultBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, footY, w, 24f),
-                "USE THE EDITOR'S OWN SHOT", BTN_APPLY, WHITE, FS_SM, new Action(UseDefault));
+                "ui.use_the_editor_s_own_shot", BTN_APPLY, WHITE, FS_SM, new Action(UseDefault));
             Highlight();
         }
 
@@ -152,7 +152,7 @@ namespace BetterFG.UI.Windows.Creative
         // of the mod nobody would connect to publishing on their own
         private void BuildEmpty(RectTransform root, float w, float y)
         {
-            MakeLabel(root, new Rect(PAD, y, w, 14f), "NO PICTURES OF THIS LEVEL YET", FS_SM, STEP_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 14f), "ui.no_pictures_of_this_level_yet", FS_SM, STEP_COL);
             y += 19f;
 
             MakeLabel(root, new Rect(PAD, y, w, 30f),
@@ -160,23 +160,23 @@ namespace BetterFG.UI.Windows.Creative
                 FS_SM, HINT_COL, TextAnchor.UpperLeft);
             y += 34f;
 
-            MakeLabel(root, new Rect(PAD, y, w, 14f), "HOW TO TAKE ONE", FS_SM, STEP_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 14f), "ui.how_to_take_one", FS_SM, STEP_COL);
             y += 19f;
 
-            MakeLabel(root, new Rect(PAD, y, w, 28f), "1   turn Auto-record rounds ON in the Replays tab",
+            MakeLabel(root, new Rect(PAD, y, w, 28f), "ui.1_turn_auto_record_rounds_on_in_the_replays_tab",
                 FS_SM, WHITE, TextAnchor.UpperLeft);
             y += 30f;
-            MakeLabel(root, new Rect(PAD, y, w, 28f), "2   play this level, then open its replay",
+            MakeLabel(root, new Rect(PAD, y, w, 28f), "ui.2_play_this_level_then_open_its_replay",
                 FS_SM, WHITE, TextAnchor.UpperLeft);
             y += 30f;
-            MakeLabel(root, new Rect(PAD, y, w, 28f), "3   fly the camera to the shot you want, then hide the replay UI",
+            MakeLabel(root, new Rect(PAD, y, w, 28f), "ui.3_fly_the_camera_to_the_shot_you_want_then_hide",
                 FS_SM, WHITE, TextAnchor.UpperLeft);
             y += 30f;
-            MakeLabel(root, new Rect(PAD, y, w, 28f), "4   press Take Picture, top right",
+            MakeLabel(root, new Rect(PAD, y, w, 28f), "ui.4_press_take_picture_top_right",
                 FS_SM, WHITE, TextAnchor.UpperLeft);
             y += 32f;
 
-            MakeLabel(root, new Rect(PAD, y, w, 28f), "they collect in Replays → Images, and turn up here next time you publish",
+            MakeLabel(root, new Rect(PAD, y, w, 28f), "ui.they_collect_in_replays_images_and_turn_up_here",
                 FS_SM, HINT_COL, TextAnchor.UpperLeft);
         }
 

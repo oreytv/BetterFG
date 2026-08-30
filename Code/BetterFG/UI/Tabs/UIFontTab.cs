@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
@@ -13,6 +13,7 @@ namespace BetterFG.UI.Tabs
         public UIFontTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "UI - Font";
+        protected override string TitleId => "ui.ui_font";
 
         static float ROW_H => 30f * UIScale.S;
         static readonly Color ROW_ALT = new Color(1f, 1f, 1f, 0.03f);
@@ -35,7 +36,7 @@ namespace BetterFG.UI.Tabs
             float y = UITab.BuildSectionBar(this, contentRoot, PAD, VPAD, w, "Font");
 
             _btnFontMaster = UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, w, BTN_H),
-                _fontMaster ? "FONT REPLACEMENT: ON" : "FONT REPLACEMENT: OFF",
+                _fontMaster ? "ui.font_replacement_on" : "ui.font_replacement_off",
                 _fontMaster ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(OnToggleFontMaster));
             y += BTN_H + SH;
 
@@ -68,7 +69,7 @@ namespace BetterFG.UI.Tabs
         {
             _fontMaster = !_fontMaster;
             var lbl = _btnFontMaster?.GetComponentInChildren<Text>();
-            if (lbl != null) lbl.text = _fontMaster ? "FONT REPLACEMENT: ON" : "FONT REPLACEMENT: OFF";
+            if (lbl != null) UGUIShip.RelabelText(lbl, _fontMaster ? "ui.font_replacement_on" : "ui.font_replacement_off");
             UGUIShip.SetButtonSelected(_btnFontMaster, _fontMaster, SEL_COLOR);
             FontReplacementService.SetMaster(_fontMaster);
             FontReplacementService.RebuildAndApply();
@@ -102,7 +103,7 @@ namespace BetterFG.UI.Tabs
                 var previewRt = previewGo.AddComponent<RectTransform>();
                 UGUIShip.SetPixelRect(previewRt, new Rect(3f, 3f, ROW_H - 6f, ROW_H - 6f));
                 var previewTmp = previewGo.AddComponent<TMPro.TextMeshProUGUI>();
-                previewTmp.text = "Aa";
+                UGUIShip.RelabelText(previewTmp, "ui.aa");
                 previewTmp.fontSize = 16f;
                 previewTmp.alignment = TMPro.TextAlignmentOptions.Center;
                 previewTmp.raycastTarget = false;
@@ -118,15 +119,15 @@ namespace BetterFG.UI.Tabs
                     rowName, FS_SM, entry.enabled ? WHITE : DIM, TextAnchor.MiddleLeft);
 
                 BuildRowBtn(rowGo.transform, -(removeW + toggleW + editW + 4f), editW,
-                    "edit", BTN_DARK, () => OpenWizard(idx));
+                    "ui.edit_2", BTN_DARK, () => OpenWizard(idx));
                 BuildRowBtn(rowGo.transform, -(removeW + toggleW + 2f), toggleW,
-                    entry.enabled ? "on" : "off", entry.enabled ? BTN_APPLY : BTN_DARK,
+                    entry.enabled ? "ui.on_2" : "ui.off_2", entry.enabled ? BTN_APPLY : BTN_DARK,
                     () => OnToggleFontEntry(idx));
                 BuildRowBtn(rowGo.transform, -2f, removeW, "x", BTN_REMOVE, () => OnRemoveFontEntry(idx));
             }
 
             var addBtn = UGUIShip.CreateButton(_entryContent, new Rect(0f, 0f, rowW, ROW_H),
-                "+ Add Font Override", BTN_ADD, WHITE, FS_SM, new Action(() => OpenWizard(-1)));
+                "ui.add_font_override", BTN_ADD, WHITE, FS_SM, new Action(() => OpenWizard(-1)));
             var addLe = addBtn.gameObject.AddComponent<LayoutElement>();
             addLe.preferredHeight = ROW_H;
             addLe.flexibleWidth = 1f;
@@ -170,7 +171,7 @@ namespace BetterFG.UI.Tabs
 
         public void SetStatus(string msg)
         {
-            if (_statusLbl != null) _statusLbl.text = msg;
+            if (_statusLbl != null) UGUIShip.RelabelText(_statusLbl, msg);
         }
     }
 }

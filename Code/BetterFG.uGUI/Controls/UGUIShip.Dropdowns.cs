@@ -150,7 +150,7 @@ namespace BettrFG.uGUI
             if (options != null && options.Count > 0)
             {
                 dd.ClearOptions();
-                foreach (var o in options) dd.options.Add(new Dropdown.OptionData(o));
+                foreach (var o in options) dd.options.Add(new Dropdown.OptionData(LocText(o)));
                 dd.value = Mathf.Clamp(selected, 0, options.Count - 1);
                 dd.RefreshShownValue();
             }

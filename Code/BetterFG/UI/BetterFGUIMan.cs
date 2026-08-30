@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BetterFG.Services;
@@ -40,7 +40,7 @@ namespace BetterFG.UI
         {
             if (_label == null) _label = GetComponentInChildren<Text>();
             if (_label == null) return;
-            _label.text = text;
+            _label.text = LocalizationService.Get(text);
 
             // size the tooltip to its content: width = text width capped at MaxWidth, height grows
             // to fit wrapped lines. without this the tooltip would either stretch the whole screen
@@ -112,24 +112,27 @@ namespace BetterFG.UI
         public struct TabEntry
         {
             public string Title;
+            public string TitleId;
             public Func<Tab> Factory;
         }
 
         private static readonly List<TabEntry> _entries = new List<TabEntry>();
         public static IReadOnlyList<TabEntry> All => _entries;
 
-        // a tab's identity and its display name are both just its own TabTitle — the registry never
-        // takes a separate string, so the two can never drift apart and one tab can't be added twice
+        // a tab's identity is always its own TabTitle — the registry never takes a separate identity
+        // string, so it can never drift apart and one tab can't be added twice. TitleId is read
+        // alongside it purely so the switch-tab dropdown can show the same localized name the tab's
+        // own title bar uses, without touching that identity.
         public static void Register<T>() where T : Tab
         {
-            string title = ReadTitle<T>();
+            string title = ReadTitle<T>(out string titleId);
             if (string.IsNullOrEmpty(title)) return;
 
             for (int i = 0; i < _entries.Count; i++)
                 if (_entries[i].Title == title)
                     return;
 
-            _entries.Add(new TabEntry { Title = title, Factory = () => NewTab<T>() });
+            _entries.Add(new TabEntry { Title = title, TitleId = titleId, Factory = () => NewTab<T>() });
         }
 
         public static Tab CreateTab(string title)
@@ -174,13 +177,18 @@ namespace BetterFG.UI
             return go.AddComponent<T>();
         }
 
-        // read TabTitle off an inactive throwaway: keeping it inactive defers Awake so its bindings
-        // never fire, and TabTitle is a plain constant getter that doesn't need the instance built
-        private static string ReadTitle<T>() where T : Tab
+        private static string ReadTitle<T>() where T : Tab => ReadTitle<T>(out _);
+
+        // read TabTitle (+ its optional TitleId) off an inactive throwaway: keeping it inactive defers
+        // Awake so its bindings never fire, and both are plain constant getters that don't need the
+        // instance built
+        private static string ReadTitle<T>(out string titleId) where T : Tab
         {
             var go = new GameObject("_tmpTab");
             go.SetActive(false);
-            string title = go.AddComponent<T>().TabTitle;
+            var tab = go.AddComponent<T>();
+            string title = tab.TabTitle;
+            titleId = tab.TitleLocId;
             UnityEngine.Object.Destroy(go);
             return title;
         }
@@ -243,6 +251,8 @@ namespace BetterFG.UI
     {
         public TooltipTrigger(IntPtr ptr) : base(ptr) { }
         public string text = "";
+        public string locId;
+        public object[] locArgs;
         // no hover delay — pops the instant the pointer is over the trigger (used by the little
         // "?" credit markers next to tweak labels).
         public bool instant = false;
@@ -258,6 +268,16 @@ namespace BetterFG.UI
         private bool _cgCached;
 
         void Awake() => _rt = GetComponent<RectTransform>();
+
+        void OnEnable()
+        {
+            if (locId == null) return;
+            LocalizationService.LanguageChanged += RefreshLoc;
+            RefreshLoc();
+        }
+
+        private void RefreshLoc() =>
+            text = locArgs != null ? LocalizationService.Format(locId, locArgs) : LocalizationService.Get(locId);
 
         void Update()
         {
@@ -297,7 +317,12 @@ namespace BetterFG.UI
             if (!_shown && _t >= wait) { _shown = true; BetterFGUIMan.Instance?.ShowTooltip(text); }
         }
 
-        void OnDisable() { if (_shown) { BetterFGUIMan.Instance?.HideTooltip(); _shown = false; _t = 0f; } if (hoverImage != null) hoverImage.SetActive(false); }
+        void OnDisable()
+        {
+            if (_shown) { BetterFGUIMan.Instance?.HideTooltip(); _shown = false; _t = 0f; }
+            if (hoverImage != null) hoverImage.SetActive(false);
+            if (locId != null) LocalizationService.LanguageChanged -= RefreshLoc;
+        }
     }
 
     // ── Manager ───────────────────────────────────────────────────────────────
@@ -815,6 +840,11 @@ namespace BetterFG.UI
         // ── Dropdown ──────────────────────────────────────────────────────────
         public void RequestSlotDropdown(Tab owner)
         {
+            if (SideWheelManager.Instance != null && SideWheelManager.Instance.IsWheelVisible)
+            {
+                ShowTooltipTimed("ui.close_the_side_wheel_first", 1.2f);
+                return;
+            }
             _pendingDropdownTab = owner;
         }
 
@@ -831,14 +861,19 @@ namespace BetterFG.UI
             RectTransform tabRoot = (ownerIdx < _tabRoots.Count) ? _tabRoots[ownerIdx] : null;
 
             var allTitles = new string[BetterFGTabRegistry.All.Count];
+            var allDisplay = new string[BetterFGTabRegistry.All.Count];
             for (int i = 0; i < BetterFGTabRegistry.All.Count; i++)
-                allTitles[i] = BetterFGTabRegistry.All[i].Title;
+            {
+                var entry = BetterFGTabRegistry.All[i];
+                allTitles[i] = entry.Title;
+                allDisplay[i] = entry.TitleId ?? entry.Title;
+            }
 
             var occupied = new string[_tabs.Count];
             for (int i = 0; i < _tabs.Count; i++)
                 occupied[i] = _tabs[i] != null ? _tabs[i].TabTitle : "";
 
-            _dropdown.Open(tabRoot, ownerIdx, owner.TabTitle, allTitles, allTitles, occupied);
+            _dropdown.Open(tabRoot, ownerIdx, owner.TabTitle, allTitles, allDisplay, occupied);
         }
 
         // current-slot cell was clicked: keep the tab open, don't auto-close it
@@ -1015,7 +1050,11 @@ namespace BetterFG.UI
         // ── Tab toggle ────────────────────────────────────────────────────────
         public void ToggleTab(Tab tab)
         {
-            if (SideWheelManager.Instance != null && SideWheelManager.Instance.IsWheelVisible) return;
+            if (SideWheelManager.Instance != null && SideWheelManager.Instance.IsWheelVisible)
+            {
+                ShowTooltipTimed("ui.close_the_side_wheel_first", 1.2f);
+                return;
+            }
 
             if (_openTab == tab)
             {
@@ -1245,6 +1284,16 @@ namespace BetterFG.UI
         {
             var t = rt.gameObject.AddComponent<TooltipTrigger>();
             t.text = text;
+            t.delay = delay;
+        }
+
+        // like MakeObjectTooltip but tracks LocalizationService.LanguageChanged, for tooltips
+        // built once (e.g. at tab creation) that need to stay correct across a live language switch.
+        public static void MakeLocalizedObjectTooltip(RectTransform rt, string locId, object[] args = null, float delay = -1f)
+        {
+            var t = rt.gameObject.AddComponent<TooltipTrigger>();
+            t.locId = locId;
+            t.locArgs = args;
             t.delay = delay;
         }
 
@@ -1603,7 +1652,7 @@ namespace BetterFG.UI
                 UnityEngine.Object.Destroy(_controlsWatermarkGo.transform.GetChild(i).gameObject);
 
             var faded = new Color(1f, 1f, 1f, 0.8f);
-            AddWatermarkLine(_controlsWatermarkGo.transform, "F1 - lock/unlock cursor", faded);
+            AddWatermarkLine(_controlsWatermarkGo.transform, "ui.f1_lock_unlock_cursor", faded);
             AddWatermarkLine(_controlsWatermarkGo.transform, KeybindService.Label(KeybindId.ToggleUI) + " - hide/show BetterFG UI", faded);
             AddWatermarkLine(_controlsWatermarkGo.transform, KeybindService.Label(KeybindId.ToggleWheel) + " - toggle settings wheel", faded);
         }

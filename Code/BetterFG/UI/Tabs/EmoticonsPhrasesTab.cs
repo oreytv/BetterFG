@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -47,7 +47,7 @@ namespace BetterFG.UI.Tabs
                         if (string.IsNullOrEmpty(path)) return;
                         soundPaths[slot] = path;
                         onChanged();
-                        if (lbl != null) lbl.text = Path.GetFileName(path);
+                        if (lbl != null) UGUIShip.RelabelText(lbl, Path.GetFileName(path));
                     })));
                 UGUIShip.CreateButton(parent,
                     new Rect(PAD + soundBtnW + PAD + lblW + PAD, rowY, xW, RBTN_H), "X",
@@ -56,12 +56,13 @@ namespace BetterFG.UI.Tabs
                     {
                         soundPaths[slot] = "";
                         onChanged();
-                        if (lbl != null) lbl.text = "No sound";
+                        if (lbl != null) UGUIShip.RelabelText(lbl, "ui.no_sound");
                     }));
             }
         }
 
         public override string TabTitle => "Social";
+        protected override string TitleId => "ui.social";
         protected override string BgResource => "BetterFG.assets.ui.emoticonsphrases.bg.png";
 
         // ── Sub-tab state ─────────────────────────────────────────────────────
@@ -408,15 +409,15 @@ namespace BetterFG.UI.Tabs
             // sub-tab bar — three even thirds
             float thirdW = (w - PAD) / 3f;
             _btnSubPhrases = UGUIShip.CreateButton(contentRoot,
-                new Rect(PAD, y, thirdW, SUBTAB_H), "Phrases",
+                new Rect(PAD, y, thirdW, SUBTAB_H), "ui.phrases",
                 _sub == SubTab.Phrases ? SEL : DARK, WHITE, FS_SM,
                 new Action(() => SetSubTab(SubTab.Phrases)));
             _btnSubEmoticons = UGUIShip.CreateButton(contentRoot,
-                new Rect(PAD + thirdW + PAD * 0.5f, y, thirdW, SUBTAB_H), "Emoticons",
+                new Rect(PAD + thirdW + PAD * 0.5f, y, thirdW, SUBTAB_H), "ui.emoticons",
                 _sub == SubTab.Emoticons ? SEL : DARK, WHITE, FS_SM,
                 new Action(() => SetSubTab(SubTab.Emoticons)));
             _btnSubEmotes = UGUIShip.CreateButton(contentRoot,
-                new Rect(PAD + (thirdW + PAD * 0.5f) * 2f, y, thirdW, SUBTAB_H), "Emotes",
+                new Rect(PAD + (thirdW + PAD * 0.5f) * 2f, y, thirdW, SUBTAB_H), "ui.emotes",
                 _sub == SubTab.Emotes ? SEL : DARK, WHITE, FS_SM,
                 new Action(() => SetSubTab(SubTab.Emotes)));
             y += SUBTAB_H + SH;
@@ -442,10 +443,10 @@ namespace BetterFG.UI.Tabs
             var pBarRt = pBarGo.AddComponent<RectTransform>();
             UGUIShip.SetPixelRect(pBarRt, new Rect(0f, barY - PAD, TabWidth, BTN_H + PAD * 2f));
             UGUIShip.CreateButton(pBarGo.transform,
-                new Rect(PAD, PAD, btnW, BTN_H), "+ Add Phrase",
+                new Rect(PAD, PAD, btnW, BTN_H), "ui.add_phrase",
                 BTN_ADD, WHITE, FS, new Action(OnAddPhrase));
             UGUIShip.CreateButton(pBarGo.transform,
-                new Rect(PAD + btnW + PAD * 0.5f, PAD, btnW, BTN_H), "Apply All",
+                new Rect(PAD + btnW + PAD * 0.5f, PAD, btnW, BTN_H), "ui.apply_all",
                 BTN_APPLY, WHITE, FS, new Action(OnApplyAll));
             _phrasesBottomBar = pBarGo;
 
@@ -464,10 +465,10 @@ namespace BetterFG.UI.Tabs
             var epBarRt = epBarGo.AddComponent<RectTransform>();
             UGUIShip.SetPixelRect(epBarRt, new Rect(0f, epBarY - PAD, TabWidth, BTN_H + PAD * 2f));
             UGUIShip.CreateButton(epBarGo.transform,
-                new Rect(PAD, PAD, epBtnW, BTN_H), "+ Add Emoticon",
+                new Rect(PAD, PAD, epBtnW, BTN_H), "ui.add_emoticon",
                 BTN_ADD, WHITE, FS, new Action(OnAddEmoticon));
             UGUIShip.CreateButton(epBarGo.transform,
-                new Rect(PAD + epBtnW + PAD * 0.5f, PAD, epBtnW, BTN_H), "Apply All",
+                new Rect(PAD + epBtnW + PAD * 0.5f, PAD, epBtnW, BTN_H), "ui.apply_all",
                 BTN_APPLY, WHITE, FS, new Action(OnApplyAllEmoticons));
 
             // link panel + bar visibility together via a wrapper isn't worth it — just
@@ -490,10 +491,10 @@ namespace BetterFG.UI.Tabs
 
             BuildPasteButton(emBarGo.transform, new Rect(PAD, PAD, emBtnW3, BTN_H));
             UGUIShip.CreateButton(emBarGo.transform,
-                new Rect(PAD + emBtnW3 + PAD * 0.5f, PAD, emBtnW3, BTN_H), "+ Add Emote",
+                new Rect(PAD + emBtnW3 + PAD * 0.5f, PAD, emBtnW3, BTN_H), "ui.add_emote",
                 BTN_ADD, WHITE, FS, new Action(OnAddEmote));
             UGUIShip.CreateButton(emBarGo.transform,
-                new Rect(PAD + (emBtnW3 + PAD * 0.5f) * 2f, PAD, emBtnW3, BTN_H), "Apply All",
+                new Rect(PAD + (emBtnW3 + PAD * 0.5f) * 2f, PAD, emBtnW3, BTN_H), "ui.apply_all",
                 BTN_APPLY, WHITE, FS, new Action(OnApplyAllEmotes));
             _emotesBottomBar = emBarGo;
 
@@ -599,14 +600,14 @@ namespace BetterFG.UI.Tabs
             {
                 UGUIShip.CreateLabel(imgColGo.transform,
                     new Rect(0f, 0f, imgColW, ROW_H - PAD * 2f),
-                    "No img", FS_SM, HINT, TextAnchor.MiddleCenter);
+                    "ui.no_img", FS_SM, HINT, TextAnchor.MiddleCenter);
             }
 
             // browse button below the image area — small, pinned to bottom of img col
             float browseBtnH = BTN_H * 0.8f;
             UGUIShip.CreateButton(imgColGo.transform,
                 new Rect(0f, ROW_H - PAD * 2f - browseBtnH, imgColW, browseBtnH),
-                "Browse", new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
+                "ui.browse", new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
                 new Action(() => WinDialogs.PickPng("Select phrase image", path =>
                 {
                     if (string.IsNullOrEmpty(path)) return;
@@ -624,14 +625,14 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(PAD, line1Y, toggleW, RBTN_H),
-                entry.enabled ? "ON" : "OFF",
+                entry.enabled ? "ui.on" : "ui.off",
                 entry.enabled ? TOGGLE_ON : TOGGLE_OFF,
                 WHITE, FS_SM,
                 new Action(() => OnToggleEnabled(captured)));
 
             var tf = UGUIShip.CreateInputField(rowGo.transform,
                 new Rect(PAD + toggleW + PAD, line1Y, textW, RBTN_H),
-                "phrase text...", new Color(0f, 0f, 0f, 1f), WHITE, FS_SM);
+                "ui.phrase_text", new Color(0f, 0f, 0f, 1f), WHITE, FS_SM);
             tf.text = entry.phraseText;
             tf.onEndEdit.AddListener(new Action<string>(val =>
             {
@@ -648,7 +649,7 @@ namespace BetterFG.UI.Tabs
             float minusW = BTN_H * 1.4f;
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD, line2Y, slotLblW, RBTN_H), "Slot (0-7)", FS_SM, HINT);
+                new Rect(PAD, line2Y, slotLblW, RBTN_H), "ui.slot_0_7", FS_SM, HINT);
 
             float psx = PAD + slotLblW + PAD;
             UGUIShip.CreateIncrement(rowGo.transform,
@@ -659,7 +660,7 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(leftW - minusW - editW, line2Y, editW, RBTN_H),
-                editing ? "Done" : "Edit",
+                editing ? "ui.done_2" : "ui.edit",
                 editing ? new Color(0.2f, 0.4f, 0.25f, 1f) : new Color(0.22f, 0.32f, 0.42f, 1f),
                 WHITE, FS_SM,
                 new Action(() =>
@@ -856,7 +857,7 @@ namespace BetterFG.UI.Tabs
 
         private void SetStatus(string msg)
         {
-            if (_statusLabel != null) _statusLabel.text = msg;
+            if (_statusLabel != null) UGUIShip.RelabelText(_statusLabel, msg);
         }
 
         // emote and emoticon injection both target the EmotesAndEmoticons wheel. two ways they
@@ -985,13 +986,13 @@ namespace BetterFG.UI.Tabs
             {
                 UGUIShip.CreateLabel(imgColGo.transform,
                     new Rect(0f, 0f, imgColW, ROW_H - PAD * 2f),
-                    "No img", FS_SM, HINT, TextAnchor.MiddleCenter);
+                    "ui.no_img", FS_SM, HINT, TextAnchor.MiddleCenter);
             }
 
             float browseBtnH = BTN_H * 0.8f;
             UGUIShip.CreateButton(imgColGo.transform,
                 new Rect(0f, ROW_H - PAD * 2f - browseBtnH, imgColW, browseBtnH),
-                "Browse", new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
+                "ui.browse", new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
                 new Action(() => WinDialogs.PickPng("Select emoticon image", path =>
                 {
                     if (string.IsNullOrEmpty(path)) return;
@@ -1009,14 +1010,14 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(PAD, line1Y, toggleW, RBTN_H),
-                entry.enabled ? "ON" : "OFF",
+                entry.enabled ? "ui.on" : "ui.off",
                 entry.enabled ? TOGGLE_ON : TOGGLE_OFF,
                 WHITE, FS_SM,
                 new Action(() => OnToggleEmoticonEnabled(captured)));
 
             var tf = UGUIShip.CreateInputField(rowGo.transform,
                 new Rect(PAD + toggleW + PAD, line1Y, itemIdW, RBTN_H),
-                "item id (e.g. emoticon_wheel_happy_heart)",
+                "ui.item_id_e_g_emoticon_wheel_happy_heart",
                 new Color(0f, 0f, 0f, 1f), WHITE, FS_SM);
             tf.text = entry.itemId;
             tf.onEndEdit.AddListener(new Action<string>(val =>
@@ -1034,7 +1035,7 @@ namespace BetterFG.UI.Tabs
             float minusW = BTN_H * 1.4f;
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD, line2Y, slotLblW, RBTN_H), "Slot (0-7)", FS_SM, HINT);
+                new Rect(PAD, line2Y, slotLblW, RBTN_H), "ui.slot_0_7", FS_SM, HINT);
 
             float esx = PAD + slotLblW + PAD;
             UGUIShip.CreateIncrement(rowGo.transform,
@@ -1045,7 +1046,7 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(leftW - minusW - editW, line2Y, editW, RBTN_H),
-                editing ? "Done" : "Edit",
+                editing ? "ui.done_2" : "ui.edit",
                 editing ? new Color(0.2f, 0.4f, 0.25f, 1f) : new Color(0.22f, 0.32f, 0.42f, 1f),
                 WHITE, FS_SM,
                 new Action(() =>
@@ -1065,7 +1066,7 @@ namespace BetterFG.UI.Tabs
                 float warnY = line2Y + RBTN_H + 1f;
                 UGUIShip.CreateLabel(rowGo.transform,
                     new Rect(PAD, warnY, leftW - PAD * 2f, RBTN_H * 0.6f),
-                    "Emote overrides this slot", FS_SM, WARN_C, TextAnchor.UpperLeft);
+                    "ui.emote_overrides_this_slot", FS_SM, WARN_C, TextAnchor.UpperLeft);
                 _ = "emote-override warn";
             }
 
@@ -1105,8 +1106,7 @@ namespace BetterFG.UI.Tabs
         private void OnApplyAllEmoticons()
         {
             EmoticonInjectionService.ApplyAll(_emoticonEntries);
-            if (_emoticonStatusLabel != null)
-                _emoticonStatusLabel.text = EmoticonInjectionService.LastStatus;
+            if (_emoticonStatusLabel != null) UGUIShip.RelabelText(_emoticonStatusLabel, EmoticonInjectionService.LastStatus);
             // also push to the shared status label so user sees it regardless of sub-tab
             SetStatus(EmoticonInjectionService.LastStatus);
         }
@@ -1191,7 +1191,7 @@ namespace BetterFG.UI.Tabs
         {
             if (_pasteLabel == null) return;
             bool has = EmoteClipboard.HasEmote;
-            _pasteLabel.text = _pasting ? "Pasting..." : "Paste";
+            UGUIShip.RelabelText(_pasteLabel, _pasting ? "ui.pasting" : "ui.paste");
             _pasteLabel.color = has || _pasting ? WHITE : HINT;
 
             if (_pasteCover == null) return;
@@ -1228,11 +1228,11 @@ namespace BetterFG.UI.Tabs
             if (_pasting) return;
             if (!EmoteClipboard.HasEmote)
             {
-                SetStatus("Nothing copied. Go to Customization > Emotes and press Copy first.");
+                SetStatus("ui.nothing_copied_go_to_customization_emotes_and_pr");
                 return;
             }
             _pasting = true;
-            if (_pasteLabel != null) _pasteLabel.text = "Pasting...";
+            if (_pasteLabel != null) UGUIShip.RelabelText(_pasteLabel, "ui.pasting");
             StartCoroutine(PasteEmoteCoroutine().WrapToIl2Cpp());
         }
 
@@ -1259,7 +1259,7 @@ namespace BetterFG.UI.Tabs
             string bundleName = Uri.UnescapeDataString(Path.GetFileName(new Uri(bundleUrl).AbsolutePath));
             if (string.IsNullOrEmpty(bundleName)) bundleName = safe;
             string bundlePath = Path.Combine(dest, bundleName);
-            SetStatus("Downloading emote bundle...");
+            SetStatus("ui.downloading_emote_bundle");
             var bReq = UnityWebRequest.Get(bundleUrl + (bundleUrl.Contains("?") ? "&" : "?") + cb);
             yield return bReq.SendWebRequest();
             if (bReq.result != UnityWebRequest.Result.Success)
@@ -1293,7 +1293,7 @@ namespace BetterFG.UI.Tabs
 
             // cover -> wheel image (optional, try jpg then png)
             string imagePath = "";
-            foreach (string url in new[] { coverUrl, coverUrl.Replace(".jpg", ".png") })
+            foreach (string url in new[] { coverUrl, coverUrl.Replace("ui.jpg", "ui.png") })
             {
                 if (string.IsNullOrEmpty(url)) continue;
                 var cReq = UnityWebRequest.Get(url + (url.Contains("?") ? "&" : "?") + cb);
@@ -1398,7 +1398,7 @@ namespace BetterFG.UI.Tabs
             {
                 UGUIShip.CreateLabel(imgColGo.transform,
                     new Rect(0f, 0f, imgColW, imgColW),
-                    "No img", FS_SM, HINT, TextAnchor.MiddleCenter);
+                    "ui.no_img", FS_SM, HINT, TextAnchor.MiddleCenter);
             }
 
             // ── Top line: ON/OFF + name + Edit ────────────────────────────────
@@ -1411,7 +1411,7 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(PAD, line1Y, toggleW, RBTN_H),
-                entry.enabled ? "ON" : "OFF",
+                entry.enabled ? "ui.on" : "ui.off",
                 entry.enabled ? TOGGLE_ON : TOGGLE_OFF,
                 WHITE, FS_SM,
                 new Action(() => OnToggleEmoteEnabled(captured)));
@@ -1424,7 +1424,7 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(PAD + toggleW + PAD + nameW + PAD, line1Y, editW, RBTN_H),
-                editing ? "Done" : "Edit",
+                editing ? "ui.done_2" : "ui.edit",
                 editing ? new Color(0.2f, 0.4f, 0.25f, 1f) : new Color(0.22f, 0.32f, 0.42f, 1f),
                 WHITE, FS_SM,
                 new Action(() =>
@@ -1440,7 +1440,7 @@ namespace BetterFG.UI.Tabs
             float slotValW = BTN_H * 1.2f;
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD, line2Y, slotLblW, RBTN_H), "Slot (0-7)", FS_SM, HINT);
+                new Rect(PAD, line2Y, slotLblW, RBTN_H), "ui.slot_0_7", FS_SM, HINT);
 
             float sx = PAD + slotLblW + PAD;
             UGUIShip.CreateIncrement(rowGo.transform,
@@ -1461,7 +1461,7 @@ namespace BetterFG.UI.Tabs
                 float warnY = line2Y + RBTN_H + 1f;
                 UGUIShip.CreateLabel(rowGo.transform,
                     new Rect(PAD, warnY, leftW - PAD * 2f, RBTN_H * 0.6f),
-                    "Overrides emoticon on this slot", FS_SM, WARN_C, TextAnchor.UpperLeft);
+                    "ui.overrides_emoticon_on_this_slot", FS_SM, WARN_C, TextAnchor.UpperLeft);
             }
 
             if (!editing) return;
@@ -1470,7 +1470,7 @@ namespace BetterFG.UI.Tabs
             float btnW = BTN_H * 2.6f;
             float line3Y = line2Y + RBTN_H + gap;
             UGUIShip.CreateButton(rowGo.transform,
-                new Rect(PAD, line3Y, btnW, RBTN_H), "Bundle",
+                new Rect(PAD, line3Y, btnW, RBTN_H), "ui.bundle",
                 new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
                 new Action(() => WinDialogs.PickFile("Select emote AssetBundle", path =>
                 {
@@ -1487,7 +1487,7 @@ namespace BetterFG.UI.Tabs
             // image row
             float line4Y = line3Y + RBTN_H + gap;
             UGUIShip.CreateButton(rowGo.transform,
-                new Rect(PAD, line4Y, btnW, RBTN_H), "Image",
+                new Rect(PAD, line4Y, btnW, RBTN_H), "ui.image",
                 new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
                 new Action(() => WinDialogs.PickPng("Select emote image", path =>
                 {
@@ -1500,7 +1500,7 @@ namespace BetterFG.UI.Tabs
             // sound button sits right after the image button, with the sound filename beside it
             float soundBtnX = PAD + btnW + PAD;
             UGUIShip.CreateButton(rowGo.transform,
-                new Rect(soundBtnX, line4Y, btnW, RBTN_H), "Sound",
+                new Rect(soundBtnX, line4Y, btnW, RBTN_H), "ui.sound",
                 new Color(0.22f, 0.32f, 0.42f, 1f), WHITE, FS_SM,
                 new Action(() =>
                 {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using BettrFG.uGUI;
@@ -73,7 +73,7 @@ namespace BetterFG.UI
         protected virtual void OnLeave() { }
         public override Tab MakeFallbackTab() => MakeListTarget();
 
-        protected void SetStatus(string msg) { if (_status != null) _status.text = msg; }
+        protected void SetStatus(string msg) { if (_status != null) UGUIShip.RelabelText(_status, msg); }
 
         protected override void BuildContent(RectTransform contentRoot)
         {
@@ -84,7 +84,7 @@ namespace BetterFG.UI
                 float rmW = 64f * UIScale.S;
                 headerLblW = w - rmW - PAD;
                 UGUIShip.CreateButton(contentRoot, new Rect(PAD + headerLblW + PAD, VPAD, rmW, LH),
-                    "REMOVE", new Color(0.55f, 0.15f, 0.15f, 1f), WHITE, FS_SM, new Action(OnRemoveThenLeave));
+                    "ui.remove", new Color(0.55f, 0.15f, 0.15f, 1f), WHITE, FS_SM, new Action(OnRemoveThenLeave));
             }
             _stepHeader = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, VPAD, headerLblW, LH), "", FS_SM, LABEL);
 
@@ -110,9 +110,9 @@ namespace BetterFG.UI
             float navY = bodyY + bodyH + SH;
             float bw = (w - PAD) / 2f;
             _backBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, navY, bw, BTN_H),
-                "< BACK", BTN_DARK, WHITE, FS_SM, new Action(OnBack));
+                "ui.back", BTN_DARK, WHITE, FS_SM, new Action(OnBack));
             _nextBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD + bw + PAD * 0.5f, navY, bw, BTN_H),
-                "NEXT >", BTN_BLUE, WHITE, FS_SM, new Action(OnNext));
+                "ui.next", BTN_BLUE, WHITE, FS_SM, new Action(OnNext));
 
             _status = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, navY + BTN_H + SH, w, LH), "", FS_SM, HINT, TextAnchor.MiddleCenter);
 
@@ -173,14 +173,14 @@ namespace BetterFG.UI
 
             bool last = Step == titles.Length - 1;
             var nlbl = _nextBtn.GetComponentInChildren<Text>();
-            if (nlbl != null) nlbl.text = last ? (EditIndex >= 0 ? "SAVE CHANGES" : "SAVE") : "NEXT >";
+            if (nlbl != null) UGUIShip.RelabelText(nlbl, last ? (EditIndex >= 0 ? "SAVE CHANGES" : "SAVE") : "NEXT >");
 
             bool can = CanAdvance(Step);
             _nextBtn.interactable = can;
             if (nlbl != null) nlbl.color = can ? WHITE : HINT;
 
             var blbl = _backBtn.GetComponentInChildren<Text>();
-            if (blbl != null) blbl.text = Step == 0 ? "< CANCEL" : "< BACK";
+            if (blbl != null) UGUIShip.RelabelText(blbl, Step == 0 ? "ui.cancel_2" : "ui.back");
 
             if (last) RefreshSummary();
         }

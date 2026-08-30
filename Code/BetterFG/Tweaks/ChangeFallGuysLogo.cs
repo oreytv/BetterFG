@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -17,7 +17,7 @@ namespace BetterFG.Tweaks
         public ChangeFallGuysLogo(System.IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "custom_logo";
-        public override string TweakLabel => "Custom Splash Logo";
+        public override string TweakLabel => "tweak.custom_splash_logo";
         public override bool DefaultEnabled => true;
 
         private const string PathKey = "tweak.custom_logo.path";
@@ -35,7 +35,7 @@ namespace BetterFG.Tweaks
 
         public override List<TweakButton> GetCustomButtons() => new List<TweakButton>
         {
-            new TweakButton { Label = "Load PNG", Width = 46f, OnClick = PickAndReload }
+            new TweakButton { Label = "ui.load_png", Width = 46f, OnClick = PickAndReload }
         };
 
         private void PickAndReload()

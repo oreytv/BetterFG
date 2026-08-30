@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Services;
 using UnityEngine;
 using BettrFG.uGUI;
@@ -10,7 +10,7 @@ namespace BetterFG.UI.Tabs
         public UISubTab(IntPtr ptr) : base(ptr) { }
 
         protected override string BgResource => "BetterFG.assets.ui.tab.ui.png";
-        protected override string SwitchLabel => "‹ back";
+        protected override string SwitchLabel => "ui.back_4";
         protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<UITab>();
 
         protected static float dropdownRowH => BTN_H * 0.8f;

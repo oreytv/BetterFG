@@ -7,9 +7,9 @@ namespace BetterFG.Tweaks
         public DisablePlayerPhrasesTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "disable_player_phrases";
-        public override string TweakLabel => "Disable Player Phrases";
+        public override string TweakLabel => "tweak.disable_player_phrases";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Drops every phrase anyone plays, yours included. No bubble above the bean, no sound, no fall feed entry.";
+        public override string TweakTooltip => "ui.drops_every_phrase_anyone_plays_yours_included_n";
 
         internal static bool Active;
 

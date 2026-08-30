@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using BetterFG.Core;
 using BetterFG.Services;
@@ -264,7 +264,7 @@ namespace BetterFG.UI
             float pad = 16f;
             var rootT = _root.transform;
 
-            var titleGo = AddTopLabel(rootT, "BettrFG update available", pad - 6f, 6f, 30f, W - pad * 2f,
+            var titleGo = AddTopLabel(rootT, "ui.bettrfg_update_available", pad - 6f, 6f, 30f, W - pad * 2f,
                 FS_TITLE, WHITE, FontStyle.Bold, TextAnchor.MiddleLeft);
             titleGo.transform.localPosition = new Vector3(-264.3782f, 114.6975f, 0f);
             titleGo.transform.localScale = new Vector3(0.8218f, 0.8746f, 1f);
@@ -272,7 +272,7 @@ namespace BetterFG.UI
             AddTopLabel(rootT, $"You're on {_current}. Latest release is {_latest}.", pad, 52f, 24f, W - pad * 2f,
                 FS_BODY, WHITE, FontStyle.Normal, TextAnchor.MiddleLeft);
 
-            AddTopLabel(rootT, "What's new:", pad, 86f, 22f, W - pad * 2f,
+            AddTopLabel(rootT, "ui.what_s_new", pad, 86f, 22f, W - pad * 2f,
                 FS_BODY, HINT, FontStyle.Normal, TextAnchor.MiddleLeft);
 
             float btnH = 28f;
@@ -313,19 +313,19 @@ namespace BetterFG.UI
                 _installerPath = installerPath;
                 UGUIShip.CreateLinkLabel(rootT,
                     new Rect(pad, linkY, W - pad * 2f, btnH),
-                    "Open installer and close game", INSTALLER_URL, FS_LINK, LINK, LINK_HOVER,
+                    "ui.open_installer_and_close_game", INSTALLER_URL, FS_LINK, LINK, LINK_HOVER,
                     new Action(OpenInstallerAndQuit));
             }
             else
             {
                 UGUIShip.CreateLinkLabel(rootT,
                     new Rect(pad, linkY, W - pad * 2f, btnH),
-                    "Get the installer", INSTALLER_URL, FS_LINK, LINK, LINK_HOVER);
+                    "ui.get_the_installer", INSTALLER_URL, FS_LINK, LINK, LINK_HOVER);
             }
 
             UGUIShip.CreateButton(rootT,
                 new Rect(pad, btnY, 80f, btnH),
-                "Close", BTN, WHITE, FS_BTN, new Action(Dismiss));
+                "ui.close_2", BTN, WHITE, FS_BTN, new Action(Dismiss));
             UGUIShip.CreateButton(rootT,
                 new Rect(pad + 90f, btnY, 200f, btnH),
                 $"Don't show {_latest} again", BTN, WHITE, FS_BTN, new Action(DontShowAgain));

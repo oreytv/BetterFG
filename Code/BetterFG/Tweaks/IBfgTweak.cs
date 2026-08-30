@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Services;
 using FG.Common;
@@ -64,7 +64,7 @@ namespace BetterFG.Tweaks
         public BfgTweak(System.IntPtr ptr) : base(ptr) { }
 
         public virtual string TweakId => "unknown";
-        public virtual string TweakLabel => "Unknown";
+        public virtual string TweakLabel => "tweak.unknown";
         public virtual bool DefaultEnabled => false;
 
         // optional text shown by a small "?" after the label in TweaksWindow (instant on hover).

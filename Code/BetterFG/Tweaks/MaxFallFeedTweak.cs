@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using FGClient.FallFeed;
 using HarmonyLib;
 using UnityEngine;
@@ -10,9 +10,9 @@ namespace BetterFG.Tweaks
         public MaxFallFeedTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "max_fallfeed";
-        public override string TweakLabel => "Max Fall Feed Notifications";
+        public override string TweakLabel => "tweak.max_fall_feed_notifications";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Raise the game's 5-notification limit. Extra ones still fade out on their own timer.";
+        public override string TweakTooltip => "ui.raise_the_game_s_5_notification_limit_extra_ones";
 
         public static MaxFallFeedTweak Instance { get; private set; }
         void Awake() => Instance = this;
@@ -39,7 +39,7 @@ namespace BetterFG.Tweaks
         {
             new TweakIncrement
             {
-                Label = "Max notifications", Min = 1, Max = 30, Wrap = true,
+                Label = "ui.max_notifications", Min = 1, Max = 30, Wrap = true,
                 Get = () => Max,
                 Set = v => { Max = v; },
             }

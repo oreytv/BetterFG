@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,8 +17,9 @@ namespace BetterFG.UI.Tabs
         public ReplaysTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Replays";
+        protected override string TitleId => "ui.replays_3";
 
-        protected override string SwitchLabel => "Images →";
+        protected override string SwitchLabel => "ui.images";
         protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<ReplayImagesTab>();
 
         const float ROW_H = 48f;
@@ -53,7 +54,7 @@ namespace BetterFG.UI.Tabs
         {
             float openW = 86f;
             float topH = BTN_H * 0.8f;
-            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, openW, topH), "Open file...",
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, openW, topH), "ui.open_file",
                 DARK, Color.white, FS_SM - 1, new Action(OpenFromDisk));
 
             bool auto = FeatureReplay.AutoRecord;
@@ -70,7 +71,7 @@ namespace BetterFG.UI.Tabs
             float searchW = w - (ddW + PAD) * 2f - (dirW + PAD) - (refreshW + PAD);
 
             _searchField = UGUIShip.CreateInputField(contentRoot, new Rect(PAD, y, searchW, HEADER_H),
-                "search replays...", new Color(0f, 0f, 0f, 0.4f), Color.white, FS_SM);
+                "ui.search_replays", new Color(0f, 0f, 0f, 0.4f), Color.white, FS_SM);
             _searchField.onValueChanged.AddListener(new Action<string>(val =>
             {
                 _query = val ?? "";
@@ -81,8 +82,8 @@ namespace BetterFG.UI.Tabs
             float listW = 120f;
 
             _filterBtn = UGUIShip.CreateMultiSelectDropdown(contentRoot, new Rect(ddX, y, ddW, HEADER_H),
-                "Filters",
-                new List<string> { "Favourited", "Creative round", "Unity round" },
+                "ui.filters",
+                new List<string> { "ui.favourited", "ui.creative_round", "ui.unity_round_2" },
                 new List<bool> { _filterFav, _filterCreative, _filterUnity },
                 new Action<int, bool>((i, on) =>
                 {
@@ -96,8 +97,8 @@ namespace BetterFG.UI.Tabs
             UGUIShip.AddHeaderIcon(_filterBtn, "BetterFG.assets.ui.button.filter.png");
 
             var sortBtn = UGUIShip.CreateMultiSelectDropdown(contentRoot, new Rect(ddX + ddW + PAD, y, ddW, HEADER_H),
-                "Sort",
-                new List<string> { "Sort by date", "Sort by name", "Sort by length" },
+                "ui.sort",
+                new List<string> { "ui.sort_by_date", "ui.sort_by_name", "ui.sort_by_length" },
                 new List<bool> { _sort == SortMode.Date, _sort == SortMode.Name, _sort == SortMode.Duration },
                 new Action<int, bool>((i, on) =>
                 {
@@ -113,7 +114,7 @@ namespace BetterFG.UI.Tabs
                 {
                     _sortDesc = !_sortDesc;
                     var lbl = dirBtn.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _sortDesc ? "↓" : "↑";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _sortDesc ? "↓" : "↑");
                     ApplySearch();
                 }));
             var dirTxt = dirBtn.GetComponentInChildren<Text>();
@@ -159,7 +160,8 @@ namespace BetterFG.UI.Tabs
             PaintAuto(FeatureReplay.AutoRecord);
         }
 
-        static string AutoLabel(bool on) => on ? "Auto-record rounds: ON" : "Auto-record rounds: OFF";
+        static string AutoLabel(bool on) =>
+            LocalizationService.Format("ui.auto_record_rounds_state_fmt", LocalizationService.Get(on ? "ui.on" : "ui.off"));
 
         void ToggleAuto()
         {
@@ -167,8 +169,7 @@ namespace BetterFG.UI.Tabs
             FeatureReplay.SetAutoRecord(on);
             PaintAuto(on);
             if (on)
-                BetterFGUIMan.Instance?.ShowTooltipTimed(
-                    "Unfortunately replays are very resource expensive. With this setting on, please beware of the giant FPS drop in certain levels.", 3.5f);
+                BetterFGUIMan.Instance?.ShowTooltipTimed("ui.replay_fps_warning", 3.5f);
             Plugin.Log.LogInfo(on ? "replays will record from the next round start" : "auto-record off, rounds won't be saved");
         }
 
@@ -205,7 +206,7 @@ namespace BetterFG.UI.Tabs
                 if (slice.ElapsedMilliseconds < 4L) continue;
 
                 if (!painted && _data.Count >= PAGE_SIZE) { painted = true; ApplySearch(); }
-                SetStatus($"reading replays...  {_data.Count}/{files.Count}");
+                SetStatus(LocalizationService.Format("ui.reading_replays_fmt", _data.Count, files.Count));
                 yield return null;
                 slice.Restart();
             }
@@ -265,10 +266,10 @@ namespace BetterFG.UI.Tabs
 
             ShowPaging(pageCount > 1);
 
-            if (_data.Count == 0) SetStatus("nothing recorded yet");
-            else if (total == 0) SetStatus("no results");
-            else if (pageCount > 1) SetStatus(string.Format("{0} replays  ·  page {1}/{2}", total, Page + 1, pageCount));
-            else SetStatus(total + (total == 1 ? " replay" : " replays"));
+            if (_data.Count == 0) SetStatus(LocalizationService.Get("ui.nothing_recorded_yet"));
+            else if (total == 0) SetStatus(LocalizationService.Get("ui.no_results"));
+            else if (pageCount > 1) SetStatus(LocalizationService.Format("ui.replays_page_fmt", total, Page + 1, pageCount));
+            else SetStatus(LocalizationService.Format(total == 1 ? "ui.replay_count_singular_fmt" : "ui.replay_count_plural_fmt", total));
         }
 
         void BuildRow(ReplayMeta meta, bool alt)
@@ -381,7 +382,9 @@ namespace BetterFG.UI.Tabs
             nRt.pivot = new Vector2(0f, 0f);
             nRt.anchoredPosition = Vector2.zero;
 
-            string sub = meta.players == 1 ? "1 player" : meta.players + " players";
+            string sub = meta.players == 1
+                ? LocalizationService.Get("ui.player_count_singular")
+                : LocalizationService.Format("ui.player_count_plural_fmt", meta.players);
             if (!string.IsNullOrEmpty(meta.shareCode)) sub = meta.shareCode + "  ·  " + sub;
             var cTxt = UGUIShip.CreateLabel(rowGo.transform, new Rect(0f, 0f, textW, FS_SM),
                 sub, FS_SM - 2, DIM, TextAnchor.LowerLeft);

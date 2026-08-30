@@ -28,10 +28,9 @@ namespace BetterFG.Tweaks
         public BetterStickerSelectionTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "better_sticker_selection";
-        public override string TweakLabel => "Better Sticker Selection";
+        public override string TweakLabel => "tweak.better_sticker_selection";
         public override bool DefaultEnabled => true;
-        public override string TweakTooltip =>
-            "In the creative parameter menu, press confirm on the sticker row to browse every sticker in a grid with previews. Move the highlight to preview it live, confirm to keep, Back to cancel.";
+        public override string TweakTooltip => "ui.in_the_creative_parameter_menu_press_confirm_on";
 
         public static BetterStickerSelectionTweak Instance { get; private set; }
         void Awake() => Instance = this;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -61,24 +61,24 @@ namespace BetterFG.Customization.Menu
 
         public static readonly GamePlinth[] GamePlinths =
         {
-            new GamePlinth("castle", "Castle", "bad906f2e61031347a7344f63f724784"),
-            new GamePlinth("volcano", "Volcano", "b3dd168b45e1ca844a555d50f24a94e7"),
-            new GamePlinth("heart", "Heart", "b98255f3d3475a1409ec08d55fcc2e70"),
-            new GamePlinth("star", "Star", "7cf4ecfdff205b34fbe6f27e3a525d9e"),
-            new GamePlinth("rainbow", "Rainbow", "f611682fddec41d47bf8897d6c77f850"),
-            new GamePlinth("dot", "Dot", "5556695c2ba6aa3419fdb8ac1fb527a1"),
-            new GamePlinth("log", "Log", "e7780eb521b78b041af0e3bdfc137908"),
-            new GamePlinth("bambo", "Bamboo", "b80b7190b4ea80e4994037d47bb6c124"),
-            new GamePlinth("pencil", "Pencil", "1b6ab8fae6b94be44b0d596e993b857d"),
-            new GamePlinth("column", "Column", "353f01cad79ee11488d6103e1959c14c"),
-            new GamePlinth("s03", "Season 3", "59d770256b43eb54e81d3dd1649c94c7", true, 0.1454f),
-            new GamePlinth("s04", "Season 4", "0d438f5fff82cfd44a0f6d7c4ce893e0", true, 0.3906f),
-            new GamePlinth("s05", "Season 5", "8d0beb020d0a6bf46817a5d217f2f915", true, 1.133f),
-            new GamePlinth("s06", "Season 6", "a23952441489f6244a03351d53691b87", true),
-            new GamePlinth("sy02", "SS2", "8214da4674a969c4c8010bdd90fc218b", true, 2.0233f),
-            new GamePlinth("s09", "SS3", "956bbcfcbfa1edd429897709956a8486", true, 0.751f),
-            new GamePlinth("s10_retro", "SS4", "553a29ac2b5d85b44b8853fb84c1a9e6", true, 0.3841f),
-            new GamePlinth("sy01_trophy", "Trophy", "33d60c9c72efd944f8d7902917de5194", true, 0.3841f),
+            new GamePlinth("castle", "ui.castle", "bad906f2e61031347a7344f63f724784"),
+            new GamePlinth("volcano", "ui.volcano", "b3dd168b45e1ca844a555d50f24a94e7"),
+            new GamePlinth("heart", "ui.heart", "b98255f3d3475a1409ec08d55fcc2e70"),
+            new GamePlinth("star", "ui.star", "7cf4ecfdff205b34fbe6f27e3a525d9e"),
+            new GamePlinth("rainbow", "ui.rainbow", "f611682fddec41d47bf8897d6c77f850"),
+            new GamePlinth("dot", "ui.dot", "5556695c2ba6aa3419fdb8ac1fb527a1"),
+            new GamePlinth("log", "ui.log", "e7780eb521b78b041af0e3bdfc137908"),
+            new GamePlinth("bambo", "ui.bamboo", "b80b7190b4ea80e4994037d47bb6c124"),
+            new GamePlinth("pencil", "ui.pencil", "1b6ab8fae6b94be44b0d596e993b857d"),
+            new GamePlinth("column", "ui.column", "353f01cad79ee11488d6103e1959c14c"),
+            new GamePlinth("s03", "ui.season_3", "59d770256b43eb54e81d3dd1649c94c7", true, 0.1454f),
+            new GamePlinth("s04", "ui.season_4", "0d438f5fff82cfd44a0f6d7c4ce893e0", true, 0.3906f),
+            new GamePlinth("s05", "ui.season_5", "8d0beb020d0a6bf46817a5d217f2f915", true, 1.133f),
+            new GamePlinth("s06", "ui.season_6", "a23952441489f6244a03351d53691b87", true),
+            new GamePlinth("sy02", "ui.ss2", "8214da4674a969c4c8010bdd90fc218b", true, 2.0233f),
+            new GamePlinth("s09", "ui.ss3", "956bbcfcbfa1edd429897709956a8486", true, 0.751f),
+            new GamePlinth("s10_retro", "ui.ss4", "553a29ac2b5d85b44b8853fb84c1a9e6", true, 0.3841f),
+            new GamePlinth("sy01_trophy", "ui.trophy", "33d60c9c72efd944f8d7902917de5194", true, 0.3841f),
         };
 
         public string ActiveGameId => _appliedGame?.Id;

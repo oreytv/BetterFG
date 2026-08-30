@@ -7,7 +7,11 @@ using FGClient.UI.Core;
 using MPG.Utility;
 using Rewired;
 using UnityEngine;
+using BettrFG.uGUI;
+using Events;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Il2CppAemList = Il2CppSystem.Collections.Generic.List<Rewired.ActionElementMap>;
+using Il2CppNavPromptDict = Il2CppSystem.Collections.Generic.Dictionary<NavPrompt, Il2CppSystem.Action>;
 
 namespace BetterFG.Core
 {
@@ -70,6 +74,149 @@ namespace BetterFG.Core
             UnityEngine.Object.DontDestroyOnLoad(clone);
             _cloneCache[key] = clone;
             return clone;
+        }
+
+        // claim the real overlay row the way every FG screen does: broadcast a NavPromptChanged.
+        // NavigationOverlayManager handles it inline, switches SubMenuNavigation_Right on and builds
+        // the real buttons itself - which is the ONLY thing that turns that row on, so parenting a
+        // button into it without claiming can never work.
+        //
+        // the label comes from the manager's shared prompt dictionary, so swap our own clone in for
+        // the one key we're claiming, broadcast, and put the original straight back. Broadcast runs
+        // its handlers synchronously and the button keeps the reference it was handed, so the swap
+        // window closes before anything else can read the slot.
+        internal static void ClaimOverlayRow(NavPrompt key, string labelKey, string labelText, Action onPressed,
+            int iconAction = -1, int iconCategory = -1)
+        {
+            var mgr = Manager;
+            if (mgr?._navPromptsDictionary == null) return;
+
+            var clone = GetOrCloneData(key, labelKey, labelText);
+            // point the glyph at a different Rewired action than the prompt we cloned. the button's
+            // ActiveControllerUI feeds these straight into SetRewiredAction and stays mappeable, so
+            // Rewired picks the right face button per pad on its own - R on keyboard, Triangle on
+            // DS4/DS5, Y on Xbox - with no per-controller table of ours.
+            if (clone != null && iconAction >= 0)
+            {
+                clone.IconAction = iconAction;
+                clone.IconCategory = iconCategory;
+                // drop the source prompt's own actions so the game's button never self-fires on
+                // them (Report's action would otherwise trigger us). we read the press ourselves.
+                clone.InputActions = new Il2CppStructArray<int>(0);
+            }
+
+            // the clone has to STAY in the dictionary while we hold the row. the manager re-looks the
+            // data up whenever it rebuilds the prompts - notably on every active-controller change -
+            // so restoring the original right after the broadcast makes the label and glyph snap
+            // back to the source prompt's the moment you switch between pad and mouse/keyboard.
+            RestoreInstalledData();
+            if (clone != null && mgr._navPromptsDictionary.TryGetValue(key, out var original) && original != null)
+            {
+                _installedKey = key;
+                _installedOriginal = original;
+                mgr._navPromptsDictionary[key] = clone;
+            }
+
+            var dict = new Il2CppNavPromptDict();
+            dict[key] = (Il2CppSystem.Action)onPressed;
+            Broadcaster.Instance?.Broadcast(new NavPromptChanged(dict));
+        }
+
+        private static NavPrompt _installedKey;
+        private static NavigationPromptData _installedOriginal;
+
+        private static void RestoreInstalledData()
+        {
+            if (_installedOriginal == null) return;
+            var dict = Manager?._navPromptsDictionary;
+            if (dict != null) dict[_installedKey] = _installedOriginal;
+            _installedOriginal = null;
+        }
+
+        // give the prompt slot's real data back but leave the row alone, for when another screen has
+        // just claimed it - broadcasting an empty set here would wipe the prompts it only just put up.
+        internal static void YieldOverlayRow() => RestoreInstalledData();
+
+        // full teardown: hand the data back AND clear the row. only for when we're actually done
+        // (round over, tweak switched off), never to step aside for another screen.
+        internal static void ReleaseOverlayRow()
+        {
+            RestoreInstalledData();
+            Broadcaster.Instance?.Broadcast(new NavPromptChanged());
+        }
+
+        // true while the row is switched on. used to notice another screen has taken it back off us.
+        internal static bool OverlayRowActive
+        {
+            get
+            {
+                var parent = Manager?._navPromptsParent;
+                return parent != null && parent.gameObject.activeInHierarchy;
+            }
+        }
+
+        private static readonly Il2CppAemList _sharedAemBuf = new Il2CppAemList();
+
+        // one copy of the "did this action fire, even with its category disabled" walk. the plain
+        // GetButtonDown only reports while the action's input category is enabled - during loading
+        // and gameplay the Menu category isn't - so fall through to walking each joystick's own
+        // button maps. the element filter exists because the same elementIdentifierId is Circle on
+        // one layout and Cross on another.
+        internal static bool PollActionDirect(int actionId, Func<string, bool> elementFilter, bool joystickOnly)
+        {
+            if (!ReInput.isReady || ReInput.players.playerCount == 0) return false;
+            var p = ReInput.players.GetPlayer(0);
+
+            if (elementFilter == null && !joystickOnly && p.GetButtonDown(actionId)) return true;
+
+            var sticks = p.controllers.Joysticks;
+            int n = p.controllers.joystickCount;
+            for (int i = 0; i < n; i++)
+            {
+                var j = sticks[i];
+                _sharedAemBuf.Clear();
+                int got = p.controllers.maps.GetButtonMapsWithAction(j, actionId, false, _sharedAemBuf);
+                int layout = -1;
+                for (int k = 0; k < got; k++)
+                {
+                    var aem = _sharedAemBuf[k];
+                    if (aem == null) continue;
+                    var cm = aem.controllerMap;
+                    if (cm != null)
+                    {
+                        if (layout < 0) layout = cm.layoutId;
+                        else if (cm.layoutId != layout) continue;
+                    }
+                    if (!j.GetButtonDownById(aem.elementIdentifierId)) continue;
+                    if (elementFilter != null)
+                    {
+                        string elName = null;
+                        try { elName = j.GetElementIdentifierById(aem.elementIdentifierId)?.name; } catch { }
+                        if (!elementFilter(elName)) continue;
+                    }
+                    return true;
+                }
+            }
+
+            if (joystickOnly) return false;
+            var kb = p.controllers.Keyboard;
+            if (kb == null) return false;
+            _sharedAemBuf.Clear();
+            int kgot = p.controllers.maps.GetButtonMapsWithAction(kb, actionId, false, _sharedAemBuf);
+            int kbLayout = -1;
+            for (int k = 0; k < kgot; k++)
+            {
+                var aem = _sharedAemBuf[k];
+                if (aem == null) continue;
+                var cm = aem.controllerMap;
+                if (cm != null)
+                {
+                    if (kbLayout < 0) kbLayout = cm.layoutId;
+                    else if (cm.layoutId != kbLayout) continue;
+                }
+                if (kb.GetButtonDownById(aem.elementIdentifierId)) return true;
+            }
+            return false;
         }
 
         internal static GameObject GetPromptPrefab()
@@ -248,7 +395,9 @@ namespace BetterFG.Core
             {
                 var mgr = NavPromptCore.Manager;
                 actualParent = mgr != null ? mgr._navPromptsParent : null;
-                if (actualParent == null) return null;
+                // an inactive row means anything Instantiate'd under it starts inactive too and
+                // skips Awake() before Init() runs below, NREing inside the game's own label code.
+                if (actualParent == null || !actualParent.gameObject.activeInHierarchy) return null;
             }
             else if (OwnCanvas)
             {
@@ -318,7 +467,7 @@ namespace BetterFG.Core
             if (padSprite != null) acu._notMappeableJoystickSprite = padSprite;
             acu._notMappeableKeyboardGlyphText = "";
             acu._notMappeableJoystickGlyphText = "";
-            if (acu._text != null) acu._text.text = "";
+            if (acu._text != null) UGUIShip.RelabelText(acu._text, "");
             acu.UpdateGlyphsWithActiveController();
         }
 
@@ -409,9 +558,6 @@ namespace BetterFG.Core
         private readonly bool _requireGameplayFocus;
         private readonly KeyCode _extraKey;
         private readonly bool _joystickPollOnly;
-
-        // shared per-handle to avoid allocating a fresh Il2Cpp list every poll
-        private readonly Il2CppAemList _aemBuf = new Il2CppAemList();
 
         internal NavPromptHandle(GameObject go, NavigationPromptData data,
             Action onPressed, bool acceptEscape, Func<string, bool> elementFilter, int[] pollActionIds,
@@ -527,79 +673,17 @@ namespace BetterFG.Core
         // Circle on one and Cross on another, and "Menu_UICancel" is bound to both.
         private bool PollData()
         {
-            if (!ReInput.isReady || ReInput.players.playerCount == 0) return false;
-            var p = ReInput.players.GetPlayer(0);
-
-            int actionCount;
-            if (_pollActionIds != null && _pollActionIds.Length > 0)
-                actionCount = _pollActionIds.Length;
-            else
+            int[] actions = _pollActionIds;
+            if (actions == null || actions.Length == 0)
             {
-                if (_data == null) return false;
-                var dataActions = _data.InputActions;
+                var dataActions = _data?.InputActions;
                 if (dataActions == null || dataActions.Length == 0) return false;
-                actionCount = dataActions.Length;
+                for (int a = 0; a < dataActions.Length; a++)
+                    if (NavPromptCore.PollActionDirect(dataActions[a], _elementFilter, _joystickPollOnly)) return true;
+                return false;
             }
-
-            for (int a = 0; a < actionCount; a++)
-            {
-                int actionId = _pollActionIds != null && _pollActionIds.Length > 0
-                    ? _pollActionIds[a]
-                    : _data.InputActions[a];
-                // GetButtonDown(actionId) only fires when the action's input category is enabled;
-                // during loading states the Menu category is disabled, so we fall through to the
-                // direct-poll path below if it returns false.
-                if (_elementFilter == null && !_joystickPollOnly && p.GetButtonDown(actionId)) return true;
-
-                var sticks = p.controllers.Joysticks;
-                int n = p.controllers.joystickCount;
-                for (int i = 0; i < n; i++)
-                {
-                    var j = sticks[i];
-                    _aemBuf.Clear();
-                    int got = p.controllers.maps.GetButtonMapsWithAction(j, actionId, false, _aemBuf);
-                    int layout = -1;
-                    for (int k = 0; k < got; k++)
-                    {
-                        var aem = _aemBuf[k];
-                        if (aem == null) continue;
-                        var cm = aem.controllerMap;
-                        if (cm != null)
-                        {
-                            if (layout < 0) layout = cm.layoutId;
-                            else if (cm.layoutId != layout) continue;
-                        }
-                        if (!j.GetButtonDownById(aem.elementIdentifierId)) continue;
-                        if (_elementFilter != null)
-                        {
-                            string elName = null;
-                            try { elName = j.GetElementIdentifierById(aem.elementIdentifierId)?.name; } catch { }
-                            if (!_elementFilter(elName)) continue;
-                        }
-                        return true;
-                    }
-                }
-
-                var kb = _joystickPollOnly ? null : p.controllers.Keyboard;
-                if (kb != null)
-                {
-                    _aemBuf.Clear();
-                    int got = p.controllers.maps.GetButtonMapsWithAction(kb, actionId, false, _aemBuf);
-                    int kbLayout = -1;
-                    for (int k = 0; k < got; k++)
-                    {
-                        var aem = _aemBuf[k];
-                        if (aem == null) continue;
-                        var cm = aem.controllerMap;
-                        if (cm != null)
-                        {
-                            if (kbLayout < 0) kbLayout = cm.layoutId;
-                            else if (cm.layoutId != kbLayout) continue;
-                        }
-                        if (kb.GetButtonDownById(aem.elementIdentifierId)) return true;
-                    }
-                }
-            }
+            for (int a = 0; a < actions.Length; a++)
+                if (NavPromptCore.PollActionDirect(actions[a], _elementFilter, _joystickPollOnly)) return true;
             return false;
         }
 

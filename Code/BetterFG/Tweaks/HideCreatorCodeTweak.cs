@@ -1,4 +1,4 @@
-﻿using FGClient;
+using FGClient;
 using FGClient.Fraggle;
 using HarmonyLib;
 using UnityEngine;
@@ -10,7 +10,7 @@ namespace BetterFG.Tweaks
         public HideCreatorCodeTweak(System.IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "hide_creator_code";
-        public override string TweakLabel => "Hide Creator Code";
+        public override string TweakLabel => "tweak.hide_creator_code";
         public override bool DefaultEnabled => false;
 
         public static HideCreatorCodeTweak Instance { get; private set; }

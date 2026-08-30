@@ -87,7 +87,7 @@
 	     (or set <NoBuildPrompt>true</NoBuildPrompt> in a config/.user file) to skip it in VS too. -->
 	<Target Name="BettrFGBuildPrompt" BeforeTargets="KillFallGuysBeforeBuild;BeforeBuild"
 	        Condition="'$(BuildingInsideVisualStudio)' == 'true' And '$(NoBuildPrompt)' != 'true' And '$(DesignTimeBuild)' != 'true' And '$(SkipCopyDll)' != 'true'">
-	  <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -STA -File &quot;$(MSBuildProjectDirectory)\build_prompt.ps1&quot;" ConsoleToMSBuild="true">
+	  <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -STA -File &quot;$(MSBuildProjectDirectory)\..\prompt_mod.ps1&quot;" ConsoleToMSBuild="true">
 	    <Output TaskParameter="ConsoleOutput" PropertyName="BettrFGPromptOut" />
 	  </Exec>
 	  <PropertyGroup>
@@ -119,6 +119,17 @@
 	    <BettrFGLib Include="$(MSBuildProjectDirectory)\Libs\*.dll" />
 	  </ItemGroup>
 	  <Copy SourceFiles="@(BettrFGLib)" DestinationFolder="$(OutDir)Libs" SkipUnchangedFiles="true" />
+	  <!-- localization.bak isn't embedded (see SyncLocalizationIds below) - ship it loose next to the
+	       dll so LocalizationService and the WinForms editor both read/write the one real file. -->
+	  <Copy SourceFiles="$(MSBuildProjectDirectory)\assets\localization.bak" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\assets\localization.bak')" />
+	</Target>
+
+	<!-- every "ui.xxx"/"tweak.xxx" string literal in source is a localization id by convention - scan
+	     for new ones each build and append them to assets\localization.bak with a placeholder English
+	     guess, so adding new UI text never means hand-editing the table. only ever appends: existing
+	     rows (and any hand-translated columns) are never touched. -->
+	<Target Name="SyncLocalizationIds" BeforeTargets="BeforeCompile;CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
+	  <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\sync_localization_ids.ps1&quot;" />
 	</Target>
 
 	<Target Name="PackBetterFGPayload" AfterTargets="CopyDll">
@@ -138,7 +149,7 @@
 	    <SkinPackagerGroupBat>$(MSBuildProjectDirectory)\..\BetterFG.SkinPackager\group_skins.bat</SkinPackagerGroupBat>
 	    <DownloadsDir>$(USERPROFILE)\Downloads</DownloadsDir>
 	  </PropertyGroup>
-	  <MSBuild Projects="$(SkinPackagerProject)" Targets="Build" Properties="Configuration=$(SkinPackagerConfiguration);Platform=AnyCPU;NoCreatorPrompt=true" />
+	  <MSBuild Projects="$(SkinPackagerProject)" Targets="Build" Properties="Configuration=$(SkinPackagerConfiguration);Platform=AnyCPU" />
 	  <MakeDir Directories="$(DownloadsDir)" Condition="'$(CopyBuildsToDownloads)' == 'true' And '$(DownloadsDir)' != '' And !Exists('$(DownloadsDir)')" />
 	  <Copy SourceFiles="$(SkinPackagerOutput)" DestinationFolder="$(DownloadsDir)" OverwriteReadOnlyFiles="true" Condition="'$(CopyBuildsToDownloads)' == 'true' And Exists('$(SkinPackagerOutput)')" />
 	  <Copy SourceFiles="$(SkinPackagerGroupBat)" DestinationFolder="$(DownloadsDir)" OverwriteReadOnlyFiles="true" Condition="'$(CopyBuildsToDownloads)' == 'true' And Exists('$(SkinPackagerGroupBat)')" />
@@ -187,7 +198,9 @@
 </Target>
 
   <!-- every asset under assets/ is embedded. drop a file in the folder and it ships, no csproj edit.
-       (.png~ editor backups don't match *.png, so they stay out on their own.) -->
+       (.png~ editor backups don't match *.png, so they stay out on their own.) localization.bak is
+       NOT embedded — it ships as a loose file next to the dll (see SyncLocalizationIds/CopyLibs below)
+       so the WinForms editor can touch it without a rebuild. -->
   <ItemGroup>
     <EmbeddedResource Include="assets\**\*.png" />
     <EmbeddedResource Include="assets\**\*.wav" />

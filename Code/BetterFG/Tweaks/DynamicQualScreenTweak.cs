@@ -14,7 +14,7 @@ namespace BetterFG.Tweaks
         public DynamicQualScreenTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "dynamic_qual_screen";
-        public override string TweakLabel => "Dynamic Qual Screen";
+        public override string TweakLabel => "tweak.dynamic_qual_screen";
         public override bool DefaultEnabled => false;
 
         public static DynamicQualScreenTweak Instance { get; private set; }

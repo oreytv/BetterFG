@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Features.CreativeGroups;
 using BetterFG.Features.CreativeIncrements;
@@ -270,7 +270,7 @@ namespace BetterFG.UI.Windows.Creative
         {
             // mode carousel:  ‹ set to colour / modify ›
             float arrow = 20f;
-            MakeLabel(root, new Rect(PAD, y, 36f, 20f), "mode", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, 36f, 20f), "ui.mode_2", FS_SM, HINT_COL);
             UGUIShip.CreateButton(root, new Rect(PAD + 40f, y, arrow, 20f), "‹", BTN_ARROW, WHITE, FS_BODY,
                 new Action(() => CycleRecolourMode(-1)));
             _recolourModeLabel = MakeLabel(root, new Rect(PAD + 40f + arrow, y, w - 40f - arrow * 2f - 40f, 20f),
@@ -284,7 +284,7 @@ namespace BetterFG.UI.Windows.Creative
 
             y += 4f;
             UGUIShip.CreateButton(root, new Rect(PAD, y, w, 24f),
-                "APPLY", BTN_APPLY, WHITE, FS_SM, new Action(ApplyColour));
+                "ui.apply_2", BTN_APPLY, WHITE, FS_SM, new Action(ApplyColour));
         }
 
         // "set to colour" — RGB sliders, live preview onto the whole selection.
@@ -321,8 +321,8 @@ namespace BetterFG.UI.Windows.Creative
 
             float lblW = FS_SM * 2.4f;
             float fieldW = FS_SM * 7f;
-            UGUIShip.CreateLabel(root, new Rect(PAD, y, lblW, 16f), "HEX", FS_SM, new Color(1f, 1f, 1f, 0.35f));
-            hex = UGUIShip.CreateInputField(root, new Rect(PAD + lblW, y, fieldW, 16f), "#RRGGBB", null, null, FS_SM);
+            UGUIShip.CreateLabel(root, new Rect(PAD, y, lblW, 16f), "ui.hex", FS_SM, new Color(1f, 1f, 1f, 0.35f));
+            hex = UGUIShip.CreateInputField(root, new Rect(PAD + lblW, y, fieldW, 16f), "ui.rrggbb", null, null, FS_SM);
             hex.characterLimit = 7;
             hex.onEndEdit.AddListener(new Action<string>(txt =>
             {
@@ -432,7 +432,7 @@ namespace BetterFG.UI.Windows.Creative
             y += 2f;
             // mode carousel:  ‹ mode ›
             float arrow = 20f;
-            MakeLabel(root, new Rect(PAD, y, 40f, 20f), "mode", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, 40f, 20f), "ui.mode_2", FS_SM, HINT_COL);
             UGUIShip.CreateButton(root, new Rect(PAD + 44f, y, arrow, 20f), "‹", BTN_ARROW, WHITE, FS_BODY,
                 new Action(() => CycleMode(-1)));
             _modeLabel = MakeLabel(root, new Rect(PAD + 44f + arrow, y, w - 44f - arrow * 2f - 44f, 20f),
@@ -441,10 +441,10 @@ namespace BetterFG.UI.Windows.Creative
                 new Action(() => CycleMode(+1)));
             y += 26f;
 
-            MakeLabel(root, new Rect(PAD, y, w, 16f), "tap −/+ to nudge, hold to run, or just type a value", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.tap_to_nudge_hold_to_run_or_just_type_a_value", FS_SM, HINT_COL);
             y += 16f;
 
-            UGUIShip.CreateLinkText(root, new Rect(PAD, y, w, 16f), "change nudge amount/repeat speed →",
+            UGUIShip.CreateLinkText(root, new Rect(PAD, y, w, 16f), "ui.change_nudge_amount_repeat_speed",
                 new Action(() => BetterFGUIMan.Instance?.OpenCreativeArgs()), fontSize: FS_SM);
         }
 
@@ -509,38 +509,38 @@ namespace BetterFG.UI.Windows.Creative
 
         private void BuildMaterial(RectTransform root, float w, ref float y)
         {
-            MakeLabel(root, new Rect(PAD, y, w, 16f), "set surface on all selected:", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.set_surface_on_all_selected", FS_SM, HINT_COL);
             y += 22f;
             float half = (w - 6f) * 0.5f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "SLIME", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.slime", BTN_APPLY, WHITE, FS_BODY,
                 new Action(() => Status(BatchMaterial.SetSlime(), "slimed")));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "NONE", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.none_3", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchMaterial.SetNone(), "cleared")));
             y += 32f;
 
-            MakeLabel(root, new Rect(PAD, y, w, 16f), "visibility:", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.visibility", FS_SM, HINT_COL);
             y += 22f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "VISIBLE", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.visible", BTN_APPLY, WHITE, FS_BODY,
                 new Action(() => Status(BatchVisibility.SetVisible(true), "shown")));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "INVISIBLE", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.invisible", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchVisibility.SetVisible(false), "hidden")));
             y += 32f;
 
-            MakeLabel(root, new Rect(PAD, y, w, 16f), "collision:", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.collision", FS_SM, HINT_COL);
             y += 22f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ON", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.on", BTN_APPLY, WHITE, FS_BODY,
                 new Action(() => Status(BatchCollision.SetCollisionEnabled(true), "collidable")));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "OFF", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.off", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchCollision.SetCollisionEnabled(false), "non-collidable")));
             y += 32f;
 
             // only stickers have an unlit mode, so this row stays off the tab entirely for anything else
             if (!BatchMaterial.AnySticker()) return;
-            MakeLabel(root, new Rect(PAD, y, w, 16f), "sticker lighting:", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.sticker_lighting", FS_SM, HINT_COL);
             y += 22f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "LIT", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.lit", BTN_APPLY, WHITE, FS_BODY,
                 new Action(() => Status(BatchMaterial.SetLighting(true), "lit")));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "UNLIT", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.unlit", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchMaterial.SetLighting(false), "unlit")));
         }
 
@@ -549,17 +549,17 @@ namespace BetterFG.UI.Windows.Creative
         {
             if (!BatchPhysics.AnyPhysics())
             {
-                MakeLabel(root, new Rect(PAD, y, w, 16f), "nothing selected can do physics", FS_SM, HINT_COL);
+                MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.nothing_selected_can_do_physics", FS_SM, HINT_COL);
                 return;
             }
 
             float half = (w - 6f) * 0.5f;
 
-            MakeLabel(root, new Rect(PAD, y, w, 16f), "physics:", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.physics", FS_SM, HINT_COL);
             y += 22f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ON", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.on", BTN_APPLY, WHITE, FS_BODY,
                 new Action(() => Status(BatchPhysics.SetPhysicsEnabled(true), "physics on")));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "OFF", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.off", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchPhysics.SetPhysicsEnabled(false), "physics off")));
             y += 32f;
 
@@ -567,7 +567,7 @@ namespace BetterFG.UI.Windows.Creative
             if (weights.Length > 0)
             {
                 _weightIndex = Mathf.Clamp(_weightIndex, 0, weights.Length - 1);
-                MakeLabel(root, new Rect(PAD, y, 44f, 22f), "weight", FS_SM, HINT_COL);
+                MakeLabel(root, new Rect(PAD, y, 44f, 22f), "ui.weight", FS_SM, HINT_COL);
                 var weightField = UGUIShip.CreateIncrement(root, new Rect(PAD + 46f, y, w - 46f, 22f), 0, weights.Length - 1,
                     () => _weightIndex, v => _weightIndex = v, wrap: true, fontSize: FS_SM,
                     fmt: i => weights[Mathf.Clamp(i, 0, weights.Length - 1)],
@@ -579,11 +579,11 @@ namespace BetterFG.UI.Windows.Creative
             }
 
             if (!BatchPhysics.AnyDraggable()) return;
-            MakeLabel(root, new Rect(PAD, y, w, 16f), "grabbable:", FS_SM, HINT_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.grabbable", FS_SM, HINT_COL);
             y += 22f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ON", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.on", BTN_APPLY, WHITE, FS_BODY,
                 new Action(() => Status(BatchPhysics.SetDraggable(true), "grabbable")));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "OFF", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.off", BTN_STEP, WHITE, FS_BODY,
                 new Action(() => Status(BatchPhysics.SetDraggable(false), "not grabbable")));
         }
 
@@ -595,7 +595,7 @@ namespace BetterFG.UI.Windows.Creative
             if (controller == null)
             {
                 MakeLabel(root, new Rect(PAD, y, w, 48f),
-                    "no movement or rotation controller in the selection — multi-select one along with the objects it should drive",
+                    "ui.no_movement_or_rotation_controller_in_the_select",
                     FS_SM, HINT_COL, TextAnchor.UpperLeft);
                 y += 52f;
                 return;
@@ -618,14 +618,14 @@ namespace BetterFG.UI.Windows.Creative
             y += 24f;
 
             float half = (w - 6f) * 0.5f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "LINK ALL", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.link_all", BTN_APPLY, WHITE, FS_BODY,
                 new Action(DoLink));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "UNLINK ALL", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.unlink_all", BTN_STEP, WHITE, FS_BODY,
                 new Action(DoUnlink));
             y += 34f;
 
             MakeLabel(root, new Rect(PAD, y, w, 48f),
-                "each object goes through the editor's own link check. anything this controller can't drive is skipped; once it hits its slot limit a copy of it is dropped in place to take the rest",
+                "ui.each_object_goes_through_the_editor_s_own_link_c",
                 FS_SM, HINT_COL, TextAnchor.UpperLeft);
             y += 52f;
         }
@@ -659,15 +659,15 @@ namespace BetterFG.UI.Windows.Creative
             if (_groupPick == 0) _groupPick = Groups.SelectionGroupId();
             if (_groupPick != 0 && !ids.Contains(_groupPick)) _groupPick = 0;
 
-            MakeLabel(root, new Rect(PAD, y, w, 14f), "group name", FS_SM, STEP_COL);
+            MakeLabel(root, new Rect(PAD, y, w, 14f), "ui.group_name", FS_SM, STEP_COL);
             y += 17f;
 
             float ddW = 28f;
             _groupNameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w - ddW - 4f, 24f),
-                "name this group", null, WHITE, FS_BODY);
+                "ui.name_this_group", null, WHITE, FS_BODY);
             UGUIShip.SetInputText(_groupNameField, _groupPick != 0 ? Groups.NameOf(_groupPick) : "");
 
-            var labels = new List<string> { "new group" };
+            var labels = new List<string> { "ui.new_group" };
             int selected = 0;
             for (int i = 0; i < ids.Count; i++)
             {
@@ -685,14 +685,14 @@ namespace BetterFG.UI.Windows.Creative
             y += 30f;
 
             float half = (w - 6f) * 0.5f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "LINK", BTN_APPLY, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, half, 28f), "ui.link", BTN_APPLY, WHITE, FS_BODY,
                 new Action(DoGroupLink));
-            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "UNLINK", BTN_STEP, WHITE, FS_BODY,
+            UGUIShip.CreateButton(root, new Rect(PAD + half + 6f, y, half, 28f), "ui.unlink", BTN_STEP, WHITE, FS_BODY,
                 new Action(DoGroupUnlink));
             y += 34f;
 
             MakeLabel(root, new Rect(PAD, y, w, 48f),
-                "grouped objects get picked, dragged and undone together — click one and the rest come with it",
+                "ui.grouped_objects_get_picked_dragged_and_undone_to",
                 FS_SM, HINT_COL, TextAnchor.UpperLeft);
             y += 52f;
         }
@@ -700,7 +700,7 @@ namespace BetterFG.UI.Windows.Creative
         private static void ArrowCaption(Dropdown dd)
         {
             var cap = dd.captionText;
-            cap.text = "▾";
+            UGUIShip.RelabelText(cap, "▾");
             cap.alignment = TextAnchor.MiddleCenter;
             cap.horizontalOverflow = HorizontalWrapMode.Overflow;
             var rt = cap.rectTransform;
@@ -745,11 +745,11 @@ namespace BetterFG.UI.Windows.Creative
 
                 float saveW = 66f;
                 var nameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w - saveW - 6f, 24f),
-                    "name this group", null, WHITE, FS_BODY);
+                    "ui.name_this_group", null, WHITE, FS_BODY);
                 UGUIShip.SetInputText(nameField, _savedName);
 
                 var saveBtn = UGUIShip.CreateButton(root, new Rect(PAD + w - saveW, y, saveW, 24f),
-                    SavedGroups.Exists(_savedName) ? "REPLACE" : "SAVE", BTN_APPLY, WHITE, FS_SM,
+                    SavedGroups.Exists(_savedName) ? "ui.replace" : "ui.save_2", BTN_APPLY, WHITE, FS_SM,
                     new Action(() => DoSaveGroup(nameField.text)));
                 var saveLabel = saveBtn.GetComponentInChildren<Text>();
                 nameField.onValueChanged.AddListener(new Action<string>(v =>
@@ -767,7 +767,7 @@ namespace BetterFG.UI.Windows.Creative
             if (all.Count == 0)
             {
                 MakeLabel(root, new Rect(PAD, y, w, 48f),
-                    "nothing in the library yet — multi-select some objects, give them a name and save. saved groups follow you into every level",
+                    "ui.nothing_in_the_library_yet_multi_select_some_obj",
                     FS_SM, HINT_COL, TextAnchor.UpperLeft);
                 y += 52f;
                 return;
@@ -905,7 +905,7 @@ namespace BetterFG.UI.Windows.Creative
             catch (Exception ex)
             {
                 Plugin.Log.LogError($"batch subtab '{extras[idx].Name}' threw while building: {ex}");
-                MakeLabel(root, new Rect(PAD, y, w, 16f), "this page errored, check the log", FS_SM, HINT_COL);
+                MakeLabel(root, new Rect(PAD, y, w, 16f), "ui.this_page_errored_check_the_log", FS_SM, HINT_COL);
             }
             y = ctx.Y;
         }
@@ -1027,7 +1027,7 @@ namespace BetterFG.UI.Windows.Creative
         private void Status(int n, string verb)
         {
             SetStatus(n > 0 ? $"{verb} {n} object(s)" : "nothing applicable in selection", n > 0 ? OK_COL : HINT_COL);
-            if (_countLabel != null) _countLabel.text = CountText();
+            if (_countLabel != null) UGUIShip.RelabelText(_countLabel, CountText());
         }
 
         private static string CountText() => BatchRecolour.SelectionCount() + " object(s) selected";

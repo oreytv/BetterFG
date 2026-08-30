@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Core;
 using BetterFG.Nametag;
 using TMPro;
@@ -13,6 +13,7 @@ namespace BetterFG.UI.Tabs
 
         protected override string BgResource => "BetterFG.assets.ui.nametag.bg.png";
         public override string TabTitle => "Nametag";
+        protected override string TitleId => "ui.nametag";
 
         private static readonly Color WHITE = UGUIShip.WHITE;
         private static readonly Color BTN_DARK = UGUIShip.BTN_DARK;

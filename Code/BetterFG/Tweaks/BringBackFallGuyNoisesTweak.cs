@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using BetterFG.Utilities;
 using FG.Common;
@@ -16,7 +16,7 @@ namespace BetterFG.Tweaks
         public BringBackFallGuyNoisesTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "bring_back_fallguy_noises";
-        public override string TweakLabel => "Bring Back Fall Guy noises";
+        public override string TweakLabel => "tweak.bring_back_fall_guy_noises";
         public override bool DefaultEnabled => true;
 
         public static BringBackFallGuyNoisesTweak Instance { get; private set; }
@@ -109,7 +109,7 @@ namespace BetterFG.Tweaks
 
         public override System.Collections.Generic.List<TweakSlider> GetSliders() => new System.Collections.Generic.List<TweakSlider>
         {
-            new TweakSlider { Label = "Sensitivity", Min = 2f, Max = 0.2f, Step = 0.1f, Get = () => ThresholdMultiplier, Set = v => ThresholdMultiplier = v }
+            new TweakSlider { Label = "ui.sensitivity", Min = 2f, Max = 0.2f, Step = 0.1f, Get = () => ThresholdMultiplier, Set = v => ThresholdMultiplier = v }
         };
 
         // keyed on the il2cpp pointer, which is a plain field read — GetInstanceID is a runtime_invoke

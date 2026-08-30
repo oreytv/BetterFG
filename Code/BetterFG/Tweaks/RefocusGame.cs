@@ -1,4 +1,4 @@
-﻿using FG.Common.UI;
+using FG.Common.UI;
 using FGClient;
 using UnityEngine;
 
@@ -9,7 +9,7 @@ namespace BetterFG.Tweaks
         public RefocusGame(System.IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "refocus_game";
-        public override string TweakLabel => "Refocus game (press C)";
+        public override string TweakLabel => "tweak.refocus_game_press_c";
         public override bool DefaultEnabled => true;
 
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using BetterFG.Customization.Menu;
@@ -17,7 +17,7 @@ namespace BetterFG.UI.Tabs
         protected override string BgResource => "BetterFG.assets.ui.tab.ui.png";
 
         enum WizardStep { File, Target, Name }
-        protected override string[] StepTitles => new[] { "Pick the font file", "Choose the game font to replace", "Name it" };
+        protected override string[] StepTitles => new[] { "ui.pick_the_font_file", "ui.choose_the_game_font_to_replace", "ui.name_it" };
 
         string _fontPath = "";
         Text _fontPathLbl;
@@ -77,14 +77,14 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Pick the font file to use (.ttf / .otf)", FS_SM, LABEL);
+                "ui.pick_the_font_file_to_use_ttf_otf", FS_SM, LABEL);
             cy += LH + SH;
 
             float browseW = 80f * UIScale.S;
             UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, browseW, BTN_H),
-                "BROWSE", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowseFont));
+                "ui.browse_2", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowseFont));
             _fontPathLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD + browseW + PAD, cy, w - browseW - PAD, BTN_H),
-                "no file picked", FS_SM, HINT, TextAnchor.MiddleLeft);
+                "ui.no_file_picked", FS_SM, HINT, TextAnchor.MiddleLeft);
             cy += BTN_H + SH * 2f;
 
             var prevGo = new GameObject("FontPreview");
@@ -98,7 +98,7 @@ namespace BetterFG.UI.Tabs
             prevRt.anchorMin = Vector2.zero; prevRt.anchorMax = Vector2.one;
             prevRt.offsetMin = new Vector2(6f, 6f); prevRt.offsetMax = new Vector2(-6f, -6f);
             _fontPreviewTmp = prevTmpGo.AddComponent<TMPro.TextMeshProUGUI>();
-            _fontPreviewTmp.text = "Abg 123";
+            UGUIShip.RelabelText(_fontPreviewTmp, "ui.abg_123");
             _fontPreviewTmp.fontSize = 24f;
             _fontPreviewTmp.alignment = TMPro.TextAlignmentOptions.Center;
             _fontPreviewTmp.enableWordWrapping = true;
@@ -119,8 +119,7 @@ namespace BetterFG.UI.Tabs
 
         void LoadFontPreview()
         {
-            if (_fontPathLbl != null)
-                _fontPathLbl.text = string.IsNullOrEmpty(_fontPath) ? "no file picked" : Path.GetFileName(_fontPath);
+            if (_fontPathLbl != null) UGUIShip.RelabelText(_fontPathLbl, string.IsNullOrEmpty(_fontPath) ? "no file picked" : Path.GetFileName(_fontPath));
             if (string.IsNullOrEmpty(_fontPath) || _fontPreviewTmp == null) return;
             var asset = FontReplacementService.BuildPreview(new FontOverride { fontPath = _fontPath });
             if (asset != null) _fontPreviewTmp.font = asset;
@@ -130,7 +129,7 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Which game font should it replace?", FS_SM, LABEL);
+                "ui.which_game_font_should_it_replace", FS_SM, LABEL);
             cy += LH + SH;
 
             var scroll = UGUIShip.CreateScrollView(root.transform, new Rect(PAD, cy, w, bodyH - cy - SH));
@@ -176,7 +175,7 @@ namespace BetterFG.UI.Tabs
 
             if (!any)
                 UGUIShip.CreateLabel(_targetContent, new Rect(6f, 0f, TabWidth, ROW_H),
-                    "open the in-game menu first so these fonts are loaded", FS_SM, HINT);
+                    "ui.open_the_in_game_menu_first_so_these_fonts_are_l", FS_SM, HINT);
         }
 
         void SelectTarget(string real)
@@ -190,11 +189,11 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "What should this override be called?", FS_SM, LABEL);
+                "ui.what_should_this_override_be_called", FS_SM, LABEL);
             cy += LH + SH;
 
             _nameField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "my font override", Color.black, WHITE, FS_SM);
+                "ui.my_font_override", Color.black, WHITE, FS_SM);
             cy += BTN_H + SH * 2f;
 
             _summaryLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH * 3f), "", FS_SM, HINT);
@@ -209,15 +208,15 @@ namespace BetterFG.UI.Tabs
         protected override bool Save()
         {
             string name = _nameField.text?.Trim() ?? "";
-            if (string.IsNullOrEmpty(name)) { SetStatus("give it a name first"); return false; }
-            if (string.IsNullOrEmpty(_fontPath)) { SetStatus("pick a font file first"); return false; }
-            if (string.IsNullOrEmpty(_targetName)) { SetStatus("pick a game font to replace"); return false; }
+            if (string.IsNullOrEmpty(name)) { SetStatus("ui.give_it_a_name_first"); return false; }
+            if (string.IsNullOrEmpty(_fontPath)) { SetStatus("ui.pick_a_font_file_first"); return false; }
+            if (string.IsNullOrEmpty(_targetName)) { SetStatus("ui.pick_a_game_font_to_replace"); return false; }
 
             var entries = FontReplacementService.LoadAll();
             for (int i = 0; i < entries.Count; i++)
             {
                 if (i == EditIndex) continue;
-                if (entries[i].entryName == name) { SetStatus("you already have one called that"); return false; }
+                if (entries[i].entryName == name) { SetStatus("ui.you_already_have_one_called_that"); return false; }
             }
 
             bool editing = EditIndex >= 0 && EditIndex < entries.Count;

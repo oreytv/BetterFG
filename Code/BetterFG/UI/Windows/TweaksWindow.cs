@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -15,7 +15,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 220f;
-        protected override string WindowTitle => "Tweaks";
+        protected override string WindowTitle => "ui.tweaks";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         // survives the window being destroyed, so backing out of a tweak's config window (or just
@@ -40,7 +40,7 @@ namespace BetterFG.UI.Windows
 
             var searchField = UGUIShip.CreateInputField(contentRoot,
                 new Rect(0f, 0f, 100f, SEARCH_H),
-                "search tweaks...", new Color(0f, 0f, 0f, 0.75f), Color.white, 12);
+                "ui.search_tweaks", new Color(0f, 0f, 0f, 0.75f), Color.white, 12);
             UGUIShip.SetInputText(searchField, _query);
             var sfRt = searchField.GetComponent<RectTransform>();
             sfRt.anchorMin = new Vector2(0f, 1f);
@@ -316,7 +316,7 @@ namespace BetterFG.UI.Windows
 
             var btn = UGUIShip.CreateButton(btnGo.transform,
                 new Rect(0f, 0f, TOGGLE_W, TOGGLE_H),
-                tweak.IsEnabled ? "ON" : "OFF",
+                tweak.IsEnabled ? "ui.on" : "ui.off",
                 tweak.IsEnabled ? ON_COL : OFF_COL,
                 Color.white, 9);
 
@@ -337,7 +337,7 @@ namespace BetterFG.UI.Windows
                 cols.highlightedColor = (capturedTweak.IsEnabled ? ON_COL : OFF_COL) * 1.2f;
                 cols.pressedColor = (capturedTweak.IsEnabled ? ON_COL : OFF_COL) * 0.7f;
                 btn.colors = cols;
-                if (capturedLbl != null) capturedLbl.text = capturedTweak.IsEnabled ? "ON" : "OFF";
+                if (capturedLbl != null) UGUIShip.RelabelText(capturedLbl, capturedTweak.IsEnabled ? "ui.on" : "ui.off");
             }));
 
             // expanded settings panel, only while enabled. one sub-row per setting, same zebra bg as
@@ -490,7 +490,7 @@ namespace BetterFG.UI.Windows
                 int cur = capturedSetting.Selected?.Invoke() ?? 0;
                 int next = (cur + 1) % capturedSetting.Options.Length;
                 capturedSetting.OnPick?.Invoke(next);
-                if (capturedLbl != null) capturedLbl.text = capturedSetting.Options[next];
+                if (capturedLbl != null) UGUIShip.RelabelText(capturedLbl, capturedSetting.Options[next]);
             }));
             return rowGo;
         }

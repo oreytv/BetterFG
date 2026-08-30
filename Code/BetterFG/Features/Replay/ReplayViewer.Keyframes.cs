@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -34,33 +34,33 @@ namespace BetterFG.Features.Replay
         void ShowContextMenu(Vector2 cursor)
         {
             OpenMenu(cursor, 3);
-            MenuItem(0, "Add camera keyframe", new Action(AddKeyframeHere));
-            MenuItem(1, "Add visibility keyframe", new Action(AddVisibilityKeyframeHere));
-            MenuItem(2, "Add post fx keyframe", new Action(AddPostFxKeyframeHere));
+            MenuItem(0, "ui.add_camera_keyframe", new Action(AddKeyframeHere));
+            MenuItem(1, "ui.add_visibility_keyframe", new Action(AddVisibilityKeyframeHere));
+            MenuItem(2, "ui.add_post_fx_keyframe", new Action(AddPostFxKeyframeHere));
         }
 
         void ShowAddCameraMenu(Vector2 cursor)
         {
             OpenMenu(cursor, 1);
-            MenuItem(0, "Add camera keyframe", new Action(AddKeyframeHere));
+            MenuItem(0, "ui.add_camera_keyframe", new Action(AddKeyframeHere));
         }
 
         void ShowAddVisMenu(Vector2 cursor)
         {
             OpenMenu(cursor, 1);
-            MenuItem(0, "Add visibility keyframe", new Action(AddVisibilityKeyframeHere));
+            MenuItem(0, "ui.add_visibility_keyframe", new Action(AddVisibilityKeyframeHere));
         }
 
         void ShowAddFxMenu(Vector2 cursor)
         {
             OpenMenu(cursor, 1);
-            MenuItem(0, "Add post fx keyframe", new Action(AddPostFxKeyframeHere));
+            MenuItem(0, "ui.add_post_fx_keyframe", new Action(AddPostFxKeyframeHere));
         }
 
         void ShowKeyframeMenu(ReplayKeyframe k, Vector2 cursor)
         {
             OpenMenu(cursor, 2);
-            MenuItem(0, "Duplicate", new Action(() => { CloseContextMenu(); Duplicate(k); }));
+            MenuItem(0, "ui.duplicate", new Action(() => { CloseContextMenu(); Duplicate(k); }));
             MenuItem(1, _selected.Count > 1 ? "Delete " + _selected.Count + " keyframes" : "Delete",
                 new Action(DeleteSelected));
         }
@@ -68,7 +68,7 @@ namespace BetterFG.Features.Replay
         void ShowVisKeyframeMenu(ReplayVisibilityKeyframe k, Vector2 cursor)
         {
             OpenMenu(cursor, 2);
-            MenuItem(0, "Duplicate", new Action(() => { CloseContextMenu(); DuplicateVis(k); }));
+            MenuItem(0, "ui.duplicate", new Action(() => { CloseContextMenu(); DuplicateVis(k); }));
             MenuItem(1, _selectedVis.Count > 1 ? "Delete " + _selectedVis.Count + " keyframes" : "Delete",
                 new Action(DeleteSelected));
         }
@@ -76,7 +76,7 @@ namespace BetterFG.Features.Replay
         void ShowFxKeyframeMenu(ReplayPostFxKeyframe k, Vector2 cursor)
         {
             OpenMenu(cursor, 2);
-            MenuItem(0, "Duplicate", new Action(() => { CloseContextMenu(); DuplicateFx(k); }));
+            MenuItem(0, "ui.duplicate", new Action(() => { CloseContextMenu(); DuplicateFx(k); }));
             MenuItem(1, _selectedFx.Count > 1 ? "Delete " + _selectedFx.Count + " keyframes" : "Delete",
                 new Action(DeleteSelected));
         }

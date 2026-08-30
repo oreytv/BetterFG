@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Collections.Generic;
 using BetterFG.Features.UnityRound.Editor;
@@ -17,6 +17,7 @@ namespace BetterFG.UI.Tabs
         public CustomCreativeTextureTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Creative - Custom Textures";
+        protected override string TitleId => "ui.creative_custom_textures";
         protected override string BgResource => "BetterFG.assets.ui.tab.creative.png";
         public override Tab MakeFallbackTab() => BetterFGTabRegistry.NewTab<CreativeTab>();
 
@@ -43,10 +44,10 @@ namespace BetterFG.UI.Tabs
             float y = VPAD;
 
             float backW = 70f * UIScale.S;
-            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, backW, BTN_H), "< back", BTN_DARK, WHITE, FS_SM,
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, backW, BTN_H), "ui.back_2", BTN_DARK, WHITE, FS_SM,
                 new Action(() => BetterFGUIMan.Instance?.SwitchSlotTab(this, BetterFGTabRegistry.CreateTab("Creative"))));
             UGUIShip.CreateLabel(contentRoot, new Rect(PAD + backW + PAD, y, w - backW - PAD, BTN_H),
-                "Enter=set PNG, Shift=save PNG", FS_SM, new Color(1f, 1f, 1f, 0.72f), TextAnchor.MiddleLeft);
+                "ui.enter_set_png_shift_save_png", FS_SM, new Color(1f, 1f, 1f, 0.72f), TextAnchor.MiddleLeft);
             y += BTN_H + SH;
 
             float listH = TabHeight - y - BTN_H - VPAD - SH;
@@ -88,7 +89,7 @@ namespace BetterFG.UI.Tabs
             float barY = TabHeight - BTN_H - VPAD;
             _texStatus = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, barY, w - refreshW - PAD, BTN_H), "", FS_SM, HINT);
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - refreshW, barY, refreshW, BTN_H),
-                "REFRESH", BTN_BLUE, WHITE, FS_SM, new Action(() => { RescanTextures(); SetTexStatus($"found {_texNames.Count}", HINT); }));
+                "ui.refresh", BTN_BLUE, WHITE, FS_SM, new Action(() => { RescanTextures(); SetTexStatus($"found {_texNames.Count}", HINT); }));
 
             RescanTextures();
         }
@@ -103,7 +104,7 @@ namespace BetterFG.UI.Tabs
                 string texName = _texNames[_texSelected];
                 WinDialogs.PickPng("Select PNG for " + texName, path =>
                 {
-                    if (string.IsNullOrEmpty(path)) { SetTexStatus("cancelled", HINT); return; }
+                    if (string.IsNullOrEmpty(path)) { SetTexStatus("ui.cancelled", HINT); return; }
                     if (ObstacleTextureLoader.SetOverride(texName, path, out string error)) SetTexStatus("set " + texName, OK);
                     else SetTexStatus("error: " + error, ERR);
                     RebuildTexRows();
@@ -133,7 +134,7 @@ namespace BetterFG.UI.Tabs
 
             if (_texNames.Count == 0)
             {
-                UGUIShip.CreateLabel(_texContentRt, new Rect(PAD, 0f, TabWidth, ROW_H), "no placeable textures found — load a round first", FS_SM, HINT);
+                UGUIShip.CreateLabel(_texContentRt, new Rect(PAD, 0f, TabWidth, ROW_H), "ui.no_placeable_textures_found_load_a_round_first", FS_SM, HINT);
                 return;
             }
             for (int i = 0; i < _texNames.Count; i++)

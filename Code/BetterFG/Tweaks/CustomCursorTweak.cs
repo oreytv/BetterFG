@@ -12,7 +12,7 @@ namespace BetterFG.Tweaks
         public CustomCursorTweak(System.IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "custom_cursor";
-        public override string TweakLabel => "Custom Cursor";
+        public override string TweakLabel => "tweak.custom_cursor";
         public override bool DefaultEnabled => true;
 
         private const string PathKey = "tweak.custom_cursor.path";
@@ -21,7 +21,7 @@ namespace BetterFG.Tweaks
 
         public override List<TweakButton> GetCustomButtons() => new List<TweakButton>
         {
-            new TweakButton { Label = "Browse", Width = 46f, OnClick = PickAndReload }
+            new TweakButton { Label = "ui.browse", Width = 46f, OnClick = PickAndReload }
         };
 
         private void PickAndReload()

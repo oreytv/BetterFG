@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
@@ -18,11 +18,11 @@ namespace BetterFG.Features.Stars
 {
     public class FeatureStars
     {
-        public static readonly BfgFeature feature = new BfgFeature("stars", "Stars", true, new List<FeatureSetting>
+        public static readonly BfgFeature feature = new BfgFeature("stars", "ui.stars", true, new List<FeatureSetting>
         {
-            new FeatureSetting { id = "store", label = "Store stars", defaultOn = true },
-            new FeatureSetting { id = "qual", label = "Show star count on qual", defaultOn = true },
-            new FeatureSetting { id = "menu", label = "Show star count in menu", defaultOn = true },
+            new FeatureSetting { id = "store", label = "ui.store_stars", defaultOn = true },
+            new FeatureSetting { id = "qual", label = "ui.show_star_count_on_qual", defaultOn = true },
+            new FeatureSetting { id = "menu", label = "ui.show_star_count_in_menu", defaultOn = true },
         });
 
         static bool On(string setting) => BetterFG.Features.FeatureRegistry.IsOn("stars", setting);

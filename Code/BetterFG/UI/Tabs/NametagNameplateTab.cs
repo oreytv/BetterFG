@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -15,6 +15,7 @@ namespace BetterFG.UI.Tabs
         public NametagNameplateTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Nametag - Nameplate";
+        protected override string TitleId => "ui.nametag_nameplate";
         protected override string BgResource => "BetterFG.assets.ui.nametag.bg.png";
 
         private const string KEY_BACKING_ENABLED = "nametag.backing.enabled";
@@ -43,7 +44,7 @@ namespace BetterFG.UI.Tabs
         private Slider _sliderBackingScale, _sliderBackingOffX, _sliderBackingOffY;
         private InputField _nicknameField;
 
-        protected override string[] StepTitles => new[] { "Backing image", "Nickname subtext" };
+        protected override string[] StepTitles => new[] { "ui.backing_image", "ui.nickname_subtext" };
         protected override bool HasRemove => true;
         protected override Tab MakeListTarget() => BetterFGTabRegistry.NewTab<NametagTab>();
 
@@ -76,10 +77,10 @@ namespace BetterFG.UI.Tabs
             float colGap = PAD * 0.5f;
             float halfW = (w - colGap) / 2f;
             var enabledBtn = UGUIShip.CreateButton(c, new Rect(x, cy, halfW, BTN_H),
-                _backingEnabled ? "Backing: ON" : "Backing: OFF", BTN_DARK2, WHITE2, FS_SM, new Action(OnToggleBacking));
+                _backingEnabled ? "ui.backing_on" : "ui.backing_off", BTN_DARK2, WHITE2, FS_SM, new Action(OnToggleBacking));
             _backingEnabledLabel = enabledBtn.GetComponentInChildren<Text>();
             UGUIShip.CreateButton(c, new Rect(x + halfW + colGap, cy, halfW, BTN_H),
-                "Browse...", new Color(0.25f, 0.35f, 0.45f, 1f), WHITE2, FS_SM, new Action(OnBrowseBacking));
+                "ui.browse_3", new Color(0.25f, 0.35f, 0.45f, 1f), WHITE2, FS_SM, new Action(OnBrowseBacking));
             cy += BTN_H + SH;
 
             _backingPathLabel = UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH),
@@ -121,11 +122,11 @@ namespace BetterFG.UI.Tabs
             float nickColGap = PAD * 0.5f;
             float toggleW = w * 0.42f;
             var nickBtn = UGUIShip.CreateButton(c, new Rect(x, cy, toggleW, BTN_H),
-                _nicknameEnabled ? "Nickname: ON" : "Nickname: OFF", BTN_DARK2, WHITE2, FS_SM, new Action(OnToggleNickname));
+                _nicknameEnabled ? "ui.nickname_on" : "ui.nickname_off", BTN_DARK2, WHITE2, FS_SM, new Action(OnToggleNickname));
             _nicknameEnabledLabel = nickBtn.GetComponentInChildren<Text>();
             float nickFieldW = w - toggleW - nickColGap;
             _nicknameField = UGUIShip.CreateInputField(c, new Rect(x + toggleW + nickColGap, cy, nickFieldW, BTN_H),
-                "nickname", new Color(0.12f, 0.12f, 0.12f, 1f), WHITE2, FS_SM);
+                "ui.nickname", new Color(0.12f, 0.12f, 0.12f, 1f), WHITE2, FS_SM);
             UGUIShip.SetInputText(_nicknameField, _nicknameText, false);
             _nicknameField.onEndEdit.AddListener(new Action<string>(OnNicknameEdited));
             cy += BTN_H + PAD;
@@ -135,7 +136,7 @@ namespace BetterFG.UI.Tabs
         private void OnToggleNickname()
         {
             _nicknameEnabled = !_nicknameEnabled;
-            if (_nicknameEnabledLabel != null) _nicknameEnabledLabel.text = _nicknameEnabled ? "Nickname: ON" : "Nickname: OFF";
+            if (_nicknameEnabledLabel != null) UGUIShip.RelabelText(_nicknameEnabledLabel, _nicknameEnabled ? "ui.nickname_on" : "ui.nickname_off");
             SettingsService.Set(KEY_NICKNAME_ENABLED, _nicknameEnabled ? "true" : "false");
             ApplyNicknameNow();
         }
@@ -172,7 +173,7 @@ namespace BetterFG.UI.Tabs
         private void OnToggleBacking()
         {
             _backingEnabled = !_backingEnabled;
-            if (_backingEnabledLabel != null) _backingEnabledLabel.text = _backingEnabled ? "Backing: ON" : "Backing: OFF";
+            if (_backingEnabledLabel != null) UGUIShip.RelabelText(_backingEnabledLabel, _backingEnabled ? "ui.backing_on" : "ui.backing_off");
         }
 
         private void OnBrowseBacking()
@@ -181,7 +182,7 @@ namespace BetterFG.UI.Tabs
             {
                 if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
                 _backingPath = path;
-                if (_backingPathLabel != null) _backingPathLabel.text = Path.GetFileName(_backingPath);
+                if (_backingPathLabel != null) UGUIShip.RelabelText(_backingPathLabel, Path.GetFileName(_backingPath));
                 RefreshBackingPreview();
             });
         }

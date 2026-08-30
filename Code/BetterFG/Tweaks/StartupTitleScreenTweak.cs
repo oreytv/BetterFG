@@ -10,9 +10,9 @@ namespace BetterFG.Tweaks
         public StartupTitleScreenTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "startup_title_screen";
-        public override string TweakLabel => "Startup Title Screen";
+        public override string TweakLabel => "tweak.startup_title_screen";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Credits to Floyzi for the code.";
+        public override string TweakTooltip => "ui.credits_to_floyzi_for_the_code";
 
         public static StartupTitleScreenTweak Instance { get; private set; }
         void Awake() => Instance = this;

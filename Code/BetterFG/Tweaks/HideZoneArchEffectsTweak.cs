@@ -8,7 +8,7 @@ namespace BetterFG.Tweaks
         public HideZoneArchEffectsTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "hide_zone_arch_effects";
-        public override string TweakLabel => "Hide Zone/Speed VFX";
+        public override string TweakLabel => "tweak.hide_zone_speed_vfx";
         public override bool DefaultEnabled => false;
 
         public static HideZoneArchEffectsTweak Instance { get; private set; }

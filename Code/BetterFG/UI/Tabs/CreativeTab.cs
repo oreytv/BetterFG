@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Features.CreativeIncrements;
 using BetterFG.Features.UnityRound.Editor;
 using BetterFG.Services;
@@ -16,6 +16,7 @@ namespace BetterFG.UI.Tabs
         public CreativeTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Creative";
+        protected override string TitleId => "ui.creative";
         protected override string BgResource => "BetterFG.assets.ui.tab.creative.png";
 
         private static float subTabH => BTN_H * 0.9f;
@@ -77,9 +78,9 @@ namespace BetterFG.UI.Tabs
             // subtab bar
             float half = (w - PAD * 0.5f) / 2f;
             _btnArgs = UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, half, subTabH),
-                "Args", _sub == SubTab.Args ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(() => SetSub(SubTab.Args)));
+                "ui.args", _sub == SubTab.Args ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(() => SetSub(SubTab.Args)));
             _btnRound = UGUIShip.CreateButton(contentRoot, new Rect(PAD + half + PAD * 0.5f, y, half, subTabH),
-                "Unity Round", _sub == SubTab.UnityRound ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(() => SetSub(SubTab.UnityRound)));
+                "ui.unity_round", _sub == SubTab.UnityRound ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(() => SetSub(SubTab.UnityRound)));
             y += subTabH + SH;
 
             UGUIShip.CreatePanel(contentRoot, new Rect(PAD, y, w, 1f), new Color(1f, 1f, 1f, 0.06f));
@@ -98,7 +99,7 @@ namespace BetterFG.UI.Tabs
             // "not in creative" message, shown over everything when out of the editor
             _notInCreative = MakePanel(contentRoot, y, bodyH);
             UGUIShip.CreateLabel(_notInCreative.transform, new Rect(PAD, bodyH * 0.5f - 12f, w, 24f),
-                "You are not in Creative right now....", FS, HINT, TextAnchor.MiddleCenter);
+                "ui.you_are_not_in_creative_right_now", FS, HINT, TextAnchor.MiddleCenter);
 
             Refresh();
         }
@@ -209,8 +210,8 @@ namespace BetterFG.UI.Tabs
 
             float navY = bodyH - navH;
             float bw = (w - PAD) / 2f;
-            _backBtn = UGUIShip.CreateButton(root.transform, new Rect(PAD, navY, bw, navH), "< BACK", BTN_DARK, WHITE, FS_SM, new Action(() => GoStep(-1)));
-            _nextBtn = UGUIShip.CreateButton(root.transform, new Rect(PAD + bw + PAD * 0.5f, navY, bw, navH), "NEXT >", BTN_BLUE, WHITE, FS_SM, new Action(() => GoStep(1)));
+            _backBtn = UGUIShip.CreateButton(root.transform, new Rect(PAD, navY, bw, navH), "ui.back", BTN_DARK, WHITE, FS_SM, new Action(() => GoStep(-1)));
+            _nextBtn = UGUIShip.CreateButton(root.transform, new Rect(PAD + bw + PAD * 0.5f, navY, bw, navH), "ui.next", BTN_BLUE, WHITE, FS_SM, new Action(() => GoStep(1)));
         }
 
         void BuildLoadStep(RectTransform root, float w, float bodyH)
@@ -218,23 +219,23 @@ namespace BetterFG.UI.Tabs
             float cy = SH;
             float rh = UIScale.LH;
 
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "Round info.json path", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "ui.round_info_json_path", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
 
             float browseW = 70f * UIScale.S;
             float fieldW = w - browseW - PAD;
             _pathField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, fieldW, BTN_H),
-                "C:\\path\\to\\info.json", new Color(0.12f, 0.12f, 0.12f, 1f), WHITE, FS_SM);
+                "ui.c_path_to_info_json", new Color(0.12f, 0.12f, 0.12f, 1f), WHITE, FS_SM);
             UGUIShip.SetInputText(_pathField, SettingsService.Get(PATH_KEY, ""), false);
             _pathField.onEndEdit.AddListener(new Action<string>(v => SettingsService.Set(PATH_KEY, v ?? "")));
 
             UGUIShip.CreateButton(root.transform, new Rect(PAD + fieldW + PAD, cy, browseW, BTN_H),
-                "BROWSE", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowse));
+                "ui.browse_2", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowse));
             cy += BTN_H + SH;
 
             float bw = (w - PAD) / 2f;
-            UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, bw, BTN_H), "LOAD", BTN_GREEN, WHITE, FS, new Action(OnLoad));
-            UGUIShip.CreateButton(root.transform, new Rect(PAD + bw + PAD * 0.5f, cy, bw, BTN_H), "UNLOAD", BTN_RED, WHITE, FS, new Action(OnUnload));
+            UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, bw, BTN_H), "ui.load_2", BTN_GREEN, WHITE, FS, new Action(OnLoad));
+            UGUIShip.CreateButton(root.transform, new Rect(PAD + bw + PAD * 0.5f, cy, bw, BTN_H), "ui.unload", BTN_RED, WHITE, FS, new Action(OnUnload));
             cy += BTN_H + SH;
 
             _statusLabel = UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh),
@@ -249,20 +250,20 @@ namespace BetterFG.UI.Tabs
             float rh = UIScale.LH;
             float tglW = 70f * UIScale.S;
 
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w - tglW - PAD, BTN_H), "Show existing creative objects", FS_SM, WHITE, TextAnchor.MiddleLeft);
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w - tglW - PAD, BTN_H), "ui.show_existing_creative_objects", FS_SM, WHITE, TextAnchor.MiddleLeft);
             bool keep = UnityRoundLoader.KeepExistingObjects;
             _keepToggle = UGUIShip.CreateButton(root.transform, new Rect(PAD + w - tglW, cy, tglW, BTN_H),
-                keep ? "ON" : "OFF", keep ? BTN_GREEN : BTN_DARK, WHITE, FS_SM, new Action(() =>
+                keep ? "ui.on" : "ui.off", keep ? BTN_GREEN : BTN_DARK, WHITE, FS_SM, new Action(() =>
                 {
                     bool next = !UnityRoundLoader.KeepExistingObjects;
                     UnityRoundLoader.SetKeepExistingObjects(next);
                     UGUIShip.SetButtonSelected(_keepToggle, next, BTN_GREEN);
                     var lbl = _keepToggle.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = next ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, next ? "ui.on" : "ui.off");
                 }));
             cy += BTN_H + SH * 2f;
 
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "Ambient light", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "ui.ambient_light", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
             UGUIShip.CreateColorControls(root.transform, PAD, ref cy, w,
                 () => RenderSettings.ambientLight.r, () => RenderSettings.ambientLight.g, () => RenderSettings.ambientLight.b,
@@ -270,14 +271,14 @@ namespace BetterFG.UI.Tabs
                 out _, out _, out _, RenderSettings.ambientLight);
             cy += SH;
 
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "Reflection intensity", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "ui.reflection_intensity", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
             UGUIShip.CreateSlider(root.transform, PAD, cy, w, "", RenderSettings.reflectionIntensity, rh, PAD, FS_SM,
                 v => RenderSettings.reflectionIntensity = v, null, null, false, RenderSettings.reflectionIntensity);
             cy += rh + SH * 2f;
 
             // custom textures live in their own drill-in tab; here it's a button + applied count
-            UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, w, BTN_H), "Custom textures", BTN_DARK, WHITE, FS_SM,
+            UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, w, BTN_H), "ui.custom_textures", BTN_DARK, WHITE, FS_SM,
                 new Action(() => BetterFGUIMan.Instance?.SwitchSlotTab(this, BetterFGTabRegistry.NewTab<CustomCreativeTextureTab>())));
             cy += BTN_H + SH;
             int n = ObstacleTextureLoader.Overrides.Count;
@@ -297,18 +298,18 @@ namespace BetterFG.UI.Tabs
             float cy = SH;
             float rh = UIScale.LH;
 
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "Put your level's info.json on github, paste the link", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "ui.put_your_level_s_info_json_on_github_paste_the_l", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
 
             _shareUrlField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "paste the github link to your level's info.json",
+                "ui.paste_the_github_link_to_your_level_s_info_json",
                 new Color(0.12f, 0.12f, 0.12f, 1f), WHITE, FS_SM);
             UGUIShip.SetInputText(_shareUrlField, SettingsService.Get(SHARE_URL_KEY, ""), false);
             _shareUrlField.onEndEdit.AddListener(new Action<string>(v => SettingsService.Set(SHARE_URL_KEY, v ?? "")));
             cy += BTN_H + SH;
 
             UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "SET LEVEL DESCRIPTION", BTN_BLUE, WHITE, FS_SM, new Action(OnSetDescription));
+                "ui.set_level_description", BTN_BLUE, WHITE, FS_SM, new Action(OnSetDescription));
             cy += BTN_H + SH;
 
             _shareStatus = UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh * 2f), "", FS_SM, HINT);
@@ -320,10 +321,10 @@ namespace BetterFG.UI.Tabs
             SettingsService.Set(SHARE_URL_KEY, url ?? "");
 
             string code = ShareCodeFromUrl(url);
-            if (string.IsNullOrEmpty(code)) { SetShareStatus("bad link — need a github link to a Rounds/round_xxx/info.json", ERR); return; }
+            if (string.IsNullOrEmpty(code)) { SetShareStatus("ui.bad_link_need_a_github_link_to_a_rounds_round_xx", ERR); return; }
 
             if (UnityRoundLoader.SetLevelDescription(code, out string error))
-                SetShareStatus("description set! save your level and it'll load for everyone who plays it", OK);
+                SetShareStatus("ui.description_set_save_your_level_and_it_ll_load_f", OK);
             else
                 SetShareStatus("couldn't set description: " + error, ERR);
         }
@@ -388,7 +389,7 @@ namespace BetterFG.UI.Tabs
         void OnUnload()
         {
             UnityRoundLoader.UnloadAndForget();
-            SetStatus("unloaded", HINT);
+            SetStatus("ui.unloaded", HINT);
         }
 
         void SetStatus(string text, Color col)
@@ -410,34 +411,34 @@ namespace BetterFG.UI.Tabs
             float tglW = 70f * UIScale.S;
 
             // batch edit on/off — gates the multi-select nav prompt + Batch Edit window in the editor
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w - tglW - PAD, BTN_H), "Batch edit (multi-select)", FS_SM, WHITE, TextAnchor.MiddleLeft);
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w - tglW - PAD, BTN_H), "ui.batch_edit_multi_select", FS_SM, WHITE, TextAnchor.MiddleLeft);
             bool batchOn = Windows.Creative.BatchEditWindow.FeatureEnabled;
             _batchToggle = UGUIShip.CreateButton(root.transform, new Rect(PAD + w - tglW, cy, tglW, BTN_H),
-                batchOn ? "ON" : "OFF", batchOn ? BTN_GREEN : BTN_DARK, WHITE, FS_SM, new Action(() =>
+                batchOn ? "ui.on" : "ui.off", batchOn ? BTN_GREEN : BTN_DARK, WHITE, FS_SM, new Action(() =>
                 {
                     bool next = !Windows.Creative.BatchEditWindow.FeatureEnabled;
                     Windows.Creative.BatchEditWindow.FeatureEnabled = next;
                     UGUIShip.SetButtonSelected(_batchToggle, next, BTN_GREEN);
                     var lbl = _batchToggle.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = next ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, next ? "ui.on" : "ui.off");
                 }));
             cy += BTN_H + SH * 2f;
 
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "Parameter increments", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "ui.parameter_increments", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
 
             // on/off toggle
             float tbw = 70f * UIScale.S;
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w - tbw - PAD, BTN_H), "Override editor steps", FS_SM, WHITE, TextAnchor.MiddleLeft);
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w - tbw - PAD, BTN_H), "ui.override_editor_steps", FS_SM, WHITE, TextAnchor.MiddleLeft);
             bool on = CreativeIncrements.Enabled;
             _incToggle = UGUIShip.CreateButton(root.transform, new Rect(PAD + w - tbw, cy, tbw, BTN_H),
-                on ? "ON" : "OFF", on ? BTN_GREEN : BTN_DARK, WHITE, FS_SM, new Action(() =>
+                on ? "ui.on" : "ui.off", on ? BTN_GREEN : BTN_DARK, WHITE, FS_SM, new Action(() =>
                 {
                     bool next = !CreativeIncrements.Enabled;
                     CreativeIncrements.Enabled = next;
                     UGUIShip.SetButtonSelected(_incToggle, next, BTN_GREEN);
                     var lbl = _incToggle.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = next ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, next ? "ui.on" : "ui.off");
                 }));
             cy += BTN_H + SH * 2f;
 
@@ -445,9 +446,9 @@ namespace BetterFG.UI.Tabs
             float incH = BTN_H * 0.82f;
 
             // min / increment / max across
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, thirdW, rh), "Min", FS_SM, new Color(1f, 1f, 1f, 0.72f));
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD + (thirdW + PAD), cy, thirdW, rh), "Increment", FS_SM, new Color(1f, 1f, 1f, 0.72f));
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD + (thirdW + PAD) * 2f, cy, thirdW, rh), "Max", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, thirdW, rh), "ui.min", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD + (thirdW + PAD), cy, thirdW, rh), "ui.increment", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD + (thirdW + PAD) * 2f, cy, thirdW, rh), "ui.max", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
 
             UGUIShip.CreateIncrement(root.transform, new Rect(PAD, cy, thirdW, incH),
@@ -462,7 +463,7 @@ namespace BetterFG.UI.Tabs
             cy += incH + SH * 2f;
 
             // increment speed = nav cooldown (lower = scrolls faster when held)
-            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "Increment speed (lower = faster)", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "ui.increment_speed_lower_faster", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;
 
             UGUIShip.CreateIncrement(root.transform, new Rect(PAD, cy, thirdW, incH),
@@ -471,7 +472,7 @@ namespace BetterFG.UI.Tabs
             cy += incH + SH;
 
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh * 2f),
-                "reopen a parameter menu to apply. generates 0 to max in your step.", FS_SM, HINT);
+                "ui.reopen_a_parameter_menu_to_apply_generates_0_to", FS_SM, HINT);
         }
 
     }

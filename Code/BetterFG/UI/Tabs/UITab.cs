@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,6 +11,7 @@ namespace BetterFG.UI.Tabs
         public UITab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "User Interface";
+        protected override string TitleId => "ui.user_interface_2";
         protected override string BgResource => "BetterFG.assets.ui.tab.ui.png";
 
         internal static float subTabH => BTN_H * 0.9f;
@@ -74,11 +75,11 @@ namespace BetterFG.UI.Tabs
             _fgViewport = scrollRect.transform.Find("Viewport");
 
             _fgNoPreviewLabel = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, cy, w, FG_PREVIEW_H),
-                "no live preview for custom UI colours", FS_SM, HINT, TextAnchor.MiddleCenter);
+                "ui.no_live_preview_for_custom_ui_colours", FS_SM, HINT, TextAnchor.MiddleCenter);
             cy += FG_PREVIEW_H + SH;
 
             UGUIShip.CreateButton(contentRoot, new Rect(PAD, cy, w, BTN_H),
-                "Edit", BTN_DARK, WHITE, FS_SM, new Action(() => OpenForeground((UIForegroundKind)_fgIndex)));
+                "ui.edit", BTN_DARK, WHITE, FS_SM, new Action(() => OpenForeground((UIForegroundKind)_fgIndex)));
 
             RefreshForegroundPreview();
         }
@@ -86,7 +87,7 @@ namespace BetterFG.UI.Tabs
         void CycleForeground(int d)
         {
             _fgIndex = (_fgIndex + d + 6) % 6;
-            if (_fgCarouselLabel != null) _fgCarouselLabel.text = UIForegroundDetailTab.Label((UIForegroundKind)_fgIndex);
+            if (_fgCarouselLabel != null) UGUIShip.RelabelText(_fgCarouselLabel, UIForegroundDetailTab.Label((UIForegroundKind)_fgIndex));
             RefreshForegroundPreview();
         }
 

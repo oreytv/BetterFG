@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using FGClient;
@@ -22,7 +22,7 @@ namespace BetterFG.Tweaks
         public LobbyShowSearchTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "lobby_show_search";
-        public override string TweakLabel => "Show Select Search Bar";
+        public override string TweakLabel => "tweak.show_select_search_bar";
         public override bool DefaultEnabled => true;
 
         public static LobbyShowSearchTweak Instance { get; private set; }
@@ -133,7 +133,7 @@ namespace BetterFG.Tweaks
             bg.raycastTarget = true;
             _searchFieldRt = rt;
 
-            _placeholder = MakeLabel(go.transform, "Placeholder", "Search shows...", fontSource);
+            _placeholder = MakeLabel(go.transform, "Placeholder", "ui.search_shows", fontSource);
             _placeholder.color = new Color(1f, 1f, 1f, 0.35f);
 
             _searchText = MakeLabel(go.transform, "Text", "", fontSource);

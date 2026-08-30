@@ -28,16 +28,15 @@ namespace BetterFG.Tweaks
         public CreativeTypeValueTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "creative_type_value";
-        public override string TweakLabel => "Type Parameter Values";
+        public override string TweakLabel => "tweak.type_parameter_values";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip =>
-            "In the creative parameter menu, press Enter on a number to type an exact value. Enter or a click writes it, Escape cancels. Ignores the increment steps, so any number goes in.";
+        public override string TweakTooltip => "ui.in_the_creative_parameter_menu_press_enter_on_a";
 
         public static CreativeTypeValueTweak Instance { get; private set; }
         void Awake() => Instance = this;
 
-        private const string NumberPrompt = "Write a number";
-        private const string NamePrompt = "Write a name";
+        private const string NumberPrompt = "ui.write_a_number";
+        private const string NamePrompt = "ui.write_a_name";
         private const int NameLimit = 32;
 
         private ParameterNodeViewModelString _node;

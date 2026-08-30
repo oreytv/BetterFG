@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Services;
 using UnityEngine;
@@ -45,7 +45,7 @@ namespace BetterFG.UI.Tabs
         {
             ch.on = on;
             var lbl = ch.toggleBtn?.GetComponentInChildren<Text>();
-            if (lbl != null) lbl.text = on ? "ON" : "OFF";
+            if (lbl != null) UGUIShip.RelabelText(lbl, on ? "ui.on" : "ui.off");
             UGUIShip.SetButtonSelected(ch.toggleBtn, on, SEL_COLOR);
         }
 
@@ -80,62 +80,62 @@ namespace BetterFG.UI.Tabs
                 {
                     slots = new System.Collections.Generic.List<BannerSlotUI>
                     {
-                        MkSlot(C, "CYAN REPLACEMENT",  "menu.banner.qual.cyan",  0f,    0.78f, 1f),
-                        MkSlot(P, "PINK REPLACEMENT",  "menu.banner.qual.pink",  1f,    0.2f,  0.5f),
-                        MkSlot(B, "BLACK REPLACEMENT", "menu.banner.qual.black", 0.08f, 0.08f, 0.08f),
-                        MkSlot(W, "WHITE REPLACEMENT", "menu.banner.qual.white", 1f,    1f,    1f),
+                        MkSlot(C, "ui.cyan_replacement",  "menu.banner.qual.cyan",  0f,    0.78f, 1f),
+                        MkSlot(P, "ui.pink_replacement",  "menu.banner.qual.pink",  1f,    0.2f,  0.5f),
+                        MkSlot(B, "ui.black_replacement", "menu.banner.qual.black", 0.08f, 0.08f, 0.08f),
+                        MkSlot(W, "ui.white_replacement", "menu.banner.qual.white", 1f,    1f,    1f),
                     },
-                    highlight = MkSlot(W, "HIGHLIGHT REPLACEMENT", "menu.banner.qual.highlight", 1f, 1f, 1f),
+                    highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.qual.highlight", 1f, 1f, 1f),
                     enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_QUAL_ENABLED,
                 },
                 [UIForegroundKind.Eliminated] = new BannerDef
                 {
                     slots = new System.Collections.Generic.List<BannerSlotUI>
                     {
-                        MkSlot(C, "CYAN REPLACEMENT",  "menu.banner.elim.cyan",  0f,    0.78f, 1f),
-                        MkSlot(P, "PINK REPLACEMENT",  "menu.banner.elim.pink",  1f,    0.2f,  0.5f),
-                        MkSlot(B, "BLACK REPLACEMENT", "menu.banner.elim.black", 0.08f, 0.08f, 0.08f),
-                        MkSlot(W, "WHITE REPLACEMENT", "menu.banner.elim.white", 1f,    1f,    1f),
+                        MkSlot(C, "ui.cyan_replacement",  "menu.banner.elim.cyan",  0f,    0.78f, 1f),
+                        MkSlot(P, "ui.pink_replacement",  "menu.banner.elim.pink",  1f,    0.2f,  0.5f),
+                        MkSlot(B, "ui.black_replacement", "menu.banner.elim.black", 0.08f, 0.08f, 0.08f),
+                        MkSlot(W, "ui.white_replacement", "menu.banner.elim.white", 1f,    1f,    1f),
                     },
-                    highlight = MkSlot(W, "HIGHLIGHT REPLACEMENT", "menu.banner.elim.highlight", 1f, 1f, 1f),
+                    highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.elim.highlight", 1f, 1f, 1f),
                     enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_ELIM_ENABLED,
                 },
                 [UIForegroundKind.Winner] = new BannerDef
                 {
                     slots = new System.Collections.Generic.List<BannerSlotUI>
                     {
-                        MkSlot(Y, "YELLOW REPLACEMENT", "menu.banner.win.yellow", 1f,    0.85f, 0f),
-                        MkSlot(O, "ORANGE REPLACEMENT", "menu.banner.win.orange", 1f,    0.55f, 0.1f),
-                        MkSlot(W,  "WHITE REPLACEMENT", "menu.banner.win.white",  1f,    1f,    1f),
-                        MkSlot(BG, "BLACK REPLACEMENT", "menu.banner.win.black",  0.08f, 0.08f, 0.08f),
+                        MkSlot(Y, "ui.yellow_replacement", "menu.banner.win.yellow", 1f,    0.85f, 0f),
+                        MkSlot(O, "ui.orange_replacement", "menu.banner.win.orange", 1f,    0.55f, 0.1f),
+                        MkSlot(W,  "ui.white_replacement", "menu.banner.win.white",  1f,    1f,    1f),
+                        MkSlot(BG, "ui.black_replacement", "menu.banner.win.black",  0.08f, 0.08f, 0.08f),
                     },
-                    highlight = MkSlot(W, "HIGHLIGHT REPLACEMENT", "menu.banner.win.highlight", 1f, 1f, 1f),
+                    highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.win.highlight", 1f, 1f, 1f),
                     enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_WIN_ENABLED,
                 },
                 [UIForegroundKind.RoundOver] = new BannerDef
                 {
                     slots = new System.Collections.Generic.List<BannerSlotUI>
                     {
-                        MkSlot(BG, "BLACK REPLACEMENT", "menu.banner.round.black", 0.08f, 0.08f, 0.08f),
-                        MkSlot(P,  "PINK REPLACEMENT",  "menu.banner.round.pink",  1f,    0.2f,  0.5f),
-                        MkSlot(C,  "CYAN REPLACEMENT",  "menu.banner.round.blue",  0f,    0.78f, 1f),
-                        MkSlot(W,  "WHITE REPLACEMENT", "menu.banner.round.white", 1f,    1f,    1f),
+                        MkSlot(BG, "ui.black_replacement", "menu.banner.round.black", 0.08f, 0.08f, 0.08f),
+                        MkSlot(P,  "ui.pink_replacement",  "menu.banner.round.pink",  1f,    0.2f,  0.5f),
+                        MkSlot(C,  "ui.cyan_replacement",  "menu.banner.round.blue",  0f,    0.78f, 1f),
+                        MkSlot(W,  "ui.white_replacement", "menu.banner.round.white", 1f,    1f,    1f),
                     },
-                    highlight = MkSlot(W, "HIGHLIGHT REPLACEMENT", "menu.banner.round.highlight", 1f, 1f, 1f),
+                    highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.round.highlight", 1f, 1f, 1f),
                     enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_ROUND_ENABLED,
                 },
                 [UIForegroundKind.EliminatedSquad] = new BannerDef
                 {
                     slots = new System.Collections.Generic.List<BannerSlotUI>
                     {
-                        MkSlot(O,  "ORANGE REPLACEMENT", "menu.banner.squad.orange", 1f,    0.55f, 0.1f),
-                        MkSlot(BG, "BLACK REPLACEMENT",  "menu.banner.squad.black",  0.08f, 0.08f, 0.08f),
-                        MkSlot(P,  "PINK REPLACEMENT",   "menu.banner.squad.pink",   1f,    0.2f,  0.5f),
-                        MkSlot(C,  "CYAN REPLACEMENT",   "menu.banner.squad.blue",   0f,    0.78f, 1f),
-                        MkSlot(Y,  "YELLOW REPLACEMENT", "menu.banner.squad.yellow", 1f,    0.85f, 0f),
-                        MkSlot(W,  "WHITE REPLACEMENT",  "menu.banner.squad.white",  1f,    1f,    1f),
+                        MkSlot(O,  "ui.orange_replacement", "menu.banner.squad.orange", 1f,    0.55f, 0.1f),
+                        MkSlot(BG, "ui.black_replacement",  "menu.banner.squad.black",  0.08f, 0.08f, 0.08f),
+                        MkSlot(P,  "ui.pink_replacement",   "menu.banner.squad.pink",   1f,    0.2f,  0.5f),
+                        MkSlot(C,  "ui.cyan_replacement",   "menu.banner.squad.blue",   0f,    0.78f, 1f),
+                        MkSlot(Y,  "ui.yellow_replacement", "menu.banner.squad.yellow", 1f,    0.85f, 0f),
+                        MkSlot(W,  "ui.white_replacement",  "menu.banner.squad.white",  1f,    1f,    1f),
                     },
-                    highlight = MkSlot(W, "HIGHLIGHT REPLACEMENT", "menu.banner.squad.highlight", 1f, 1f, 1f),
+                    highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.squad.highlight", 1f, 1f, 1f),
                     enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_SQUAD_ENABLED,
                 },
             };
@@ -161,14 +161,14 @@ namespace BetterFG.UI.Tabs
             float fullSliderW = slidersW + toggleW + swatchW + PAD;
 
             def.enabledBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
-                def.enabled ? "CUSTOM COLOURS: ON" : "CUSTOM COLOURS: OFF",
+                def.enabled ? "ui.custom_colours_on_2" : "ui.custom_colours_off_2",
                 def.enabled ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     def.enabled = !def.enabled;
                     SettingsService.Set(def.enabledKey, def.enabled ? "true" : "false");
                     var lbl = def.enabledBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = def.enabled ? "CUSTOM COLOURS: ON" : "CUSTOM COLOURS: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, def.enabled ? "ui.custom_colours_on_2" : "ui.custom_colours_off_2");
                     UGUIShip.SetButtonSelected(def.enabledBtn, def.enabled, SEL_COLOR);
                     UpdateBannerPreviewColours();
                 }));
@@ -203,12 +203,12 @@ namespace BetterFG.UI.Tabs
             cy += LH + SH;
 
             ch.toggleBtn = UGUIShip.CreateButton(content, new Rect(x, cy, toggleW, BTN_H),
-                ch.on ? "ON" : "OFF", ch.on ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
+                ch.on ? "ui.on" : "ui.off", ch.on ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     ch.on = !ch.on;
                     var lbl = ch.toggleBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = ch.on ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, ch.on ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(ch.toggleBtn, ch.on, SEL_COLOR);
                     UpdateBannerPreviewColours();
                 }));

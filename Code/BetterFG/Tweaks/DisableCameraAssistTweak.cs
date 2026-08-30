@@ -11,7 +11,7 @@ namespace BetterFG.Tweaks
         public DisableCameraAssistTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "disable_camera_assist";
-        public override string TweakLabel => "Disable Camera Assist";
+        public override string TweakLabel => "tweak.disable_camera_assist";
         public override bool DefaultEnabled => false;
 
         public static DisableCameraAssistTweak Instance { get; private set; }

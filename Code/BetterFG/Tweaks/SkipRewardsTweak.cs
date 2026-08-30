@@ -22,7 +22,7 @@ namespace BetterFG.Tweaks
         public SkipRewardsTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "skip_rewards";
-        public override string TweakLabel => "Quick Skip Rewards Screen";
+        public override string TweakLabel => "tweak.quick_skip_rewards_screen";
         public override bool DefaultEnabled => false;
 
         public static SkipRewardsTweak Instance { get; private set; }
@@ -60,8 +60,8 @@ namespace BetterFG.Tweaks
         {
             new TweakSetting
             {
-                Label = "Do what after skip?",
-                Options = new[] { "Requeue", "Enter menu" },
+                Label = "ui.do_what_after_skip",
+                Options = new[] { "ui.requeue", "ui.enter_menu" },
                 Selected = () => RequeueMode ? 0 : 1,
                 OnPick = i => SettingsService.Set(RequeueKey, i == 0 ? "true" : "false")
             }

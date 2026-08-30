@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Tweaks;
 using UnityEngine;
@@ -15,7 +15,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 310f;
         protected override float WindowHeight => 340f;
-        protected override string WindowTitle => "Lobby Autokick";
+        protected override string WindowTitle => "ui.lobby_autokick";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg_2.png";
         protected override string BgHoverResourceName => "BetterFG.assets.ui.windows.generalbg_2_hover.png";
         protected override bool DraggableFromTitle => true;
@@ -111,13 +111,13 @@ namespace BetterFG.UI.Windows
 
             MakeLabel(contentRoot,
                 new Rect(PAD, y, w - 48f, BTN_H),
-                "Auto kick if name contains:",
+                "ui.auto_kick_if_name_contains",
                 FS_SM,
                 new Color(1f, 1f, 1f, 0.72f));
 
             UGUIShip.CreateButton(contentRoot,
                 new Rect(PAD + w - 42f, y, 42f, BTN_H),
-                "ADD",
+                "ui.add_2",
                 BTN_BLUE,
                 WHITE, FS_SM,
                 new Action(() =>
@@ -183,7 +183,7 @@ namespace BetterFG.UI.Windows
             le.flexibleWidth = 1f;
             UGUIShip.PaintStaticRowFill(rowGo, ROW_EVEN);
             MakeLabel(rowGo.transform, new Rect(5f, 0f, WindowWidth - PAD * 2f - 10f, ROW_H),
-                "No checks. Add one or hit default.", FS_SM, HINT);
+                "ui.no_checks_add_one_or_hit_default", FS_SM, HINT);
         }
 
         private void BuildCheckRow(RectTransform parent, int idx, Color bg)
@@ -200,7 +200,7 @@ namespace BetterFG.UI.Windows
             float pad = 5f;
             var field = UGUIShip.CreateInputField(rowGo.transform,
                 new Rect(0f, 0f, 10f, ROW_H),
-                "name contains...",
+                "ui.name_contains",
                 Color.clear,
                 WHITE,
                 FS_SM);

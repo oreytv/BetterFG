@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -261,7 +261,7 @@ namespace BetterFG.Features.Replay
             _doneBtn.gameObject.SetActive(true);
 
             _camEditHint = UGUIShip.CreateLabel(_canvas.transform, new Rect(0f, 12f, Screen.width, 26f),
-                "you're editing the camera keyframe's angle and position  ·  left click to confirm",
+                "ui.you_re_editing_the_camera_keyframe_s_angle_and_p",
                 UIScale.FS, Color.white, TextAnchor.MiddleCenter);
         }
 
@@ -270,28 +270,28 @@ namespace BetterFG.Features.Replay
             _pickKeyframe = kf;
             _pickLookTarget = lookTarget;
             StartPick(objects, allowed,
-                objects ? "click the object you want  ·  right click cancels" : "click the player you want  ·  right click cancels");
+                objects ? "ui.click_the_object_you_want_right_click_cancels" : "ui.click_the_player_you_want_right_click_cancels");
         }
 
         public void BeginPlayerPick(ReplayVisibilityKeyframe kf)
         {
             _pickVisKeyframe = kf;
             _pickList = kf.onlyPlayers;
-            StartPick(false, null, "click the player to add  ·  right click cancels", false);
+            StartPick(false, null, "ui.click_the_player_to_add_right_click_cancels", false);
         }
 
         public void BeginNamePick(ReplayVisibilityKeyframe kf)
         {
             _pickVisKeyframe = kf;
             _pickList = kf.nameOnlyPlayers;
-            StartPick(false, null, "click the player to add  ·  right click cancels", true);
+            StartPick(false, null, "ui.click_the_player_to_add_right_click_cancels", true);
         }
 
         public void BeginCrownPick(ReplayVisibilityKeyframe kf)
         {
             _pickVisKeyframe = kf;
             _pickList = kf.crownOnlyPlayers;
-            StartPick(false, null, "click the player to add  ·  right click cancels", true);
+            StartPick(false, null, "ui.click_the_player_to_add_right_click_cancels", true);
         }
 
         void StartPick(bool objects, List<int> allowed, string hint, bool visibleOnly = false)

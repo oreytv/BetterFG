@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using FGClient;
 using FGClient.UI.PrivateLobby;
 using HarmonyLib;
@@ -12,7 +12,7 @@ namespace BetterFG.Tweaks
         public SpectatorMusicTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "spectator_music";
-        public override string TweakLabel => "Spectator Music";
+        public override string TweakLabel => "tweak.spectator_music";
         public override bool DefaultEnabled => true;
 
         public static SpectatorMusicTweak Instance { get; private set; }

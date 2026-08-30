@@ -17,7 +17,7 @@ namespace BetterFG.Tweaks
         public KeepNametagsTweak(System.IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "keep_nametags";
-        public override string TweakLabel => "Keep nametags on qual screen";
+        public override string TweakLabel => "tweak.keep_nametags_on_qual_screen";
         public override bool DefaultEnabled => false;
 
         public static KeepNametagsTweak Instance { get; private set; }

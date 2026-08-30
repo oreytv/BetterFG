@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using BetterFG.Services;
@@ -155,9 +155,9 @@ namespace BetterFG.Features.Replay
             y += ROW + 6f;
 
             float bw = (_width - PAD * 3f) / 2f;
-            UGUIShip.CreateButton(_content, new Rect(PAD, y, bw, ROW + 4f), "Export",
+            UGUIShip.CreateButton(_content, new Rect(PAD, y, bw, ROW + 4f), "ui.export",
                 ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, _onExport);
-            UGUIShip.CreateButton(_content, new Rect(PAD * 2f + bw, y, bw, ROW + 4f), "Close",
+            UGUIShip.CreateButton(_content, new Rect(PAD * 2f + bw, y, bw, ROW + 4f), "ui.close_2",
                 ReplayWindowKit.BTN_DARK, Color.white, UIScale.FS_SM, new Action(Close));
             y += ROW + 4f;
 
@@ -239,7 +239,7 @@ namespace BetterFG.Features.Replay
 
         public void SetStatus(string text)
         {
-            if (_status != null) _status.text = text ?? "";
+            if (_status != null) UGUIShip.RelabelText(_status, text ?? "");
         }
 
         public void SetProgress(float t)
@@ -257,7 +257,7 @@ namespace BetterFG.Features.Replay
                 UGUIShip.SetButtonColor(_actionBtn, ReplayWindowKit.BTN_DARK);
                 _actionBtn.interactable = true;
             }
-            if (_actionLabel != null) _actionLabel.text = "Close";
+            if (_actionLabel != null) UGUIShip.RelabelText(_actionLabel, "ui.close_2");
         }
 
         void Rebuild()
@@ -278,7 +278,7 @@ namespace BetterFG.Features.Replay
             _barFillRt.GetComponent<Image>().raycastTarget = false;
             y += BAR_H + 8f;
 
-            _actionBtn = UGUIShip.CreateButton(_content, new Rect(PAD, y, WIDTH - PAD * 2f, ROW + 4f), "Cancel",
+            _actionBtn = UGUIShip.CreateButton(_content, new Rect(PAD, y, WIDTH - PAD * 2f, ROW + 4f), "ui.cancel",
                 ReplayWindowKit.BTN_RED, Color.white, UIScale.FS_SM, new Action(OnAction));
             _actionLabel = _actionBtn.GetComponentInChildren<Text>();
             y += ROW + 4f;
@@ -291,7 +291,7 @@ namespace BetterFG.Features.Replay
         {
             if (_done) { Close(); return; }
             _actionBtn.interactable = false;
-            if (_actionLabel != null) _actionLabel.text = "cancelling...";
+            if (_actionLabel != null) UGUIShip.RelabelText(_actionLabel, "ui.cancelling");
             _onCancel?.Invoke();
         }
     }

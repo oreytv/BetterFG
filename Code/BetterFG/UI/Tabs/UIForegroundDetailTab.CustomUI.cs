@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
 using UnityEngine;
@@ -60,16 +60,16 @@ namespace BetterFG.UI.Tabs
             _fgCyanAreaBg.color = new Color(_fgCyanR, _fgCyanG, _fgCyanB, 0.18f);
             _fgCyanAreaBg.raycastTarget = false;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "CYAN REPLACEMENT", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.cyan_replacement", FS_SM, HINT);
             cy += LH + SH;
 
             _btnCyanOn = UGUIShip.CreateButton(content, new Rect(x, cy, toggleW, BTN_H),
-                _fgCyanOn ? "ON" : "OFF", _fgCyanOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
+                _fgCyanOn ? "ui.on" : "ui.off", _fgCyanOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _fgCyanOn = !_fgCyanOn;
                     var lbl = _btnCyanOn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _fgCyanOn ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _fgCyanOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnCyanOn, _fgCyanOn, SEL_COLOR);
                 }));
 
@@ -100,16 +100,16 @@ namespace BetterFG.UI.Tabs
             _fgBlackAreaBg.color = new Color(_fgBlackR, _fgBlackG, _fgBlackB, 0.18f);
             _fgBlackAreaBg.raycastTarget = false;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "BLACK REPLACEMENT", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.black_replacement", FS_SM, HINT);
             cy += LH + SH;
 
             _btnBlackOn = UGUIShip.CreateButton(content, new Rect(x, cy, toggleW, BTN_H),
-                _fgBlackOn ? "ON" : "OFF", _fgBlackOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
+                _fgBlackOn ? "ui.on" : "ui.off", _fgBlackOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _fgBlackOn = !_fgBlackOn;
                     var lbl = _btnBlackOn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _fgBlackOn ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _fgBlackOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnBlackOn, _fgBlackOn, SEL_COLOR);
                 }));
 
@@ -140,16 +140,16 @@ namespace BetterFG.UI.Tabs
             _fgYellowAreaBg.color = new Color(_fgYellowR, _fgYellowG, _fgYellowB, 0.18f);
             _fgYellowAreaBg.raycastTarget = false;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "YELLOW REPLACEMENT", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.yellow_replacement", FS_SM, HINT);
             cy += LH + SH;
 
             _btnYellowOn = UGUIShip.CreateButton(content, new Rect(x, cy, toggleW, BTN_H),
-                _fgYellowOn ? "ON" : "OFF", _fgYellowOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
+                _fgYellowOn ? "ui.on" : "ui.off", _fgYellowOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _fgYellowOn = !_fgYellowOn;
                     var lbl = _btnYellowOn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _fgYellowOn ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _fgYellowOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnYellowOn, _fgYellowOn, SEL_COLOR);
                 }));
 
@@ -180,16 +180,16 @@ namespace BetterFG.UI.Tabs
             _fgBlueAreaBg.color = new Color(_fgBlueR, _fgBlueG, _fgBlueB, 0.18f);
             _fgBlueAreaBg.raycastTarget = false;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "BLUE REPLACEMENT", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.blue_replacement", FS_SM, HINT);
             cy += LH + SH;
 
             _btnBlueOn = UGUIShip.CreateButton(content, new Rect(x, cy, toggleW, BTN_H),
-                _fgBlueOn ? "ON" : "OFF", _fgBlueOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
+                _fgBlueOn ? "ui.on" : "ui.off", _fgBlueOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _fgBlueOn = !_fgBlueOn;
                     var lbl = _btnBlueOn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _fgBlueOn ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _fgBlueOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnBlueOn, _fgBlueOn, SEL_COLOR);
                 }));
 
@@ -220,16 +220,16 @@ namespace BetterFG.UI.Tabs
             _fgPinkAreaBg.color = new Color(_fgPinkR, _fgPinkG, _fgPinkB, 0.18f);
             _fgPinkAreaBg.raycastTarget = false;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PINK REPLACEMENT", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.pink_replacement", FS_SM, HINT);
             cy += LH + SH;
 
             _btnPinkOn = UGUIShip.CreateButton(content, new Rect(x, cy, toggleW, BTN_H),
-                _fgPinkOn ? "ON" : "OFF", _fgPinkOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
+                _fgPinkOn ? "ui.on" : "ui.off", _fgPinkOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _fgPinkOn = !_fgPinkOn;
                     var lbl = _btnPinkOn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _fgPinkOn ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _fgPinkOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnPinkOn, _fgPinkOn, SEL_COLOR);
                 }));
 
@@ -260,16 +260,16 @@ namespace BetterFG.UI.Tabs
             _fgOrangeAreaBg.color = new Color(_fgOrangeR, _fgOrangeG, _fgOrangeB, 0.18f);
             _fgOrangeAreaBg.raycastTarget = false;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ORANGE REPLACEMENT", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.orange_replacement", FS_SM, HINT);
             cy += LH + SH;
 
             _btnOrangeOn = UGUIShip.CreateButton(content, new Rect(x, cy, toggleW, BTN_H),
-                _fgOrangeOn ? "ON" : "OFF", _fgOrangeOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
+                _fgOrangeOn ? "ui.on" : "ui.off", _fgOrangeOn ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _fgOrangeOn = !_fgOrangeOn;
                     var lbl = _btnOrangeOn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _fgOrangeOn ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _fgOrangeOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnOrangeOn, _fgOrangeOn, SEL_COLOR);
                 }));
 

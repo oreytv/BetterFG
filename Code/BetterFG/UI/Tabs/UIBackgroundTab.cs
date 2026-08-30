@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
@@ -13,6 +13,7 @@ namespace BetterFG.UI.Tabs
         public UIBackgroundTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "UI - Background";
+        protected override string TitleId => "ui.ui_background";
 
         // set by UIPatternPickerTab's back link so returning from a pattern pick lands back on
         // whichever screen you were customising, instead of resetting to FallForce.
@@ -214,7 +215,7 @@ namespace BetterFG.UI.Tabs
                     _creativeSel = idx == creativeIdx;
                     if (!_fallingSel && !_creativeSel) _screenSel = screens[idx];
                     var lbl = screenDd?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = HeaderLabel();
+                    if (lbl != null) UGUIShip.RelabelText(lbl, HeaderLabel());
                     var headImg = screenDd?.transform.Find("HeaderImg")?.GetComponent<Image>();
                     if (headImg != null) headImg.sprite = HeaderSprite();
                     RebuildScreenBody();
@@ -243,13 +244,13 @@ namespace BetterFG.UI.Tabs
             by += 1f + PAD;
             float btnw = (w - PAD * 1.5f) / 4f;
             UGUIShip.CreateButton(parent, new Rect(PAD, by, btnw, BTN_H),
-                "Apply", BTN_APPLY, WHITE, FS_SM, new Action(() => { if (_creativeSel) OnCreativeApply(); else if (_fallingSel) OnFallingApply(); else OnScreenApply(); }));
+                "ui.apply", BTN_APPLY, WHITE, FS_SM, new Action(() => { if (_creativeSel) OnCreativeApply(); else if (_fallingSel) OnFallingApply(); else OnScreenApply(); }));
             UGUIShip.CreateButton(parent, new Rect(PAD + (btnw + PAD * 0.5f), by, btnw, BTN_H),
-                "Remove", BTN_REMOVE, WHITE, FS_SM, new Action(() => { if (_creativeSel) OnCreativeRemove(); else if (_fallingSel) OnFallingRemove(); else OnScreenRemove(); }));
+                "ui.remove_2", BTN_REMOVE, WHITE, FS_SM, new Action(() => { if (_creativeSel) OnCreativeRemove(); else if (_fallingSel) OnFallingRemove(); else OnScreenRemove(); }));
             UGUIShip.CreateButton(parent, new Rect(PAD + (btnw + PAD * 0.5f) * 2f, by, btnw, BTN_H),
-                "Enable All", BTN_ON, WHITE, FS_SM, new Action(() => SetScreenEnabled(true)));
+                "ui.enable_all", BTN_ON, WHITE, FS_SM, new Action(() => SetScreenEnabled(true)));
             UGUIShip.CreateButton(parent, new Rect(PAD + (btnw + PAD * 0.5f) * 3f, by, btnw, BTN_H),
-                "Disable All", BTN_REMOVE, WHITE, FS_SM, new Action(() => SetScreenEnabled(false)));
+                "ui.disable_all", BTN_REMOVE, WHITE, FS_SM, new Action(() => SetScreenEnabled(false)));
         }
 
         private void SetScreenEnabled(bool on)
@@ -321,7 +322,7 @@ namespace BetterFG.UI.Tabs
             if (_screenSubtab == 0)
             {
                 // top color
-                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "TOP COLOR", FS_SM, HINT);
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.top_color", FS_SM, HINT);
                 cy += LH + SH;
                 float topSwatchW = BTN_H, topSliderW = w - topSwatchW - PAD;
                 var topSwGo = new GameObject("TopSwatch");
@@ -336,7 +337,7 @@ namespace BetterFG.UI.Tabs
                     out _, out _, out _, Color.black);
 
                 // bottom color
-                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "BOTTOM COLOR", FS_SM, HINT);
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.bottom_color", FS_SM, HINT);
                 cy += LH + SH;
                 float botSwatchW = BTN_H, botSliderW = w - botSwatchW - PAD;
                 var botSwGo = new GameObject("BotSwatch");
@@ -354,7 +355,7 @@ namespace BetterFG.UI.Tabs
                 cy += 1f + PAD;
 
                 // shader (texture bake) params
-                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "GRADIENT SHAPE", FS_SM, HINT);
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.gradient_shape", FS_SM, HINT);
                 cy += LH + SH;
                 BuildSliderRaw(content, x, cy, w, "Bias", _scBias, -1f, 1f, v => { _scBias = v; RefreshScreenPreview(); }, 0f);
                 cy += LH + SH;
@@ -366,7 +367,7 @@ namespace BetterFG.UI.Tabs
                 bool hasPattern = _screenSel != ScreenBackgroundService.Screen.ShowSelector;
                 if (hasPattern)
                 {
-                    UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PATTERN", FS_SM, HINT);
+                    UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.pattern", FS_SM, HINT);
                     cy += LH + SH;
                     float patBtnW = BTN_H * 2.5f;
                     float patLblW = w - patBtnW - PAD;
@@ -374,7 +375,7 @@ namespace BetterFG.UI.Tabs
                         ScreenBackgroundService.PatternDisplayName(_scPattern),
                         FS_SM, HINT, TextAnchor.MiddleLeft);
                     UGUIShip.CreateButton(content, new Rect(x + patLblW + PAD, cy, patBtnW, BTN_H),
-                        "Browse", BTN_DARK, WHITE, FS_SM, new Action(() =>
+                        "ui.browse", BTN_DARK, WHITE, FS_SM, new Action(() =>
                         {
                             var t = BetterFGTabRegistry.NewTab<UIPatternPickerTab>();
                             t.Screen = _screenSel;
@@ -383,7 +384,7 @@ namespace BetterFG.UI.Tabs
                     cy += BTN_H + PAD;
                 }
 
-                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), hasPattern ? "PATTERN COLOR" : "CIRCLES COLOR", FS_SM, HINT);
+                UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), hasPattern ? "ui.pattern_color" : "ui.circles_color", FS_SM, HINT);
                 cy += LH + SH;
                 float patSwatchW = BTN_H, patSliderW = w - patSwatchW - PAD;
                 var swGo = new GameObject("PatternSwatch");
@@ -497,7 +498,7 @@ namespace BetterFG.UI.Tabs
                 _scPreviewDefaultCirclesColor = _scPreviewCircles.color;
 
             _scPreviewHintLabel = UGUIShip.CreateLabel(holderRt, new Rect(PAD, 0f, w - PAD * 2f, SCREEN_PREVIEW_H),
-                "haven't seen this screen's real default yet this session — visit it once, or turn custom colours on above to preview those instead",
+                "ui.haven_t_seen_this_screen_s_real_default_yet_this",
                 FS_SM, HINT, TextAnchor.MiddleCenter);
 
             RefreshScreenPreview();
@@ -729,13 +730,13 @@ namespace BetterFG.UI.Tabs
             float cy = PAD;
 
             _lbEnabledBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
-                _lbEnabled ? "Custom colours: ON" : "Custom colours: OFF", _lbEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
+                _lbEnabled ? "ui.custom_colours_on" : "ui.custom_colours_off", _lbEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _lbEnabled = !_lbEnabled;
                     SettingsService.Set(MenuCustomizationApplication.KEY_LOBBYBG_ENABLED, _lbEnabled ? "true" : "false");
                     var lbl = _lbEnabledBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _lbEnabled ? "Custom colours: ON" : "Custom colours: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _lbEnabled ? "ui.custom_colours_on" : "ui.custom_colours_off");
                     var img = _lbEnabledBtn?.GetComponent<Image>();
                     if (img != null) img.color = _lbEnabled ? BTN_ON : BTN_DARK;
                     ApplyFallingLive();
@@ -749,7 +750,7 @@ namespace BetterFG.UI.Tabs
             float lbSliderW = w - swatchW - PAD;
 
             // dark blue
-            UGUIShip.CreateLabel(content, new Rect(x, cy, lbSliderW, LH), "DARK BLUE", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, lbSliderW, LH), "ui.dark_blue", FS_SM, HINT);
             cy += LH + SH;
             var s0go = new GameObject("LbSwatch0");
             s0go.transform.SetParent(content, false);
@@ -765,7 +766,7 @@ namespace BetterFG.UI.Tabs
             cy += 1f + PAD;
 
             // med blue
-            UGUIShip.CreateLabel(content, new Rect(x, cy, lbSliderW, LH), "MED BLUE", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, lbSliderW, LH), "ui.med_blue", FS_SM, HINT);
             cy += LH + SH;
             var s1go = new GameObject("LbSwatch1");
             s1go.transform.SetParent(content, false);
@@ -781,7 +782,7 @@ namespace BetterFG.UI.Tabs
             cy += 1f + PAD;
 
             // light blue
-            UGUIShip.CreateLabel(content, new Rect(x, cy, lbSliderW, LH), "LIGHT BLUE", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, lbSliderW, LH), "ui.light_blue", FS_SM, HINT);
             cy += LH + SH;
             var s2go = new GameObject("LbSwatch2");
             s2go.transform.SetParent(content, false);
@@ -948,13 +949,13 @@ namespace BetterFG.UI.Tabs
             float cy = PAD;
 
             _crEnabledBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
-                _crEnabled ? "Custom colours: ON" : "Custom colours: OFF", _crEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
+                _crEnabled ? "ui.custom_colours_on" : "ui.custom_colours_off", _crEnabled ? BTN_ON : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _crEnabled = !_crEnabled;
                     SettingsService.Set(MenuCustomizationApplication.KEY_CREATIVE_ENABLED, _crEnabled ? "true" : "false");
                     var lbl = _crEnabledBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _crEnabled ? "Custom colours: ON" : "Custom colours: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _crEnabled ? "ui.custom_colours_on" : "ui.custom_colours_off");
                     var img = _crEnabledBtn?.GetComponent<Image>();
                     if (img != null) img.color = _crEnabled ? BTN_ON : BTN_DARK;
                     ApplyCreativeLive();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Pets;
 using BetterFG.Services;
@@ -14,6 +14,7 @@ namespace BetterFG.UI.Tabs
         public PetsTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Pets";
+        protected override string TitleId => "ui.pets";
         protected override string BgResource => "BetterFG.assets.ui.tab.petstab.png";
 
         static readonly Color BTN_DARK = UGUIShip.BTN_DARK;
@@ -80,7 +81,7 @@ namespace BetterFG.UI.Tabs
             if (Root == null) return;
             _previewImg = PetPreviewPanel.Build(Root, TabWidth, TabHeight, TITLE_H, SH, UIScale.S);
             _previewHint = UGUIShip.CreateLabel(_previewImg.transform.parent, new Rect(0f, 0f, PetPreviewPanel.Width * UIScale.S, PetPreviewPanel.Height * UIScale.S),
-                "select a pet", FS_SM, HINT, TextAnchor.MiddleCenter);
+                "ui.select_a_pet", FS_SM, HINT, TextAnchor.MiddleCenter);
             _previewImg.transform.parent.gameObject.SetActive(false);
         }
 
@@ -170,10 +171,10 @@ namespace BetterFG.UI.Tabs
                     new Rect(nameX, 0f, nameW, ROW_H), pet.name, FS_SM, WHITE, TextAnchor.MiddleLeft);
 
                 UGUIShip.CreateRowEndButton(rowBtn.transform, -(removeW + equipW + editW + 4f), editW, ROW_H,
-                    "edit", BTN_DARK, () => OpenWizard(idx));
+                    "ui.edit_2", BTN_DARK, () => OpenWizard(idx));
 
                 var equipBtn = UGUIShip.CreateRowEndButton(rowBtn.transform, -(removeW + equipW + 2f), equipW, ROW_H,
-                    "on", BTN_EQUIP, () => { PetService.Instance?.ToggleEquipped(petId); RefreshList(); });
+                    "ui.on_2", BTN_EQUIP, () => { PetService.Instance?.ToggleEquipped(petId); RefreshList(); });
 
                 UGUIShip.CreateRowEndButton(rowBtn.transform, -2f, removeW, ROW_H, "x", BTN_REMOVE,
                     () => { PetService.Instance?.RemovePet(petId); if (_selectedId == petId) _selectedId = null; RefreshList(); });
@@ -191,14 +192,14 @@ namespace BetterFG.UI.Tabs
             PaintRows();
 
             var addBtn = UGUIShip.CreateButton(_content, new Rect(0f, 0f, rowW, ROW_H),
-                "+ Create Pet", BTN_ADD, WHITE, FS, new Action(() => OpenWizard(-1)));
+                "ui.create_pet", BTN_ADD, WHITE, FS, new Action(() => OpenWizard(-1)));
             var addLe = addBtn.gameObject.AddComponent<LayoutElement>();
             addLe.preferredHeight = ROW_H;
             addLe.flexibleWidth = 1f;
 
             if (pets.Count == 0)
                 UGUIShip.CreateLabel(_content, new Rect(6f, 0f, TabWidth, ROW_H),
-                    "no pets yet - create one below", FS_SM, HINT);
+                    "ui.no_pets_yet_create_one_below", FS_SM, HINT);
         }
 
         void PaintRows()
@@ -210,7 +211,7 @@ namespace BetterFG.UI.Tabs
 
                 UGUIShip.PaintListRow(row.Row, i, row.Id == _selectedId);
                 UGUIShip.SetButtonColor(row.Equip, equipped ? BTN_EQUIP : BTN_DARK);
-                if (row.EquipLbl != null) row.EquipLbl.text = equipped ? "on" : "off";
+                if (row.EquipLbl != null) UGUIShip.RelabelText(row.EquipLbl, equipped ? "ui.on_2" : "ui.off_2");
                 if (row.Name != null) row.Name.color = equipped ? WHITE : DIM;
             }
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -227,7 +227,7 @@ namespace BetterFG.Customization.Player
             }
 
             // warm the cache with this cosmetic's mask, then stamp both slots from current state
-            yield return LoadCostumeMaskCoroutine(slot.option, "mask", r => { }).WrapToIl2Cpp();
+            yield return LoadCostumeMaskCoroutine(slot.option, "ui.mask", r => { }).WrapToIl2Cpp();
             RestampBeanMasks(bean);
             ApplyGameColourPatternToBean(bean);
 

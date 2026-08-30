@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -15,6 +15,7 @@ using Mediatonic.Tools.MVVM;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using BettrFG.uGUI;
 using PlayerUtils = FallGuysLib.Players.PlayerUtils;
 
 namespace BetterFG.Features.TimePlacement
@@ -24,16 +25,16 @@ namespace BetterFG.Features.TimePlacement
     // entries get filled in as players finish (HandlePlayerFinished patch lives in its own class).
     internal static class FeatureTimePlacement
     {
-        public static readonly BfgFeature feature = new BfgFeature("timeplacement", "In-game leaderboard", false, new List<FeatureSetting>
+        public static readonly BfgFeature feature = new BfgFeature("timeplacement", "ui.in_game_leaderboard", false, new List<FeatureSetting>
         {
             // also host the list under PlayingState so it's visible during live gameplay.
-            new FeatureSetting { id = "gameplay", label = "Show in gameplay", defaultOn = true },
+            new FeatureSetting { id = "gameplay", label = "ui.show_in_gameplay", defaultOn = true },
             // split squads of 3+ across two lines (two names top, rest below).
-            new FeatureSetting { id = "twolines", label = "Two lines for big squads", defaultOn = true },
+            new FeatureSetting { id = "twolines", label = "ui.two_lines_for_big_squads", defaultOn = true },
             // players the server flagged as disconnected read "DC" rather than being lumped in as OUT.
-            new FeatureSetting { id = "showdc", label = "Mark disconnects", defaultOn = true },
+            new FeatureSetting { id = "showdc", label = "ui.mark_disconnects", defaultOn = true },
             // players who hit the Explore skip button read "SKIPPED" rather than being lumped in as OUT.
-            new FeatureSetting { id = "showskip", label = "Mark skips", defaultOn = true },
+            new FeatureSetting { id = "showskip", label = "ui.mark_skips", defaultOn = true },
         },
         onOpen: () => OnToggled(),
         onClosed: () => OnToggled(),
@@ -45,42 +46,42 @@ namespace BetterFG.Features.TimePlacement
             new FeatureChoice
             {
                 id = "showmugshots",
-                label = "Show mugshots",
+                label = "ui.show_mugshots",
                 optionIds = new List<string> { "always", "never", "solos", "small" },
-                optionLabels = new List<string> { "Always", "Never", "Only in Solos", "Always, small" },
+                optionLabels = new List<string> { "ui.always", "ui.never", "ui.only_in_solos", "ui.always_small" },
                 defaultId = "always",
-                hint = "Bean portraits next to each name. Small draws a line-height mugshot at the start of the name and never widens the row.",
+                hint = "ui.bean_portraits_next_to_each_name_small_draws_a_l",
             },
             new FeatureChoice
             {
                 id = "showeliminated",
-                label = "Show eliminated players",
+                label = "ui.show_eliminated_players",
                 optionIds = new List<string> { "always", "survival", "never" },
-                optionLabels = new List<string> { "Always", "Only in Survival", "Never" },
+                optionLabels = new List<string> { "ui.always", "ui.only_in_survival", "ui.never" },
                 defaultId = "always",
             },
             new FeatureChoice
             {
                 id = "soloinsquad",
-                label = "Prefer per-player score over squads",
+                label = "ui.prefer_per_player_score_over_squads",
                 optionIds = new List<string> { "no", "yes" },
-                optionLabels = new List<string> { "No", "Yes" },
+                optionLabels = new List<string> { "ui.no", "ui.yes" },
                 defaultId = "no",
-                hint = "In squad rounds, show one row per player instead of combined squad scores.",
+                hint = "ui.in_squad_rounds_show_one_row_per_player_instead",
             },
             new FeatureChoice
             {
                 id = "rowbg",
-                label = "Row background",
+                label = "ui.row_background",
                 optionIds = new List<string> { "black", "white" },
-                optionLabels = new List<string> { "Black", "White" },
+                optionLabels = new List<string> { "ui.black", "ui.white" },
                 defaultId = "black",
-                hint = "Black rows are fully opaque; white rows are 20% opacity.",
+                hint = "ui.black_rows_are_fully_opaque_white_rows_are_20_op",
             },
         },
         ranges: new List<FeatureRange>
         {
-            new FeatureRange { id = "rowspacing", label = "Row spacing", min = -10f, max = 20f, step = 1f, defaultValue = 0f, hint = "Extra pixels between rows on top of the game's default." },
+            new FeatureRange { id = "rowspacing", label = "ui.row_spacing", min = -10f, max = 20f, step = 1f, defaultValue = 0f, hint = "ui.extra_pixels_between_rows_on_top_of_the_game_s_d" },
         });
 
         // "always" | "survival" | "never" — how the leaderboard treats eliminated players.
@@ -523,7 +524,7 @@ namespace BetterFG.Features.TimePlacement
                     var row = UnityEngine.Object.Instantiate(template, panel.transform);
                     PrepEntry(row);
                     var vm = row.GetComponent<SquadScoreEntryViewModel>();
-                    if (vm != null && vm._pointsLabel != null) vm._pointsLabel.text = "";
+                    if (vm != null && vm._pointsLabel != null) UGUIShip.RelabelText(vm._pointsLabel, "");
                     row.SetActive(false);
                     rows.Add(row);
                 }
@@ -729,7 +730,7 @@ namespace BetterFG.Features.TimePlacement
             tmp.richText = true;
             tmp.alignment = align;
             tmp.lineSpacing = -18f;     // gap between the two name lines (less negative = more space)
-            tmp.text = "";
+            UGUIShip.RelabelText(tmp, "");
 
             // anchor to the row's left-center and pin x by anchoredPosition (not localPosition) so
             // every row's columns line up regardless of the row's width/anchoring.

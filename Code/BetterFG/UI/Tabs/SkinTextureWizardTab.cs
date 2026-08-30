@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -35,20 +35,20 @@ namespace BetterFG.UI.Tabs
         private enum WizardStep { Costume, Material, Png, PropsPrompt, Name }
         protected override string[] StepTitles => new[]
         {
-            "Choose a skin",
-            "Choose the texture to change",
-            "Choose the texture to change to",
-            "Material properties (optional)",
-            "Name it"
+            "ui.choose_a_skin",
+            "ui.choose_the_texture_to_change",
+            "ui.choose_the_texture_to_change_to",
+            "ui.material_properties_optional",
+            "ui.name_it"
         };
 
         private static readonly (string id, string label)[] CATEGORIES = new[]
         {
-            (SkinTexCategory.Upper, "Upper"),
-            (SkinTexCategory.Lower, "Lower"),
-            (SkinTexCategory.Pattern, "Pattern"),
-            (SkinTexCategory.Colour, "Colour"),
-            (SkinTexCategory.Faceplate, "Faceplate"),
+            (SkinTexCategory.Upper, "ui.upper"),
+            (SkinTexCategory.Lower, "ui.lower"),
+            (SkinTexCategory.Pattern, "ui.pattern_2"),
+            (SkinTexCategory.Colour, "ui.colour_2"),
+            (SkinTexCategory.Faceplate, "ui.faceplate"),
         };
 
         private string _category = SkinTexCategory.Upper;
@@ -249,14 +249,14 @@ namespace BetterFG.UI.Tabs
 
             float fetchW = 60f * UIScale.S;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Search for the item you want to change", FS_SM, LABEL);
+                "ui.search_for_the_item_you_want_to_change", FS_SM, LABEL);
             cy += LH + SH;
 
             _searchField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w - fetchW - PAD, BTN_H),
-                "search by name", Color.black, WHITE, FS_SM);
+                "ui.search_by_name", Color.black, WHITE, FS_SM);
             _searchField.onEndEdit.AddListener(new Action<string>(v => OnFetch()));
             UGUIShip.CreateButton(root.transform, new Rect(PAD + w - fetchW, cy, fetchW, BTN_H),
-                "SEARCH", BTN_BLUE, WHITE, FS_SM, new Action(OnFetch));
+                "ui.search", BTN_BLUE, WHITE, FS_SM, new Action(OnFetch));
             cy += BTN_H + SH;
 
             var scroll = UGUIShip.CreateScrollView(root.transform, new Rect(PAD, cy, w, bodyH - cy - SH));
@@ -302,14 +302,13 @@ namespace BetterFG.UI.Tabs
 
         private void RefreshCategoryUi()
         {
-            if (_categoryLbl != null)
-                _categoryLbl.text = CATEGORIES[CategoryIndex(_category)].label;
+            if (_categoryLbl != null) UGUIShip.RelabelText(_categoryLbl, CATEGORIES[CategoryIndex(_category)].label);
         }
 
         private void OnFetch()
         {
             string filter = _searchField.text?.Trim() ?? "";
-            if (string.IsNullOrEmpty(filter)) { SetStatus("type a name first"); return; }
+            if (string.IsNullOrEmpty(filter)) { SetStatus("ui.type_a_name_first"); return; }
             StartCoroutine(FetchRoutine(filter).WrapToIl2Cpp());
         }
 
@@ -318,12 +317,12 @@ namespace BetterFG.UI.Tabs
             _results.Clear();
             _selectedResult = -1;
             RebuildResultRows();
-            SetStatus("searching...");
+            SetStatus("ui.searching");
 
             for (int i = 0; i < 2; i++) yield return null;
 
             var type = TypeFor(_category);
-            if (type == null) { SetStatus("unknown category"); yield break; }
+            if (type == null) { SetStatus("ui.unknown_category"); yield break; }
 
             Il2CppReferenceArray<UnityEngine.Object> raw = null;
             try { raw = Resources.FindObjectsOfTypeAll(type); }
@@ -443,7 +442,7 @@ namespace BetterFG.UI.Tabs
             {
                 SkinPatternOption sp = null;
                 try { sp = option.TryCast<SkinPatternOption>(); } catch { }
-                if (sp == null) { _caching = false; SetStatus("that's not a pattern"); yield break; }
+                if (sp == null) { _caching = false; SetStatus("ui.that_s_not_a_pattern"); yield break; }
                 try { sp.LoadBlocking(); } catch { }
                 yield return null;
 
@@ -469,7 +468,7 @@ namespace BetterFG.UI.Tabs
             {
                 CostumeOption co = null;
                 try { co = option.TryCast<CostumeOption>(); } catch { }
-                if (co == null) { _caching = false; SetStatus("that's not a costume"); yield break; }
+                if (co == null) { _caching = false; SetStatus("ui.that_s_not_a_costume"); yield break; }
                 var op = co.costumePrefabReference.InstantiateAsync();
                 StartCoroutine(WaitForAsyncOp(op,
                     r => { instance = r; done = true; },
@@ -555,7 +554,7 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Pick the texture on the skin you want to replace", FS_SM, LABEL);
+                "ui.pick_the_texture_on_the_skin_you_want_to_replace", FS_SM, LABEL);
             cy += LH + SH;
 
             float listH = bodyH - cy - BTN_H - SH * 2f;
@@ -569,7 +568,7 @@ namespace BetterFG.UI.Tabs
             cy += listH + SH;
 
             UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "Download the selected texture as a PNG", BTN_DARK, WHITE, FS_SM, new Action(OnDownloadSelected));
+                "ui.download_the_selected_texture_as_a_png", BTN_DARK, WHITE, FS_SM, new Action(OnDownloadSelected));
         }
 
         private void RebuildMatRows()
@@ -588,7 +587,7 @@ namespace BetterFG.UI.Tabs
             if (_matNames.Count == 0)
             {
                 UGUIShip.CreateLabel(_matContent, new Rect(6f, 0f, TabWidth, ROW_H),
-                    "go back and pick something first", FS_SM, HINT);
+                    "ui.go_back_and_pick_something_first", FS_SM, HINT);
                 return;
             }
 
@@ -644,10 +643,10 @@ namespace BetterFG.UI.Tabs
 
         private void OnDownloadSelected()
         {
-            if (_matIdx < 0 || _matIdx >= _matNames.Count) { SetStatus("pick a texture first"); return; }
+            if (_matIdx < 0 || _matIdx >= _matNames.Count) { SetStatus("ui.pick_a_texture_first"); return; }
 
             var src = SkinApplicationService.ResolveSourceTexture(_mats, _matIdx, _matNames[_matIdx]);
-            if (src == null) { SetStatus("that texture isn't loaded right now"); return; }
+            if (src == null) { SetStatus("ui.that_texture_isn_t_loaded_right_now"); return; }
 
             string name = string.IsNullOrEmpty(src.name) ? "skin_texture" : src.name;
             foreach (var c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
@@ -666,14 +665,14 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "Pick the PNG to use instead", FS_SM, LABEL);
+                "ui.pick_the_png_to_use_instead", FS_SM, LABEL);
             cy += LH + SH;
 
             float browseW = 80f * UIScale.S;
             UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, browseW, BTN_H),
-                "BROWSE", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowsePng));
+                "ui.browse_2", BTN_BLUE, WHITE, FS_SM, new Action(OnBrowsePng));
             _pngPathLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD + browseW + PAD, cy, w - browseW - PAD, BTN_H),
-                "no file picked", FS_SM, HINT, TextAnchor.MiddleLeft);
+                "ui.no_file_picked", FS_SM, HINT, TextAnchor.MiddleLeft);
             cy += BTN_H + SH;
 
             float previewSz = Mathf.Min(bodyH - cy - SH, w);
@@ -706,7 +705,7 @@ namespace BetterFG.UI.Tabs
             cy += LH + SH;
 
             UGUIShip.CreateButton(root.transform, new Rect(PAD, cy, w, BTN_H),
-                SkinTexCategory.IsOptionField(_category) ? "Edit properties >" : "Tweak properties >",
+                SkinTexCategory.IsOptionField(_category) ? "ui.edit_properties" : "ui.tweak_properties",
                 BTN_BLUE, WHITE, FS_SM, new Action(OpenProps));
         }
 
@@ -716,7 +715,7 @@ namespace BetterFG.UI.Tabs
             {
                 if (string.IsNullOrEmpty(_costumeName)) { SetStatus("go back and pick a " + _category + " first"); return; }
             }
-            else if (_matNames.Count == 0) { SetStatus("go back and pick a skin first"); return; }
+            else if (_matNames.Count == 0) { SetStatus("ui.go_back_and_pick_a_skin_first"); return; }
 
             var props = BetterFGTabRegistry.NewTab<SkinTextureMaterialPropsTab>();
             props.EditIndex = EditIndex;
@@ -749,8 +748,7 @@ namespace BetterFG.UI.Tabs
 
         private void LoadPngPreview()
         {
-            if (_pngPathLbl != null)
-                _pngPathLbl.text = string.IsNullOrEmpty(_pngPath) ? "no file picked" : Path.GetFileName(_pngPath);
+            if (_pngPathLbl != null) UGUIShip.RelabelText(_pngPathLbl, string.IsNullOrEmpty(_pngPath) ? "no file picked" : Path.GetFileName(_pngPath));
             if (_pngPreview == null) return;
             if (string.IsNullOrEmpty(_pngPath) || !File.Exists(_pngPath))
             {
@@ -774,11 +772,11 @@ namespace BetterFG.UI.Tabs
         {
             float cy = SH;
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH),
-                "What should this override be called?", FS_SM, LABEL);
+                "ui.what_should_this_override_be_called", FS_SM, LABEL);
             cy += LH + SH;
 
             _nameField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w, BTN_H),
-                "my override", Color.black, WHITE, FS_SM);
+                "ui.my_override", Color.black, WHITE, FS_SM);
             cy += BTN_H + SH * 2f;
 
             _summaryLbl = UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, LH * 4f), "", FS_SM, HINT);
@@ -796,13 +794,13 @@ namespace BetterFG.UI.Tabs
         protected override bool Save()
         {
             string name = _nameField.text?.Trim() ?? "";
-            if (string.IsNullOrEmpty(name)) { SetStatus("give it a name first"); return false; }
+            if (string.IsNullOrEmpty(name)) { SetStatus("ui.give_it_a_name_first"); return false; }
 
             var entries = LoadTargetEntries();
             for (int i = 0; i < entries.Count; i++)
             {
                 if (i == EditIndex) continue;
-                if (entries[i].entryName == name) { SetStatus("you already have one called that"); return false; }
+                if (entries[i].entryName == name) { SetStatus("ui.you_already_have_one_called_that"); return false; }
             }
 
             bool editing = EditIndex >= 0 && EditIndex < entries.Count;

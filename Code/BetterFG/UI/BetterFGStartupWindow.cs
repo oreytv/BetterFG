@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Reflection;
 using BetterFG.Services;
@@ -162,7 +162,7 @@ namespace BetterFG.UI
 
             // Disclaimer text
             var t = UGUIShip.CreateFlowLabel(discGo.transform,
-                "Every single change in customization you make from this point onward\nwill be purely client-sided, and no one will see it.",
+                "ui.every_single_change_in_customization_you_make_fr",
                 FS_DISC, WHITE);
             t.alignment = TextAnchor.MiddleCenter;
             t.GetComponent<LayoutElement>().preferredHeight = DISC_H;
@@ -185,7 +185,7 @@ namespace BetterFG.UI
 
             UGUIShip.CreateButton(btnWrap.transform,
                 new Rect(0f, 0f, BTN_W, BTN_H),
-                "I understand.", BTN_COLOR, BTN_TEXT, FS_BTN,
+                "ui.i_understand", BTN_COLOR, BTN_TEXT, FS_BTN,
                 new Action(OnUnderstood));
         }
 

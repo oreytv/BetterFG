@@ -15,7 +15,7 @@ namespace BetterFG.Tweaks
         public DisableAntiAfkTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "disable_anti_afk";
-        public override string TweakLabel => "Disable Anti-AFK in Main Menu";
+        public override string TweakLabel => "tweak.disable_anti_afk_in_main_menu";
         public override bool DefaultEnabled => true;
 
         public override void EnableTweak() => ApplyForCurrentState();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Services;
 using BetterFG.Utilities;
@@ -130,11 +130,21 @@ namespace BetterFG.UI
 
         public virtual string TabTitle => "Tab";
 
+        // optional localization id for the DISPLAYED title. TabTitle itself must stay stable, plain
+        // English text forever — BetterFGTabRegistry uses it as the tab's exact-match identity key
+        // (registration, lookup, and what gets saved as "last open tab" in last.txt). this is a
+        // separate, purely cosmetic override so a title can be translated without ever touching identity.
+        protected virtual string TitleId => null;
+
+        // public read of the same override, for callers outside the Tab hierarchy (the switch-tab
+        // dropdown lists every registered tab's display name without instantiating a live tab).
+        public string TitleLocId => TitleId;
+
         public virtual Tab MakeFallbackTab() => null;
 
         protected virtual string TitleDisplay => TabTitle;
         private Text _titleLabel;
-        protected void RefreshTitle() => _titleLabel.text = TitleDisplay.ToUpper();
+        protected void RefreshTitle() => UGUIShip.RelabelText(_titleLabel, TitleId ?? TitleDisplay.ToUpper());
 
         protected virtual float TitleYOffset => 0f;
 
@@ -223,7 +233,7 @@ namespace BetterFG.UI
             titleRt.localRotation = Quaternion.Euler(22f, 345f, 0f);
             titleRt.localScale = new Vector3(1.2f, 1.3f, 1.3f);
 
-            var t = UGUIShip.CreateLabel(titleGo.transform, default, TitleDisplay.ToUpper(), UIScale.FS_TITLE,
+            var t = UGUIShip.CreateLabel(titleGo.transform, default, TitleId ?? TitleDisplay.ToUpper(), UIScale.FS_TITLE,
                 new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
             t.fontStyle = FontStyle.Bold;
             UGUIShip.Unstylize(t); // tab titles stay Arial
@@ -248,7 +258,7 @@ namespace BetterFG.UI
             hoverTint.Tab = this;
 
             int others = Mathf.Max(0, BetterFGTabRegistry.All.Count - BetterFGUIMan.MAX_SLOTS);
-            BetterFGUIMan.MakeObjectTooltip(titleRt, $"Right click to switch to another tab of {others} others", 0.12f);
+            BetterFGUIMan.MakeLocalizedObjectTooltip(titleRt, "ui.right_click_switch_tab_fmt", new object[] { others }, 0.12f);
 
             titleGo.AddComponent<Image>().color = Color.clear;
             var btn = titleGo.AddComponent<Button>();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Core;
 using BetterFG.Nametag;
 using BetterFG.Services;
@@ -17,7 +17,7 @@ namespace BetterFG.UI.Windows
         // exactly TweaksWindow's frame — same size, bg, title.
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
-        protected override string WindowTitle => "Player Details";
+        protected override string WindowTitle => "ui.player_details";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private const string KEY_ENABLED = "nametag.enabled";
@@ -60,7 +60,7 @@ namespace BetterFG.UI.Windows
 
             var filler = UGUIShip.CreateLabel(contentRoot,
                 new Rect(0f, 0f, WindowWidth, WindowHeight - TITLE_H),
-                "Idk what else to add here", 11, new Color(1f, 1f, 1f, 0.35f), TextAnchor.MiddleCenter);
+                "ui.idk_what_else_to_add_here", 11, new Color(1f, 1f, 1f, 0.35f), TextAnchor.MiddleCenter);
             var fillerRt = filler.GetComponent<RectTransform>();
             fillerRt.anchorMin = Vector2.zero;
             fillerRt.anchorMax = Vector2.one;
@@ -102,8 +102,8 @@ namespace BetterFG.UI.Windows
 
         public static void Build(RectTransform parent, PlayerdetailsWindow win)
         {
-            BuildHeader(parent, "CUSTOM NAME");
-            win.SetNameField(BuildRow(parent, ROW_EVEN, "Name", "leave empty to use real name",
+            BuildHeader(parent, "ui.custom_name");
+            win.SetNameField(BuildRow(parent, ROW_EVEN, "ui.name", "ui.leave_empty_to_use_real_name",
                 LocalPlayerInfo.CustomName, new Action<string>(win.ApplyName)));
         }
 
@@ -160,7 +160,7 @@ namespace BetterFG.UI.Windows
             btnRt.anchoredPosition = new Vector2(-PAD, 0f);
             btnRt.sizeDelta = new Vector2(BTN_W, CTRL_H);
             UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, BTN_W, CTRL_H),
-                "Apply", BTN_COL, Color.white, 9)
+                "ui.apply", BTN_COL, Color.white, 9)
                 .onClick.AddListener(new Action(() => onApply(field.text)));
 
             

@@ -12,6 +12,14 @@ namespace BettrFG.uGUI
 {
     public static partial class UGUIShip
     {
+        // InputField overload of RelabelText (Text overload lives in UGUIShip.Labels.cs) — some
+        // reassignment call sites target an InputField's own .text rather than a Text label.
+        public static void RelabelText(InputField field, string id)
+        {
+            if (field == null) return;
+            SetInputText(field, LocText(id), false);
+        }
+
         public static void SetInputText(InputField field, string value, bool notify = false)
         {
             if (field == null) return;
@@ -72,17 +80,18 @@ namespace BettrFG.uGUI
             phText.fontSize = fontSize;
             phText.color = new Color(tc.r, tc.g, tc.b, 0.4f);
             phText.fontStyle = FontStyle.Italic;
-            phText.text = placeholder;
+            phText.text = LocText(placeholder);
             phText.alignment = TextAnchor.MiddleLeft;
             phText.supportRichText = false;
             phText.raycastTarget = false;
             Stylize(phText); // safe here: placeholder isn't the live-edited text, so hiding it behind a TMP mirror doesn't break caret/selection
+            LocBind(phGo, placeholder);
 
             field.textComponent = textComp;
             field.placeholder = phText;
             SetInputText(field, "", false);
 
-            // auto: any field with "search" in its placeholder gets the magnifying-glass icon +
+            // auto: any field whose placeholder id mentions "search" gets the magnifying-glass icon +
             // left-pad shift. one place to maintain it; every search bar gets it for free.
             if (!string.IsNullOrEmpty(placeholder) &&
                 placeholder.IndexOf("search", StringComparison.OrdinalIgnoreCase) >= 0)

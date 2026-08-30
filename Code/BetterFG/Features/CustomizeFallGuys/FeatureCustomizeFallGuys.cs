@@ -17,25 +17,25 @@ namespace BetterFG.Features.CustomizeFallGuys
     {
         public static readonly BfgFeature feature = new BfgFeature(
             "customizefallguys",
-            "Customize Fall Guys",
+            "ui.customize_fall_guys",
             false,
             new List<FeatureSetting>
             {
-                new FeatureSetting { id = "blink", label = "Blinking", defaultOn = true },
-                new FeatureSetting { id = "look", label = "Look left and right", defaultOn = true },
-                new FeatureSetting { id = "squint", label = "Light squinting", defaultOn = false },
-                new FeatureSetting { id = "localonly", label = "Only my Fall Guy", defaultOn = false },
+                new FeatureSetting { id = "blink", label = "ui.blinking", defaultOn = true },
+                new FeatureSetting { id = "look", label = "ui.look_left_and_right", defaultOn = true },
+                new FeatureSetting { id = "squint", label = "ui.light_squinting", defaultOn = false },
+                new FeatureSetting { id = "localonly", label = "ui.only_my_fall_guy", defaultOn = false },
             },
             onOpen: OnToggled,
             onClosed: OnToggled,
             onSettingChanged: OnSettingChanged,
             ranges: new List<FeatureRange>
             {
-                new FeatureRange { id = "eyedist", label = "Eye distance", min = -0.1f, max = 0.12f, step = 0.01f, defaultValue = 0f, hint = "Pushes the eyes apart, or together. At -0.1 they nearly meet in the middle of the face." },
-                new FeatureRange { id = "eyeheight", label = "Eye height", min = -0.1f, max = 0.1f, step = 0.01f, defaultValue = 0f, hint = "Slides both eyes up or down the face." },
-                new FeatureRange { id = "eyerot", label = "Eye rotation", min = -45f, max = 45f, step = 1f, defaultValue = 0f, hint = "Tilts the two eyes in opposite directions, in degrees. 0 is stock." },
-                new FeatureRange { id = "eyescale", label = "Eye scale", min = 0.1f, max = 4f, step = 0.05f, defaultValue = 1f, hint = "Multiplies eye size. 1 is stock." },
-                new FeatureRange { id = "eyeyscale", label = "Eye Y scale", min = 0.1f, max = 4f, step = 0.05f, defaultValue = 1f, hint = "Height only, on top of eye scale. Low squashes the eyes into slits, high stretches them tall." },
+                new FeatureRange { id = "eyedist", label = "ui.eye_distance", min = -0.1f, max = 0.12f, step = 0.01f, defaultValue = 0f, hint = "ui.pushes_the_eyes_apart_or_together_at_0_1_they_ne" },
+                new FeatureRange { id = "eyeheight", label = "ui.eye_height", min = -0.1f, max = 0.1f, step = 0.01f, defaultValue = 0f, hint = "ui.slides_both_eyes_up_or_down_the_face" },
+                new FeatureRange { id = "eyerot", label = "ui.eye_rotation", min = -45f, max = 45f, step = 1f, defaultValue = 0f, hint = "ui.tilts_the_two_eyes_in_opposite_directions_in_deg" },
+                new FeatureRange { id = "eyescale", label = "ui.eye_scale", min = 0.1f, max = 4f, step = 0.05f, defaultValue = 1f, hint = "ui.multiplies_eye_size_1_is_stock" },
+                new FeatureRange { id = "eyeyscale", label = "ui.eye_y_scale", min = 0.1f, max = 4f, step = 0.05f, defaultValue = 1f, hint = "ui.height_only_on_top_of_eye_scale_low_squashes_the" },
             },
             onRangeChanged: OnRangeChanged,
             choices: new List<FeatureChoice>
@@ -43,11 +43,11 @@ namespace BetterFG.Features.CustomizeFallGuys
                 new FeatureChoice
                 {
                     id = "eyemat",
-                    label = "Eye material",
+                    label = "ui.eye_material",
                     optionIds = new List<string> { "none", "crownjam" },
-                    optionLabels = new List<string> { "None", "Crown Jam" },
+                    optionLabels = new List<string> { "ui.none_2", "ui.crown_jam" },
                     defaultId = "none",
-                    hint = "Draws a custom eye pass over the bean. Its tint follows that bean's faceplate eye colour.",
+                    hint = "ui.draws_a_custom_eye_pass_over_the_bean_its_tint_f",
                 },
             },
             onChoiceChanged: OnChoiceChanged);

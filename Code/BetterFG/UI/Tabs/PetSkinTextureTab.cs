@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Pets;
 using BetterFG.Customization.Player;
@@ -19,8 +19,9 @@ namespace BetterFG.UI.Tabs
         public PetSkinTextureTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Pet Skin Textures";
+        protected override string TitleId => "ui.pet_skin_textures";
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
-        protected override string SwitchLabel => "< Back";
+        protected override string SwitchLabel => "ui.back_3";
 
         public PetData Snapshot;
         public int EditIndexCarry = -1;
@@ -91,7 +92,7 @@ namespace BetterFG.UI.Tabs
 
             if (entries.Count == 0)
                 UGUIShip.CreateLabel(_entryContent, new Rect(6f, 0f, TabWidth, ROW_H),
-                    "no textures on this pet yet", FS_SM, HINT);
+                    "ui.no_textures_on_this_pet_yet", FS_SM, HINT);
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -126,16 +127,16 @@ namespace BetterFG.UI.Tabs
                     FS_SM, entry.enabled ? WHITE : DIM, TextAnchor.MiddleLeft);
 
                 UGUIShip.CreateRowEndButton(rowGo.transform, -(removeW + toggleW + editW + 4f), editW, ROW_H,
-                    "edit", BTN_DARK, () => OpenWizard(idx));
+                    "ui.edit_2", BTN_DARK, () => OpenWizard(idx));
 
                 UGUIShip.CreateRowEndButton(rowGo.transform, -(removeW + toggleW + 2f), toggleW, ROW_H,
-                    entry.enabled ? "on" : "off", entry.enabled ? BTN_APPLY : BTN_DARK, () => ToggleEntry(idx));
+                    entry.enabled ? "ui.on_2" : "ui.off_2", entry.enabled ? BTN_APPLY : BTN_DARK, () => ToggleEntry(idx));
 
                 UGUIShip.CreateRowEndButton(rowGo.transform, -2f, removeW, ROW_H, "x", BTN_REMOVE, () => RemoveEntry(idx));
             }
 
             var addBtn = UGUIShip.CreateButton(_entryContent, new Rect(0f, 0f, TabWidth - PAD * 2f - 8f, ROW_H),
-                "+ Add Texture", BTN_ADD, WHITE, FS, new Action(() => OpenWizard(-1)));
+                "ui.add_texture", BTN_ADD, WHITE, FS, new Action(() => OpenWizard(-1)));
             var addLe = addBtn.gameObject.AddComponent<LayoutElement>();
             addLe.preferredHeight = ROW_H;
             addLe.flexibleWidth = 1f;

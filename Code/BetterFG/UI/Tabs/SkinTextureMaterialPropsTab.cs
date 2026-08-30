@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
 using UnityEngine;
@@ -18,8 +18,9 @@ namespace BetterFG.UI.Tabs
         public SkinTextureMaterialPropsTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Skin Texture - Material Props";
+        protected override string TitleId => "ui.skin_texture_material_props";
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
-        protected override string SwitchLabel => "‹ back";
+        protected override string SwitchLabel => "ui.back_4";
 
         protected override Tab MakeSwitchTarget()
         {
@@ -68,7 +69,7 @@ namespace BetterFG.UI.Tabs
             float w = TabWidth - PAD * 2f;
             float y = VPAD;
 
-            UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), _isOptionField ? "Option" : "Material", FS_SM, LABEL);
+            UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), _isOptionField ? "ui.option" : "ui.material", FS_SM, LABEL);
             y += LH + SH;
 
             var areaGo = new GameObject("MatDropdownArea");
@@ -119,7 +120,7 @@ namespace BetterFG.UI.Tabs
 
         private void SetStatus(string msg)
         {
-            if (_statusLbl != null) _statusLbl.text = msg;
+            if (_statusLbl != null) UGUIShip.RelabelText(_statusLbl, msg);
         }
 
         private void RebuildMatDropdown()
@@ -144,7 +145,7 @@ namespace BetterFG.UI.Tabs
 
             if (_propMatIdx < 0 || _propMatIdx >= _distinctMats.Count)
             {
-                UGUIShip.CreateLabel(_propContent, new Rect(6f, 0f, RowW, ROW_H), "pick a material above", FS_SM, HINT);
+                UGUIShip.CreateLabel(_propContent, new Rect(6f, 0f, RowW, ROW_H), "ui.pick_a_material_above", FS_SM, HINT);
                 return;
             }
 
@@ -170,7 +171,7 @@ namespace BetterFG.UI.Tabs
 
             if (!any)
                 UGUIShip.CreateLabel(_propContent, new Rect(6f, 0f, RowW, ROW_H),
-                    "this material has no editable properties", FS_SM, HINT);
+                    "ui.this_material_has_no_editable_properties", FS_SM, HINT);
         }
 
         private void BuildOptionFieldRows()

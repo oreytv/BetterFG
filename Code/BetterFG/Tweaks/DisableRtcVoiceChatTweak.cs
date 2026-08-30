@@ -10,9 +10,9 @@ namespace BetterFG.Tweaks
         public DisableRtcVoiceChatTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "disable_rtc_voice_chat";
-        public override string TweakLabel => "Neutralize EOS voice-chat";
+        public override string TweakLabel => "tweak.neutralize_eos_voice_chat";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "This tweak is not recommended for most users. Enable this tweak if you want to prevent EOS from reloading audio devices that keep reconnecting due to a faulty cable, which can cause game freezes. Only enable if you don't use EOS voice-chat ever.";
+        public override string TweakTooltip => "ui.this_tweak_is_not_recommended_for_most_users_ena";
 
         private static MethodInfo _refreshHook;
         private static int _blocked;

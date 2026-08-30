@@ -13,7 +13,7 @@ namespace BetterFG.Tweaks
         public ShowTilePlaysTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "showtile_plays";
-        public override string TweakLabel => "Show Discovery play counts";
+        public override string TweakLabel => "tweak.show_discovery_play_counts";
         public override bool DefaultEnabled => true;
 
         public static ShowTilePlaysTweak Instance { get; private set; }

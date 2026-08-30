@@ -13,7 +13,7 @@ namespace BetterFG.Tweaks
         public ShadowDistanceTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "shadowDistance";
-        public override string TweakLabel => "Shadow distance";
+        public override string TweakLabel => "tweak.shadow_distance";
 
         private const string KEY = "tweak.shadowDistance.value";
         private const float DEFAULT_VAL = 60f;
@@ -64,7 +64,7 @@ namespace BetterFG.Tweaks
         public ShadowCustomResolutionTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "shadowCustomResolution";
-        public override string TweakLabel => "Shadow custom px";
+        public override string TweakLabel => "tweak.shadow_custom_px";
 
         private const string KEY = "tweak.shadowCustomResolution.value";
         private const int DEFAULT_VAL = 4096;
@@ -127,7 +127,7 @@ namespace BetterFG.Tweaks
         public ShadowCascadeSplitTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "shadowCascadeSplit";
-        public override string TweakLabel => "Cascade distances";
+        public override string TweakLabel => "tweak.cascade_distances";
 
         private const string KEY_NEAR = "tweak.shadowCascadeSplit.near";
         private const string KEY_MID = "tweak.shadowCascadeSplit.mid";

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,6 +11,7 @@ namespace BetterFG.UI.Tabs
         public UIScalingTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "UI - Scaling";
+        protected override string TitleId => "ui.ui_scaling";
 
         protected override void BuildContent(RectTransform contentRoot)
         {
@@ -40,15 +41,15 @@ namespace BetterFG.UI.Tabs
             float cy = PAD;
 
             // Edges
-            UGUIShip.CreateLabel(content, new Rect(x, cy, ew, LH), "EDGES", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, ew, LH), "ui.edges", FS_SM, HINT);
             cy += LH + SH;
 
             float btnW3 = (ew - PAD) / 3f;
-            _btnEdgeSoft = UGUIShip.CreateButton(content, new Rect(x, cy, btnW3, BTN_H), "Soft",
+            _btnEdgeSoft = UGUIShip.CreateButton(content, new Rect(x, cy, btnW3, BTN_H), "ui.soft",
                 _edgesIdx == 0 ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(() => SetEdges(0)));
-            _btnEdgeDefault = UGUIShip.CreateButton(content, new Rect(x + btnW3 + PAD * 0.5f, cy, btnW3, BTN_H), "Default",
+            _btnEdgeDefault = UGUIShip.CreateButton(content, new Rect(x + btnW3 + PAD * 0.5f, cy, btnW3, BTN_H), "ui.default",
                 _edgesIdx == 1 ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(() => SetEdges(1)));
-            _btnEdgeHard = UGUIShip.CreateButton(content, new Rect(x + (btnW3 + PAD * 0.5f) * 2f, cy, btnW3, BTN_H), "Hard",
+            _btnEdgeHard = UGUIShip.CreateButton(content, new Rect(x + (btnW3 + PAD * 0.5f) * 2f, cy, btnW3, BTN_H), "ui.hard",
                 _edgesIdx == 2 ? SEL_COLOR : BTN_DARK, WHITE, FS_SM, new Action(() => SetEdges(2)));
             cy += BTN_H + PAD;
 
@@ -63,7 +64,7 @@ namespace BetterFG.UI.Tabs
             float inputY = (BTN_H - inputH) * 0.5f;
 
             // ── Fall Guys UI scale ────────────────────────────────────────────────
-            UGUIShip.CreateLabel(content, new Rect(x, cy, ew, LH), "FALL GUYS UI SCALE", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, ew, LH), "ui.fall_guys_ui_scale", FS_SM, HINT);
             cy += LH + SH;
 
             const float scaleMin = 0.6f, scaleMax = 1.6f;
@@ -71,13 +72,13 @@ namespace BetterFG.UI.Tabs
 
             bool canvasOn = CanvasScaleEnabled;
             _btnCanvasScaleEnabled = UGUIShip.CreateButton(content, new Rect(x, cy, togW, BTN_H),
-                canvasOn ? "ON" : "OFF", canvasOn ? BTN_ON : BTN_DARK, WHITE, FS_SM,
+                canvasOn ? "ui.on" : "ui.off", canvasOn ? BTN_ON : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     bool on = !CanvasScaleEnabled;
                     SettingsService.Set(KEY_CANVAS_SCALE_ENABLED, on ? "true" : "false");
                     var lbl = _btnCanvasScaleEnabled?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = on ? "ON" : "OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, on ? "ui.on" : "ui.off");
                     var img = _btnCanvasScaleEnabled?.GetComponent<Image>();
                     if (img != null) img.color = on ? BTN_ON : BTN_DARK;
                     ApplyCanvasScale();
@@ -90,7 +91,7 @@ namespace BetterFG.UI.Tabs
                     float f = Mathf.Lerp(scaleMin, scaleMax, t);
                     _canvasScale = f;
                     SettingsService.Set(KEY_CANVAS_SCALE, f.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    if (_scaleInput != null) _scaleInput.text = f.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                    if (_scaleInput != null) UGUIShip.RelabelText(_scaleInput, f.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
                     ApplyCanvasScale();
                 }), reserveLabel: false, resetTo: Mathf.InverseLerp(scaleMin, scaleMax, 1.3333f));
 
@@ -106,7 +107,7 @@ namespace BetterFG.UI.Tabs
                     f = Mathf.Clamp(f, scaleMin, scaleMax);
                     _canvasScale = f;
                     SettingsService.Set(KEY_CANVAS_SCALE, f.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    if (_scaleInput != null) _scaleInput.text = f.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                    if (_scaleInput != null) UGUIShip.RelabelText(_scaleInput, f.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
                     ApplyCanvasScale();
                     if (_scaleSlider != null) _scaleSlider.value = Mathf.InverseLerp(scaleMin, scaleMax, f);
                 }

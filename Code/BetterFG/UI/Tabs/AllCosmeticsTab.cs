@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
 using BetterFG.Services;
@@ -14,6 +14,7 @@ namespace BetterFG.UI.Tabs
         public AllCosmeticsTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "All Cosmetics";
+        protected override string TitleId => "ui.all_cosmetics_2";
         protected override string BgResource => "BetterFG.assets.ui.tab.allcosm.png";
 
 
@@ -99,9 +100,9 @@ namespace BetterFG.UI.Tabs
 
             float halfW = (w - PAD * 0.5f) / 2f;
             UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, halfW, BTN_H),
-                "Remove Selected", BTN_DARK, WHITE, FS_SM, new Action(OnRemoveSelected));
+                "ui.remove_selected", BTN_DARK, WHITE, FS_SM, new Action(OnRemoveSelected));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + halfW + PAD * 0.5f, y, halfW, BTN_H),
-                "Remove All", BTN_REMOVE, WHITE, FS_SM, new Action(OnRemoveAll));
+                "ui.remove_all", BTN_REMOVE, WHITE, FS_SM, new Action(OnRemoveAll));
             y += BTN_H + 2f;
 
             _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), "", FS_SM, HINT, TextAnchor.MiddleCenter);
@@ -175,7 +176,7 @@ namespace BetterFG.UI.Tabs
                     FS_SM, WHITE, TextAnchor.MiddleLeft);
 
                 var toggleBtn = UGUIShip.CreateRowEndButton(rowBtn.transform, -(removeW + toggleW + 2f), toggleW, ROW_H,
-                    entry.enabled ? "on" : "off", entry.enabled ? BTN_APPLY : BTN_DARK, () => ToggleEntry(idx));
+                    entry.enabled ? "ui.on_2" : "ui.off_2", entry.enabled ? BTN_APPLY : BTN_DARK, () => ToggleEntry(idx));
 
                 UGUIShip.CreateRowEndButton(rowBtn.transform, -2f, removeW, ROW_H, "x", BTN_REMOVE, () => RemoveEntry(idx));
 
@@ -191,7 +192,7 @@ namespace BetterFG.UI.Tabs
             PaintRows();
 
             var addBtn = UGUIShip.CreateButton(_entryContent, new Rect(0f, 0f, TabWidth - PAD * 2f - 8f, ROW_H),
-                "+ Add Cosmetic", BTN_ADD, WHITE, FS, new Action(OpenWizard));
+                "ui.add_cosmetic", BTN_ADD, WHITE, FS, new Action(OpenWizard));
             var addLe = addBtn.gameObject.AddComponent<LayoutElement>();
             addLe.preferredHeight = ROW_H;
             addLe.flexibleWidth = 1f;
@@ -217,7 +218,7 @@ namespace BetterFG.UI.Tabs
                 UGUIShip.PaintListRow(row.Row, i, i == _selectedEntry);
 
                 UGUIShip.SetButtonColor(row.Toggle, entry.enabled ? BTN_APPLY : BTN_DARK);
-                row.ToggleLbl.text = entry.enabled ? "on" : "off";
+                UGUIShip.RelabelText(row.ToggleLbl, entry.enabled ? "ui.on_2" : "ui.off_2");
                 row.Name.color = entry.enabled ? WHITE : DIM;
             }
         }
@@ -255,7 +256,7 @@ namespace BetterFG.UI.Tabs
 
         private void OnRemoveSelected()
         {
-            if (_selectedEntry < 0 || _selectedEntry >= _entries.Count) { SetStatus("select an entry first"); return; }
+            if (_selectedEntry < 0 || _selectedEntry >= _entries.Count) { SetStatus("ui.select_an_entry_first"); return; }
             RemoveEntry(_selectedEntry);
         }
 
@@ -285,14 +286,14 @@ namespace BetterFG.UI.Tabs
             SkinApplicationService.SaveSavedGameCosmetics(new List<GameCosmeticEntry>());
             _selectedEntry = -1;
             RefreshEntryList();
-            SetStatus("removed all");
+            SetStatus("ui.removed_all");
         }
 
 
 
         public void SetStatus(string msg)
         {
-            if (_statusLbl != null) _statusLbl.text = msg;
+            if (_statusLbl != null) UGUIShip.RelabelText(_statusLbl, msg);
         }
     }
 }

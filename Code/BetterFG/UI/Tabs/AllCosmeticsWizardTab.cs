@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -17,17 +17,18 @@ namespace BetterFG.UI.Tabs
         public AllCosmeticsWizardTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "All Cosmetics - Add";
+        protected override string TitleId => "ui.all_cosmetics_add";
         protected override string BgResource => "BetterFG.assets.ui.tab.allcosm.png";
 
-        protected override string[] StepTitles => new[] { "Choose a cosmetic to add" };
+        protected override string[] StepTitles => new[] { "ui.choose_a_cosmetic_to_add" };
 
         private enum Category { Costume, Colour, Pattern, Faceplate }
         private static readonly (Category id, string label)[] CATEGORIES =
         {
-            (Category.Costume, "Costumes"),
-            (Category.Colour, "Colours"),
-            (Category.Pattern, "Patterns"),
-            (Category.Faceplate, "Faces"),
+            (Category.Costume, "ui.costumes"),
+            (Category.Colour, "ui.colours"),
+            (Category.Pattern, "ui.patterns"),
+            (Category.Faceplate, "ui.faces"),
         };
 
         private Category _category = Category.Costume;
@@ -60,10 +61,10 @@ namespace BetterFG.UI.Tabs
 
             float fetchW = 60f * UIScale.S;
             _searchField = UGUIShip.CreateInputField(root.transform, new Rect(PAD, cy, w - fetchW - PAD, BTN_H),
-                "search by name", Color.black, WHITE, FS_SM);
+                "ui.search_by_name", Color.black, WHITE, FS_SM);
             _searchField.onEndEdit.AddListener(new Action<string>(v => OnFetch()));
             UGUIShip.CreateButton(root.transform, new Rect(PAD + w - fetchW, cy, fetchW, BTN_H),
-                "SEARCH", BTN_BLUE, WHITE, FS_SM, new Action(OnFetch));
+                "ui.search", BTN_BLUE, WHITE, FS_SM, new Action(OnFetch));
             cy += BTN_H + SH;
 
             var scroll = UGUIShip.CreateScrollView(root.transform, new Rect(PAD, cy, w, bodyH - cy - SH));
@@ -107,7 +108,7 @@ namespace BetterFG.UI.Tabs
         {
             _results.Clear();
             RebuildResultRows();
-            SetStatus("fetching...");
+            SetStatus("ui.fetching_2");
             yield return null;
 
             var type = _category == Category.Colour ? Il2CppType.Of<ColourOption>()
@@ -116,7 +117,7 @@ namespace BetterFG.UI.Tabs
                 : Il2CppType.Of<CostumeOption>();
 
             var raw = Resources.FindObjectsOfTypeAll(type);
-            if (raw == null || raw.Length == 0) { SetStatus("none found"); yield break; }
+            if (raw == null || raw.Length == 0) { SetStatus("ui.none_found"); yield break; }
 
             for (int i = 0; i < raw.Length && _results.Count < 120; i++)
             {
@@ -147,7 +148,7 @@ namespace BetterFG.UI.Tabs
 
             if (_results.Count == 0)
             {
-                UGUIShip.CreateLabel(_resultContent, new Rect(6f, 0f, TabWidth, ROW_H), "search to find items", FS_SM, HINT);
+                UGUIShip.CreateLabel(_resultContent, new Rect(6f, 0f, TabWidth, ROW_H), "ui.search_to_find_items", FS_SM, HINT);
                 return;
             }
 
@@ -216,31 +217,31 @@ namespace BetterFG.UI.Tabs
         protected override bool Save()
         {
             var svc = SkinApplicationService.Instance;
-            if (svc == null) { SetStatus("SkinApplicationService not ready"); return false; }
+            if (svc == null) { SetStatus("ui.skinapplicationservice_not_ready"); return false; }
 
             if (_category == Category.Colour)
             {
                 var opt = FindResultById(_selectedSingleId);
-                if (opt == null) { SetStatus("pick a colour first"); return false; }
+                if (opt == null) { SetStatus("ui.pick_a_colour_first"); return false; }
                 svc.ApplyGameColour(opt.Cast<ColourOption>());
                 return true;
             }
             if (_category == Category.Pattern)
             {
                 var opt = FindResultById(_selectedSingleId);
-                if (opt == null) { SetStatus("pick a pattern first"); return false; }
+                if (opt == null) { SetStatus("ui.pick_a_pattern_first"); return false; }
                 svc.ApplyGamePattern(opt.Cast<SkinPatternOption>());
                 return true;
             }
             if (_category == Category.Faceplate)
             {
                 var opt = FindResultById(_selectedSingleId);
-                if (opt == null) { SetStatus("pick a faceplate first"); return false; }
+                if (opt == null) { SetStatus("ui.pick_a_faceplate_first"); return false; }
                 svc.ApplyGameFaceplate(opt.Cast<FaceplateOption>());
                 return true;
             }
 
-            if (_selectedCostumeIds.Count == 0) { SetStatus("pick a costume first"); return false; }
+            if (_selectedCostumeIds.Count == 0) { SetStatus("ui.pick_a_costume_first"); return false; }
 
             var combined = new List<CostumeOption>();
             var wantedIds = new HashSet<string>(_selectedCostumeIds);

@@ -10,9 +10,9 @@ namespace BetterFG.Tweaks
         public InstantLandingIndicatorTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "instant_landing_indicator";
-        public override string TweakLabel => "Instant Landing Indicator";
+        public override string TweakLabel => "tweak.instant_landing_indicator";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Credits to abab, original creator.";
+        public override string TweakTooltip => "ui.credits_to_abab_original_creator";
 
         public static InstantLandingIndicatorTweak Instance { get; private set; }
         void Awake() => Instance = this;

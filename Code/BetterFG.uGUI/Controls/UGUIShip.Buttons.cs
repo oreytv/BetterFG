@@ -326,12 +326,13 @@ namespace BettrFG.uGUI
             lblRt.anchorMax = Vector2.one;
             lblRt.offsetMin = lblRt.offsetMax = Vector2.zero;
             var t = lblGo.AddComponent<Text>();
-            t.text = label;
+            t.text = LocText(label);
             Stylize(t);
             t.fontSize = fontSize;
             t.color = textColor;
             t.alignment = TextAnchor.MiddleCenter;
             t.raycastTarget = false;
+            LocBind(lblGo, label);
 
             return btn;
         }

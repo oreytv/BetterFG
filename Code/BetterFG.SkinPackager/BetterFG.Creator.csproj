@@ -79,7 +79,7 @@
     <Compile Include="Maps\MapInfoJson.cs" />
     <Compile Include="Maps\BetterFGMapAsset.cs" />
     <Compile Include="Maps\BetterFGMapAssetEditor.cs" />
-    <Compile Include="Reference\ReferenceSpawner.cs" />
+    <Compile Include="Reference\ReferenceSpawner.cs" />
     <Compile Include="Reference\BaseRigAsset.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -102,13 +102,19 @@
   </ItemGroup>
   <Target Name="deploycreator" AfterTargets="Build" Condition="'$(SkipCreatorDeploy)' != 'true'">
     <PropertyGroup>
-      <CreatorDeploySilent Condition="'$(BuildingInsideVisualStudio)' != 'true' Or '$(NoCreatorPrompt)' == 'true' Or '$(DesignTimeBuild)' == 'true'">-Silent</CreatorDeploySilent>
+      <CreatorDeploySilent Condition="'$(NoCreatorPrompt)' == 'true' Or '$(DesignTimeBuild)' == 'true'">-Silent</CreatorDeploySilent>
     </PropertyGroup>
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -STA -File &quot;$(MSBuildProjectDirectory)\creator_deploy.ps1&quot; $(CreatorDeploySilent)" ConsoleToMSBuild="true" ContinueOnError="true" Condition="'$(CreatorDeployDir)' == ''">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -STA -File &quot;$(MSBuildProjectDirectory)\..\prompt_editor.ps1&quot; $(CreatorDeploySilent)" ConsoleToMSBuild="true" ContinueOnError="true" Condition="'$(CreatorDeployDir)' == ''">
       <Output TaskParameter="ConsoleOutput" ItemName="CreatorDeployRaw" />
     </Exec>
     <ItemGroup>
-      <CreatorDeployTarget Include="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').Substring(14))" Condition="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').StartsWith('CREATORDEPLOY:'))" />
+      <CreatorCopyFlag Include="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').Substring(11))" Condition="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').StartsWith('EDITORCOPY:'))" />
+    </ItemGroup>
+    <PropertyGroup>
+      <CreatorCopyVal>@(CreatorCopyFlag)</CreatorCopyVal>
+    </PropertyGroup>
+    <ItemGroup>
+      <CreatorDeployTarget Include="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').Substring(11))" Condition="$([System.String]::Copy('%(CreatorDeployRaw.Identity)').StartsWith('EDITORDEST:')) And '$(CreatorCopyVal)' == '1'" />
       <CreatorDeployTarget Include="$(CreatorDeployDir)" Condition="'$(CreatorDeployDir)' != ''" />
     </ItemGroup>
     <MakeDir Directories="@(CreatorDeployTarget)" Condition="'@(CreatorDeployTarget)' != ''" />

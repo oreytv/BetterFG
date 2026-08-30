@@ -12,6 +12,34 @@ namespace BettrFG.uGUI
 {
     public static partial class UGUIShip
     {
+        // every text-creating widget below takes `text` as a localization id, not literal display
+        // text — LocText resolves it through LocalizeGet and LocBind attaches the live-switch binding.
+        // an id that isn't in the table just renders as itself, so unkeyed/dynamic strings still work.
+        private static string LocText(string id) => LocalizeGet != null ? LocalizeGet(id) : id;
+
+        private static void LocBind(GameObject go, string id)
+        {
+            if (go == null || string.IsNullOrEmpty(id)) return;
+            BindLocalized?.Invoke(go, id);
+        }
+
+        // re-points an already-created Text at a new id (e.g. relabeling a stateful ON/OFF button)
+        // so it keeps tracking language switches instead of the binding going stale.
+        public static void RelabelText(Text t, string id)
+        {
+            if (t == null) return;
+            t.text = LocText(id);
+            LocBind(t.gameObject, id);
+        }
+
+        // TMP_Text overload — no live-switch binding (BfgLocalizedText targets UI.Text), just resolves
+        // the id once at call time. good enough for the handful of TMP labels that get relabeled.
+        public static void RelabelText(TMPro.TMP_Text t, string id)
+        {
+            if (t == null) return;
+            t.text = LocText(id);
+        }
+
         // �� Label �������������������������������������������������������������
         public static Text CreateLabel(Transform parent, Rect rect, string text,
             int fontSize = 14, Color? color = null, TextAnchor anchor = TextAnchor.MiddleLeft)
@@ -21,12 +49,13 @@ namespace BettrFG.uGUI
             SetPixelRect(go.AddComponent<RectTransform>(), rect);
 
             var t = go.AddComponent<Text>();
-            t.text = text;
+            t.text = LocText(text);
             Stylize(t);
             t.fontSize = fontSize;
             t.color = color ?? Color.white;
             t.alignment = anchor;
             t.raycastTarget = false;
+            LocBind(go, text);
             return t;
         }
 
@@ -61,7 +90,7 @@ namespace BettrFG.uGUI
             textRt.anchorMin = Vector2.zero; textRt.anchorMax = Vector2.one;
             textRt.offsetMin = textRt.offsetMax = Vector2.zero;
             var t = textGo.AddComponent<Text>();
-            t.text = text;
+            t.text = LocText(text);
             Stylize(t);
             t.fontSize = fontSize;
             t.color = link;
@@ -69,6 +98,7 @@ namespace BettrFG.uGUI
             t.fontStyle = FontStyle.Bold;
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.raycastTarget = false;
+            LocBind(textGo, text);
 
             var w = hitGo.AddComponent<LinkHover>();
             w.Text = t; w.Idle = link; w.Hover = hover;
@@ -87,12 +117,13 @@ namespace BettrFG.uGUI
             SetPixelRect(go.AddComponent<RectTransform>(), rect);
 
             var text = go.AddComponent<Text>();
-            text.text = label;
+            text.text = LocText(label);
             Stylize(text);
             text.fontSize = fontSize;
             text.color = idleColor;
             text.alignment = align;
             text.raycastTarget = true;
+            LocBind(go, label);
 
             var hover = go.AddComponent<LinkHover>();
             hover.Text = text;
@@ -162,11 +193,12 @@ namespace BettrFG.uGUI
             go.AddComponent<RectTransform>();
             var le = go.AddComponent<LayoutElement>();
             var t = go.AddComponent<Text>();
-            t.text = text;
+            t.text = LocText(text);
             Stylize(t);
             t.fontSize = fontSize;
             t.color = color;
             t.raycastTarget = false;
+            LocBind(go, text);
             if (multiline)
             {
                 // grow the rect downward to fit every wrapped line instead of clipping to one
@@ -193,12 +225,13 @@ namespace BettrFG.uGUI
             rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
             var t = go.AddComponent<Text>();
-            t.text = text;
+            t.text = LocText(text);
             Stylize(t);
             t.fontSize = fontSize;
             t.color = color;
             t.alignment = TextAnchor.MiddleCenter;
             t.raycastTarget = false;
+            LocBind(go, text);
             return t;
         }
     }

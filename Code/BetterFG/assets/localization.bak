@@ -1,0 +1,825 @@
+en
+tweak.2d_to_3d_background	2D To 3D Background
+tweak.allow_leaving_during_loading	Allow leaving during loading
+tweak.always_show_ingame_timer	Always Show Ingame Timer
+tweak.audio_settings_prompt_in_lobby	Audio Settings Prompt In Lobby
+tweak.better_sticker_selection	Better Sticker Selection
+tweak.bring_back_fall_guy_noises	Bring Back Fall Guy noises
+tweak.cascade_distances	Cascade distances
+tweak.creative_intro_cameras	Creative Intro Cameras
+tweak.custom_cursor	Custom Cursor
+tweak.custom_spectating	Custom Spectating
+tweak.custom_splash_logo	Custom Splash Logo
+tweak.custom_splash_screen	Custom Splash Screen
+tweak.customise_in_private_lobby	Customise In Private lobby
+tweak.disable_age_rating_popup	Disable Age Rating Popup
+tweak.disable_anti_afk_in_main_menu	Disable Anti-AFK in Main Menu
+tweak.disable_camera_assist	Disable Camera Assist
+tweak.disable_player_emoticons	Disable Player Emoticons
+tweak.disable_player_phrases	Disable Player Phrases
+tweak.disable_ranked_emoticons	Disable Ranked Emoticons
+tweak.dynamic_qual_screen	Dynamic Qual Screen
+tweak.fall_feed_qualification_time	Fall Feed Qualification Time
+tweak.hide_creator_code	Hide Creator Code
+tweak.hide_zone_speed_vfx	Hide Zone/Speed VFX
+tweak.immediate_respawn_button	Immediate Respawn Button
+tweak.instant_landing_indicator	Instant Landing Indicator
+tweak.keep_nametags_on_qual_screen	Keep nametags on qual screen
+tweak.lobby_autokick_bad_names	Lobby Autokick Bad Names
+tweak.matchmaking_queue_count	Matchmaking Queue Count
+tweak.max_fall_feed_notifications	Max Fall Feed Notifications
+tweak.multi_show_queue	Multi-Show Queue
+tweak.neutralize_eos_voice_chat	Neutralize EOS voice-chat
+tweak.notify_round_start	Notify round start
+tweak.quick_skip_rewards_screen	Quick Skip Rewards Screen
+tweak.quick_skip_victory_scene	Quick Skip Victory Scene
+tweak.refocus_game_press_c	Refocus game (press C)
+tweak.shadow_custom_px	Shadow custom px
+tweak.shadow_distance	Shadow distance
+tweak.show_discovery_play_counts	Show Discovery play counts
+tweak.show_level_description_on_pause	Show Level Description on Pause
+tweak.show_round_number_in_objective	Show round number in objective
+tweak.show_select_search_bar	Show Select Search Bar
+tweak.show_server_info	Show Server Info
+tweak.show_upcoming_shows	Show upcoming shows
+tweak.spectator_music	Spectator Music
+tweak.startup_title_screen	Startup Title Screen
+tweak.strip_rich_text_tags_anti_grief	Strip Rich Text Tags (anti-grief)
+tweak.type_parameter_values	Type Parameter Values
+tweak.unknown	Unknown
+tweak.warn_on_player_names	Warn On Player Names
+ui.1_turn_auto_record_rounds_on_in_the_replays_tab	1   turn Auto-record rounds ON in the Replays tab
+ui.2_play_this_level_then_open_its_replay	2   play this level, then open its replay
+ui.3_fly_the_camera_to_the_shot_you_want_then_hide	3   fly the camera to the shot you want, then hide the replay UI
+ui.3d_backgrounds	3D BACKGROUNDS
+ui.4_press_take_picture_top_right	4   press Take Picture, top right
+ui.aa	Aa
+ui.abg_123	Abg 123
+ui.accessories	Accessories
+ui.add	Add
+ui.add_2	ADD
+ui.add_background_image	+ Add Background Image
+ui.add_camera_keyframe	Add camera keyframe
+ui.add_cosmetic	+ Add Cosmetic
+ui.add_crown	+ Add crown
+ui.add_emote	+ Add Emote
+ui.add_emoticon	+ Add Emoticon
+ui.add_font_override	+ Add Font Override
+ui.add_name	+ Add name
+ui.add_phrase	+ Add Phrase
+ui.add_player	+ Add player
+ui.add_post_fx_keyframe	Add post fx keyframe
+ui.add_repositories	Add Repositories
+ui.add_texture	+ Add Texture
+ui.add_visibility_keyframe	Add visibility keyframe
+ui.added_repositories	Added repositories
+ui.adds_a_row_to_the_show_selector_for_scheduled_sh	Adds a row to the show selector for scheduled shows that haven't opened yet, like next week's LTMs.
+ui.all	All
+ui.all_cosmetics	All Cosmetics
+ui.all_cosmetics_2	ALL COSMETICS
+ui.all_cosmetics_add	ALL COSMETICS - ADD
+ui.all_of_them_are_already_linked	all of them are already linked
+ui.always	Always
+ui.always_show	Always show
+ui.always_small	Always, small
+ui.ambient_light	Ambient light
+ui.ambient_off	Ambient: OFF
+ui.ambient_on	Ambient: ON
+ui.amount	Amount
+ui.and_use_custom_skins	and use custom skins.
+ui.apply	Apply
+ui.apply_2	APPLY
+ui.apply_all	Apply All
+ui.apply_selected	Apply Selected
+ui.args	Args
+ui.ask_to_save_pb	Ask to save PB
+ui.attached_to	Attached to
+ui.audio_settings	AUDIO SETTINGS
+ui.auto_kick_if_name_contains	Auto kick if name contains:
+ui.auto_record_rounds	Auto-record rounds
+ui.back	< BACK
+ui.back_2	< back
+ui.back_3	< Back
+ui.back_4	‹ back
+ui.back_5	back
+ui.backdrop	Backdrop
+ui.backdrops	BACKDROPS
+ui.background	Background
+ui.background_gradient_and_pattern_moved_to_the_ui	Background gradient and pattern moved to the UI tab, under Background. Take me there
+ui.backing_image	Backing image
+ui.backing_off	Backing: OFF
+ui.backing_on	Backing: ON
+ui.backup	BACKUP
+ui.backup_last_txt	Backup last.txt
+ui.bad_link_need_a_github_link_to_a_rounds_round_xx	bad link — need a github link to a Rounds/round_xxx/info.json
+ui.bamboo	Bamboo
+ui.bannersstate	BannersState
+ui.basecolormap	_BaseColorMap
+ui.basemap	_BaseMap
+ui.batch_edit_multi_select	Batch edit (multi-select)
+ui.bean_portraits_next_to_each_name_small_draws_a_l	Bean portraits next to each name. Small draws a line-height mugshot at the start of the name and never widens the row.
+ui.betterfg	betterfg
+ui.betterfg_is_a_fall_guys_mod_made_with_the_ambiti	BetterFG is a Fall Guys mod made with the ambition
+ui.bettrfg	bettrfg
+ui.bettrfg_options	BETTRFG OPTIONS
+ui.bettrfg_ugc_customization_optional	BettrFG UGC Customization (optional)
+ui.bettrfg_ui	BettrFG UI
+ui.bettrfg_update_available	BettrFG update available
+ui.bfg_names	BFG_Names
+ui.bfg_pos	BFG_Pos
+ui.bfg_pts	BFG_Pts
+ui.bg_opacity	BG opacity
+ui.black	Black
+ui.black_replacement	BLACK REPLACEMENT
+ui.black_rows_are_fully_opaque_white_rows_are_20_op	Black rows are fully opaque; white rows are 20% opacity.
+ui.blinking	Blinking
+ui.bloom	Bloom
+ui.bloom_intensity	Bloom intensity
+ui.bloom_threshold	Bloom threshold
+ui.blue_replacement	BLUE REPLACEMENT
+ui.bold_italic	Bold / italic
+ui.bold_off	Bold: OFF
+ui.bold_on	Bold: ON
+ui.bottom_color	BOTTOM COLOR
+ui.browse	Browse
+ui.browse_2	BROWSE
+ui.browse_3	Browse...
+ui.bug_report	BUG REPORT
+ui.bundle	Bundle
+ui.c_path_to_info_json	C:\path\to\info.json
+ui.camera	Camera
+ui.cancel	Cancel
+ui.cancel_2	< CANCEL
+ui.cancelled	cancelled
+ui.cancelling	cancelling...
+ui.castle	Castle
+ui.catalog_isn_t_up_yet	Catalog isn't up yet.
+ui.cfg	CFG
+ui.change_nudge_amount_repeat_speed	change nudge amount/repeat speed →
+ui.choose_a_cosmetic_to_add	Choose a cosmetic to add
+ui.choose_a_skin	Choose a skin
+ui.choose_costume	Choose Costume
+ui.choose_look	Choose Look
+ui.choose_pet_look	CHOOSE PET LOOK
+ui.choose_the_game_font_to_replace	Choose the game font to replace
+ui.choose_the_texture_to_change	Choose the texture to change
+ui.choose_the_texture_to_change_to	Choose the texture to change to
+ui.chromatic_aberration	Chromatic aberration
+ui.cinematic	Cinematic
+ui.circles_color	CIRCLES COLOR
+ui.click	Click
+ui.click_the_object_you_want_right_click_cancels	click the object you want  ·  right click cancels
+ui.click_the_player_to_add_right_click_cancels	click the player to add  ·  right click cancels
+ui.click_the_player_you_want_right_click_cancels	click the player you want  ·  right click cancels
+ui.close	CLOSE
+ui.close_2	Close
+ui.close_the_side_wheel_first	Close the side wheel first
+ui.collision	collision:
+ui.colour	COLOUR
+ui.colour_2	Colour
+ui.colours	Colours
+ui.column	Column
+ui.configure	Configure
+ui.confirm	CONFIRM
+ui.confirm_shows_to_add_them_to_the_set_instead_of	Confirm shows to add them to the set instead of matchmaking, then hit the Start Queue prompt to queue for all of them at once.
+ui.contains	Contains
+ui.contrast	Contrast
+ui.controller	CONTROLLER
+ui.controls	Controls
+ui.copy	Copy
+ui.costumes	Costumes
+ui.cover_jpg	cover.jpg
+ui.cover_jpg_2	Cover.jpg
+ui.cover_png	cover.png
+ui.cover_png_2	Cover.png
+ui.create_pet	+ Create Pet
+ui.creative	CREATIVE
+ui.creative_custom_textures	CREATIVE - CUSTOM TEXTURES
+ui.creative_level	Creative level
+ui.creative_round	Creative round
+ui.credits_to_abab_original_creator	Credits to abab, original creator.
+ui.credits_to_floyzi_for_the_code	Credits to Floyzi for the code.
+credits.section_localization	Localization
+credits.desc_spanish	Spanish
+credits.desc_korean	Korean
+credits.desc_localization_editor	Localization editor
+credits.section_mod_testers	Mod Testers
+credits.section_scripting	Scripting
+credits.section_3d_modeling	3D Modeling
+credits.desc_all_cosmetics	All cosmetics, NPC/Pet/Bean spawning
+credits.desc_scrapyard_background	Scrapyard 3D background
+credits.desc_volcano_background	Volcano 3D background
+ui.crown_colour	CROWN COLOUR
+ui.crown_colours	Crown colours
+ui.crown_jam	Crown Jam
+ui.crown_rank	Crown rank
+ui.crown_rank_off	Crown rank: OFF
+ui.crown_rank_on	Crown rank: ON
+ui.crown_ranks	Crown ranks
+ui.crown_side_left	Crown side: LEFT
+ui.crown_side_right	Crown side: RIGHT
+ui.current	Current
+ui.cursor_speed	Cursor speed
+ui.custom	Custom
+ui.custom_camera_off	Custom camera: OFF
+ui.custom_camera_on	Custom camera: ON
+ui.custom_colours_off	Custom colours: OFF
+ui.custom_colours_off_2	CUSTOM COLOURS: OFF
+ui.custom_colours_on	Custom colours: ON
+ui.custom_colours_on_2	CUSTOM COLOURS: ON
+ui.custom_music	CUSTOM MUSIC
+ui.custom_name	CUSTOM NAME
+ui.custom_platform_icon	Custom platform icon
+ui.custom_platform_icon_local	CUSTOM PLATFORM ICON (local)
+ui.custom_song	Custom song
+ui.custom_textures	Custom textures
+ui.customization	CUSTOMIZATION
+ui.customize_fall_guys	Customize Fall Guys
+ui.cyan_replacement	CYAN REPLACEMENT
+ui.dark_blue	DARK BLUE
+ui.default	Default
+ui.del	DEL
+ui.delete	DELETE
+ui.delete_2	Delete
+ui.depth_of_field	Depth of field
+ui.description_set_save_your_level_and_it_ll_load_f	description set! save your level and it'll load for everyone who plays it
+ui.direction	Direction
+ui.disable_all	Disable All
+ui.disable_all_2	Disable all
+ui.disable_platform_icon	DISABLE PLATFORM ICON
+ui.discord	DISCORD
+ui.distance	Distance
+ui.do_what_after_skip	Do what after skip?
+ui.done	DONE
+ui.done_2	Done
+ui.dot	Dot
+ui.download_the_selected_texture_as_a_png	Download the selected texture as a PNG
+ui.downloading_emote_bundle	Downloading emote bundle...
+ui.draws_a_custom_eye_pass_over_the_bean_its_tint_f	Draws a custom eye pass over the bean. Its tint follows that bean's faceplate eye colour.
+ui.drop_profile_here	drop profile here →
+ui.drops_every_emoticon_anyone_plays_yours_included	Drops every emoticon anyone plays, yours included. No bubble above the bean, no sound, no fall feed entry.
+ui.drops_every_phrase_anyone_plays_yours_included_n	Drops every phrase anyone plays, yours included. No bubble above the bean, no sound, no fall feed entry.
+ui.duos	Duos
+ui.duos_2	__duos
+ui.duplicate	Duplicate
+ui.each_object_goes_through_the_editor_s_own_link_c	each object goes through the editor's own link check. anything this controller can't drive is skipped; once it hits its slot limit a copy of it is dropped in place to take the rest
+ui.easing	Easing
+ui.edges	EDGES
+ui.edit	Edit
+ui.edit_2	edit
+ui.edit_camera	Edit camera
+ui.edit_phrases	Edit Phrases >
+ui.edit_properties	Edit properties >
+ui.edit_skin_textures	Edit Skin Textures >
+ui.effects	Effects
+ui.emote_overrides_this_slot	Emote overrides this slot
+ui.emotes	Emotes
+ui.emoticons	Emoticons
+ui.enable_all	Enable All
+ui.enable_all_2	Enable all
+ui.enter_menu	Enter menu
+ui.enter_set_png_shift_save_png	Enter=set PNG, Shift=save PNG
+ui.entry_is_disabled	entry is disabled
+ui.every_single_change_in_customization_you_make_fr	Every single change in customization you make from this point onward\nwill be purely client-sided, and no one will see it.
+ui.everyone	Everyone
+ui.exactly	Exactly
+ui.exit	Exit
+ui.export	Export
+ui.export_2	EXPORT
+ui.export_my_setup_to_a_file	export my setup to a file
+ui.export_to_file	EXPORT TO FILE
+ui.exposure	Exposure
+ui.exposure_color	Exposure & color
+ui.extra_pixels_between_rows_on_top_of_the_game_s_d	Extra pixels between rows on top of the game's default.
+ui.eye_distance	Eye distance
+ui.eye_height	Eye height
+ui.eye_material	Eye material
+ui.eye_rotation	Eye rotation
+ui.eye_scale	Eye scale
+ui.eye_y_scale	Eye Y scale
+ui.f1_lock_unlock_cursor	F1 - lock/unlock cursor
+ui.faceplate	Faceplate
+ui.faces	Faces
+ui.fall_guys_ui_scale	FALL GUYS UI SCALE
+ui.fastest	Fastest
+ui.favorited	Favorited
+ui.favourited	Favourited
+ui.featured_repositories	Featured Repositories
+ui.features	FEATURES
+ui.fetch	Fetch
+ui.fetching	Fetching...
+ui.fetching_2	fetching...
+ui.filters	Filters
+ui.flag	Flag
+ui.font_replacement_off	FONT REPLACEMENT: OFF
+ui.font_replacement_on	FONT REPLACEMENT: ON
+ui.foreground	Foreground
+ui.fov	FOV
+ui.free_cam	Free-cam
+ui.game_mode	Game Mode
+ui.game_speed	Game speed
+ui.get	Get
+ui.get_the_installer	Get the installer
+ui.ghost	GHOST
+ui.ghost_nametag	Ghost nametag
+ui.ghost_run	Ghost run
+ui.ghost_run_to_show	Ghost run to show
+ui.ghosts	Ghosts
+ui.github_com	github.com/
+ui.give_it_a_name_first	give it a name first
+ui.give_your_pet_a_name_first	give your pet a name first
+ui.go_back_and_pick_a_skin_first	go back and pick a skin first
+ui.go_back_and_pick_something_first	go back and pick something first
+ui.gold	Gold
+ui.gold_rgb	Gold RGB
+ui.grabbable	grabbable:
+ui.gradient_shape	GRADIENT SHAPE
+ui.group_name	group name
+ui.grouped_objects_get_picked_dragged_and_undone_to	grouped objects get picked, dragged and undone together — click one and the rest come with it
+ui.hard	Hard
+ui.has_ghost	Has ghost
+ui.haven_t_seen_this_screen_s_real_default_yet_this	haven't seen this screen's real default yet this session — visit it once, or turn custom colours on above to preview those instead
+ui.heart	Heart
+ui.height_only_on_top_of_eye_scale_low_squashes_the	Height only, on top of eye scale. Low squashes the eyes into slits, high stretches them tall.
+ui.hex	HEX
+ui.hide_platform_icon	Hide platform icon
+ui.hide_the_replay_ui_then_hit_the_picture_prompt	hide the replay UI, then hit the picture prompt
+ui.highlight_colour	HIGHLIGHT COLOUR
+ui.highlight_replacement	HIGHLIGHT REPLACEMENT
+ui.hover	Hover
+ui.how_big_should_the_pet_be	How big should the pet be?
+ui.how_to_take_one	HOW TO TAKE ONE
+ui.https_github_com_author_repo	https://github.com/author/repo
+ui.i_understand	I understand.
+ui.icon	ICON
+ui.icon_source	Icon source
+ui.idk_what_else_to_add_here	Idk what else to add here
+ui.idle_opacity	Idle opacity
+ui.image	Image
+ui.images	Images →
+ui.import	Import
+ui.import_2	IMPORT
+ui.import_export	Import / Export
+ui.import_from_file	IMPORT FROM FILE
+ui.imported_skins	Imported Skins
+ui.in_a_round_this_only_works_when_you_re_solo_in_m	In a round this only works when you're solo, In main menu you'll scale anytime.
+ui.in_game	In-game →
+ui.in_game_cosmetics	In-Game Cosmetics
+ui.in_game_leaderboard	In-game leaderboard
+ui.in_squad_rounds_show_one_row_per_player_instead	In squad rounds, show one row per player instead of combined squad scores.
+ui.in_the_creative_parameter_menu_press_confirm_on	In the creative parameter menu, press confirm on the sticker row to browse every sticker in a grid with previews. Move the highlight to preview it live, confirm to keep, Back to cancel.
+ui.in_the_creative_parameter_menu_press_enter_on_a	In the creative parameter menu, press Enter on a number to type an exact value. Enter or a click writes it, Escape cancels. Ignores the increment steps, so any number goes in.
+ui.increment	Increment
+ui.increment_speed_lower_faster	Increment speed (lower = faster)
+ui.intensity	Intensity
+ui.interval_minutes	Interval (minutes)
+ui.invisible	INVISIBLE
+ui.italic_off	Italic: OFF
+ui.italic_on	Italic: ON
+ui.item_config	ITEM CONFIG
+ui.item_id_e_g_emoticon_wheel_happy_heart	item id (e.g. emoticon_wheel_happy_heart)
+ui.items	Items
+ui.jpg	.jpg
+ui.keyboard	KEYBOARD
+ui.language	LANGUAGE
+ui.leave_empty_to_use_real_name	leave empty to use real name
+ui.left_click	Left click
+ui.legacy_shaders_particles_additive	Legacy Shaders/Particles/Additive
+ui.level_description	LEVEL DESCRIPTION
+ui.level_import_export	LEVEL IMPORT / EXPORT
+ui.level_thumbnail	LEVEL THUMBNAIL
+ui.light_blue	LIGHT BLUE
+ui.light_squinting	Light squinting
+ui.lighting_lights_winter_dl_bl_rt_winter	LIGHTING/Lights_Winter/DL_BL_RT_Winter
+ui.lighting_reflection_probe	LIGHTING/Reflection_Probe
+ui.link	LINK
+ui.link_all	LINK ALL
+ui.lit	LIT
+ui.load	Load
+ui.load_2	LOAD
+ui.load_png	Load PNG
+ui.lobby_autokick	LOBBY AUTOKICK
+ui.local	[Local]
+ui.log	Log
+ui.look_at	Look at
+ui.look_at_offset	LOOK AT OFFSET
+ui.look_left_and_right	Look left and right
+ui.look_target	Look target
+ui.lower	Lower
+ui.main_menu	MAIN MENU
+ui.maintex	_MainTex
+ui.make	Make
+ui.make_safe_log_copies	Make safe log copies
+ui.mark_disconnects	Mark disconnects
+ui.mark_skips	Mark skips
+ui.mask	mask
+ui.master_volume	MASTER VOLUME
+ui.material	Material
+ui.material_properties_optional	Material properties (optional)
+ui.max	Max
+ui.max_notifications	Max notifications
+ui.max_tab_amount	Max tab amount
+ui.med_blue	MED BLUE
+ui.menu_music	MENU MUSIC
+ui.min	Min
+ui.mobile_particles_additive	Mobile/Particles/Additive
+ui.mode	Mode
+ui.mode_2	mode
+ui.more_platform_icons	More platform icons
+ui.multiplies_eye_size_1_is_stock	Multiplies eye size. 1 is stock.
+ui.my_background	my background
+ui.my_font_override	my font override
+ui.my_override	my override
+ui.name	Name
+ui.name_contains	name contains...
+ui.name_it	Name it
+ui.name_this_group	name this group
+ui.names	Names
+ui.nametag	NAMETAG
+ui.nametag_colour	NAMETAG - COLOUR
+ui.nametag_crown_rank	NAMETAG - CROWN RANK
+ui.nametag_icon	NAMETAG - ICON
+ui.nametag_nameplate	NAMETAG - NAMEPLATE
+ui.never	Never
+ui.new_group	new group
+ui.next	NEXT >
+ui.next_2	Next ›
+ui.nickname	nickname
+ui.nickname_off	Nickname: OFF
+ui.nickname_on	Nickname: ON
+ui.nickname_subtext	Nickname subtext
+ui.no	No
+ui.no_checks_add_one_or_hit_default	No checks. Add one or hit default.
+ui.no_costume_attached	No costume attached
+ui.no_file_picked	no file picked
+ui.no_img	No img
+ui.no_live_preview_for_custom_ui_colours	no live preview for custom UI colours
+ui.no_matches	no matches
+ui.no_movement_or_rotation_controller_in_the_select	no movement or rotation controller in the selection — multi-select one along with the objects it should drive
+ui.no_personal_bests_recorded_yet	no personal bests recorded yet
+ui.no_pets_yet_create_one_below	no pets yet - create one below
+ui.no_phrases_yet	no phrases yet
+ui.no_pictures_of_this_level_yet	NO PICTURES OF THIS LEVEL YET
+ui.no_pictures_yet	no pictures yet
+ui.no_placeable_textures_found_load_a_round_first	no placeable textures found — load a round first
+ui.no_plinths_in_this_repo_pick_another_above	No plinths in this repo. Pick another above.
+ui.no_preview	No Preview
+ui.no_results	no results
+ui.no_rules_add_one_to_get_warned	No rules. Add one to get warned.
+ui.no_sound	No sound
+ui.no_textures_on_this_pet_yet	no textures on this pet yet
+ui.none	none
+ui.none_2	None
+ui.none_3	NONE
+ui.none_found	none found
+ui.not_for_public_release	Not for public release
+ui.nothing_copied_go_to_customization_emotes_and_pr	Nothing copied. Go to Customization > Emotes and press Copy first.
+ui.nothing_here_yet	Nothing here yet.
+ui.nothing_in_the_library_yet_multi_select_some_obj	nothing in the library yet — multi-select some objects, give them a name and save. saved groups follow you into every level
+ui.nothing_recorded_yet	nothing recorded yet
+ui.featured_repositories_selected	Featured Repositories (selected)
+ui.imported_skins_selected	Imported Skins (selected)
+ui.repo_name_selected_fmt	{0} (selected)
+ui.no_repository	No repository
+ui.by_author_fmt	by {0}
+ui.nothing_selected_can_be_driven_by_this	nothing selected can be driven by this
+ui.nothing_selected_can_do_physics	nothing selected can do physics
+ui.objectname	ObjectName
+ui.objectsselectedtext	ObjectsSelectedText
+ui.obstacle_textures	OBSTACLE TEXTURES
+ui.obstacle_textures_enter_set_png_shift_save_png	Obstacle textures  (Enter=set PNG, Shift=save PNG)
+ui.of_enhancing_customization_by_letting_people_cre	of enhancing customization by letting people create
+ui.off	OFF
+ui.off_2	off
+ui.ok	OK
+ui.on	ON
+ui.on_2	on
+ui.only_affects_your_visual_hitboxes_stay_the_same	Only affects your visual.. hitboxes stay the same.
+ui.only_in_solos	Only in Solos
+ui.only_in_survival	Only in Survival
+ui.only_my_fall_guy	Only my Fall Guy
+ui.only_works_for_windows_notification_will_appear	Only works for Windows. Notification will appear when a round starts while you're tabbed out of the game, click it to jump back.
+ui.open_backup_folder	Open backup folder
+ui.open_file	Open file...
+ui.open_folder	Open folder
+ui.open_installer_and_close_game	Open installer and close game
+ui.open_the_in_game_menu_first_so_these_fonts_are_l	open the in-game menu first so these fonts are loaded
+ui.option	Option
+ui.optional_dress_the_pet_in_a_full_costume_from_yo	Optional: dress the pet in a full costume from your skin catalog instead of the base look.
+ui.optional_give_this_pet_its_own_texture_overrides	Optional: give this pet its own texture overrides.
+ui.optional_phrases_the_pet_pops_up_above_its_head	Optional: phrases the pet pops up above its head while it's out.
+ui.orange_replacement	ORANGE REPLACEMENT
+ui.outline_colour	OUTLINE COLOUR
+ui.outline_colour_2	Outline colour
+ui.override_editor_steps	Override editor steps
+ui.overrides_emoticon_on_this_slot	Overrides emoticon on this slot
+ui.parameter_increments	Parameter increments
+ui.particles_additive	Particles/Additive
+ui.paste	Paste
+ui.paste_the_github_link_to_your_level_s_info_json	paste the github link to your level's info.json
+ui.pasting	Pasting...
+ui.pattern	PATTERN
+ui.pattern_2	Pattern
+ui.pattern_color	PATTERN COLOR
+ui.patterns	Patterns
+ui.paused	paused
+ui.pb	PB --:--:---
+ui.pb_count_plural_fmt	{0} pbs
+ui.pb_count_singular_fmt	{0} pb
+ui.pbs_page_fmt	{0} pbs  ·  page {1}/{2}
+ui.pencil	Pencil
+ui.personal_bests	Personal Bests
+ui.personal_bests_2	PERSONAL BESTS
+ui.pet_name	pet name
+ui.pet_phrases	PET PHRASES
+ui.pet_skin_textures	PET SKIN TEXTURES
+ui.pets	PETS
+ui.pets_can_only_wear_a_costume	pets can only wear a Costume
+ui.phrase_text	phrase text...
+ui.phrases	Phrases
+ui.phrases_emoticons	Phrases & emoticons
+ui.phrases_optional	Phrases (optional)
+ui.physics	physics:
+ui.pick_a_colour_first	pick a colour first
+ui.pick_a_costume_first	pick a costume first
+ui.pick_a_faceplate_first	pick a faceplate first
+ui.pick_a_font_file_first	pick a font file first
+ui.pick_a_game_font_to_replace	pick a game font to replace
+ui.pick_a_material_above	pick a material above
+ui.pick_a_pattern_first	pick a pattern first
+ui.pick_a_png	pick a PNG...
+ui.pick_a_texture_first	pick a texture first
+ui.pick_the_font_file	Pick the font file
+ui.pick_the_font_file_to_use_ttf_otf	Pick the font file to use (.ttf / .otf)
+ui.pick_the_image	Pick the image
+ui.pick_the_image_to_use_as_a_background	Pick the image to use as a background
+ui.pick_the_png_to_use_instead	Pick the PNG to use instead
+ui.pick_the_texture_on_the_skin_you_want_to_replace	Pick the texture on the skin you want to replace
+ui.pink_replacement	PINK REPLACEMENT
+ui.player_count_plural_fmt	{0} players
+ui.player_count_singular	1 player
+ui.player_details	PLAYER DETAILS
+ui.player_name	player name...
+ui.player_name_warnings	PLAYER NAME WARNINGS
+ui.player_scale	PLAYER SCALE
+ui.players	Players
+ui.players_to_show	Players to show
+ui.playing	playing
+ui.playingstate	PlayingState
+ui.plinth_colour	PLINTH COLOUR
+ui.plinth_colour_off	Plinth colour: OFF
+ui.plinth_colour_on	Plinth colour: ON
+ui.plinth_removed	Plinth removed.
+ui.plinths	PLINTHS
+ui.plinths_ugc	PLINTHS - UGC
+ui.png	.png
+ui.position	POSITION
+ui.position_it	Position it
+ui.predefined_style	PREDEFINED STYLE
+ui.prefer_per_player_score_over_squads	Prefer per-player score over squads
+ui.preset_name	preset name…
+ui.preset_style	Preset style
+ui.presets	PRESETS
+ui.press_a_button	Press a button…
+ui.press_a_key	Press a key…
+ui.press_b_to_favorite_this_personal_best	Press B to favorite this personal best!
+ui.prev	‹ Prev
+ui.preview	Preview
+ui.private_lobby_player_list	Private lobby player list
+ui.profiles	PROFILES
+ui.pushes_the_eyes_apart_or_together_at_0_1_they_ne	Pushes the eyes apart, or together. At -0.1 they nearly meet in the middle of the face.
+ui.put_your_level_s_info_json_on_github_paste_the_l	Put your level's info.json on github, paste the link
+ui.radius	Radius
+ui.rainbow	Rainbow
+ui.raise_the_game_s_5_notification_limit_extra_ones	Raise the game's 5-notification limit. Extra ones still fade out on their own timer.
+ui.rank_text	RANK TEXT
+ui.rank_text_2	rank text
+ui.raw_githubusercontent_com	raw.githubusercontent.com/
+ui.reading_replays_fmt	reading replays...  {0}/{1}
+ui.recolour_off	Recolour: OFF
+ui.recolour_on	Recolour: ON
+ui.reflection_intensity	Reflection intensity
+ui.refresh	REFRESH
+ui.refresh_2	Refresh
+ui.remove	REMOVE
+ui.remove_2	Remove
+ui.remove_all	Remove All
+ui.remove_costume	Remove Costume
+ui.remove_selected	Remove Selected
+ui.removed_all	removed all
+ui.reopen_a_parameter_menu_to_apply_generates_0_to	reopen a parameter menu to apply. generates 0 to max in your step.
+ui.replace	REPLACE
+ui.replay_count_plural_fmt	{0} replays
+ui.replay_count_singular_fmt	{0} replay
+ui.replay_name	replay name...
+ui.replays	Replays →
+ui.replays_2	Replays
+ui.replays_3	REPLAYS
+ui.replays_images	REPLAYS - IMAGES
+ui.replays_page_fmt	{0} replays  ·  page {1}/{2}
+ui.repositories	REPOSITORIES
+ui.requeue	Requeue
+ui.reset	RESET
+ui.reset_2	Reset
+ui.revert_all	Revert All
+ui.reverted	reverted
+ui.rich_presence	Rich presence
+ui.right_click	Right click
+ui.right_click_switch_tab_fmt	Right click to switch to another tab of {0} others
+ui.rotation	ROTATION
+ui.round	round
+ui.round_info_json_path	Round info.json path
+ui.row_background	Row background
+ui.row_spacing	Row spacing
+ui.rrggbb	#RRGGBB
+ui.s0ext	s0Ext
+ui.s1ext	s1Ext
+ui.s2ext	s2Ext
+ui.saturation	Saturation
+ui.save	Save
+ui.save_2	SAVE
+ui.saved	Saved
+ui.scale	SCALE
+ui.scale_2	Scale
+ui.scroll_speed	Scroll speed
+ui.search	SEARCH
+ui.search_2	search...
+ui.search_by_name	search by name
+ui.search_for_the_item_you_want_to_change	Search for the item you want to change
+ui.search_options	search options...
+ui.search_personal_bests	search personal bests...
+ui.search_replays	search replays...
+ui.search_repositories	search repositories...
+ui.search_shows	Search shows...
+ui.search_to_find_items	search to find items
+ui.search_to_see_options	search to see options
+ui.search_tweaks	search tweaks...
+ui.searching	searching...
+ui.season_3	Season 3
+ui.season_4	Season 4
+ui.season_5	Season 5
+ui.season_6	Season 6
+ui.select	Select
+ui.select_a_pet	select a pet
+ui.select_an_entry_first	select an entry first
+ui.sensitivity	Sensitivity
+ui.set_level_description	SET LEVEL DESCRIPTION
+ui.set_surface_on_all_selected	set surface on all selected:
+ui.shake	Shake
+ui.sharpen	Sharpen
+ui.show_eliminated_players	Show eliminated players
+ui.show_existing_creative_objects	Show existing creative objects
+ui.show_favorite_button_on_qual	Show favorite button on qual
+ui.show_ghost_nametag_off	Show ghost nametag: OFF
+ui.show_ghost_nametag_on	Show ghost nametag: ON
+ui.show_in_gameplay	Show in gameplay
+ui.show_live_timer	Show live timer
+ui.show_mugshots	Show mugshots
+ui.show_pb_button_on_menu	Show PB button on menu
+ui.show_pb_during_play	Show PB during play
+ui.show_pb_on_load_screen	Show PB on load screen
+ui.show_pb_on_qual	Show PB on qual
+ui.show_star_count_in_menu	Show star count in menu
+ui.show_star_count_on_qual	Show star count on qual
+ui.shows_the_customiser_options_in_the_top_right_of	Shows the customiser options in the top right of a custom lobby, without the top bar.
+ui.skin_texture	SKIN TEXTURE
+ui.skin_texture_material_props	SKIN TEXTURE - MATERIAL PROPS
+ui.skin_texture_optional	Skin Texture (optional)
+ui.skinapplicationservice_not_ready	SkinApplicationService not ready
+ui.slides_both_eyes_up_or_down_the_face	Slides both eyes up or down the face.
+ui.slime	SLIME
+ui.slot_0_7	Slot (0-7)
+ui.social	SOCIAL
+ui.soft	Soft
+ui.solos	Solos
+ui.solos_2	__solos
+ui.sort	Sort
+ui.sort_by_date	Sort by date
+ui.sort_by_length	Sort by length
+ui.sort_by_name	Sort by name
+ui.sort_by_time	Sort by time
+ui.sound	Sound
+ui.sounds	SOUNDS
+ui.spectatorstate	SpectatorState
+ui.speed	Speed
+ui.sprites_default	Sprites/Default
+ui.squads	Squads
+ui.squads_2	__squads
+ui.ss2	SS2
+ui.ss3	SS3
+ui.ss4	SS4
+ui.star	Star
+ui.stars	Stars
+ui.start_exploring_ways_to_customize_yourself_with	Start exploring ways to customize yourself with the
+ui.sticker_lighting	sticker lighting:
+ui.stops_region_gated_korean_age_rating_compliance	Stops region-gated Korean age-rating/compliance screens from showing.
+ui.store_pbs	Store PBs
+ui.store_stars	Store stars
+ui.strength	Strength
+ui.style	STYLE
+ui.sun_override_off	Sun override: OFF
+ui.sun_override_on	Sun override: ON
+ui.swaps_the_flat_backdrop_of_a_creative_level_for	Swaps the flat backdrop of a creative level for a 3D one
+ui.switch_tab	SWITCH TAB
+ui.tab	TAB
+ui.tab_2	Tab
+ui.tab_hover_bg	TAB HOVER BG
+ui.tabs	TABS
+ui.tabs_at_the_bottom_of_the_screen	Tabs at the bottom of the screen.
+ui.take_the_camera_over_while_spectating_cinematic	Take the camera over while spectating. Cinematic auto-frames whoever you're watching and cuts to a new angle as they move; Free-cam hands you full manual control, mouse/keyboard or pad.
+ui.tap_to_nudge_hold_to_run_or_just_type_a_value	tap −/+ to nudge, hold to run, or just type a value
+ui.temperature	Temperature
+ui.tex	_Tex
+ui.text_colour	Text colour
+ui.texture	_Texture
+ui.textures	TEXTURES
+ui.that_s_not_a_costume	that's not a costume
+ui.that_s_not_a_pattern	that's not a pattern
+ui.that_texture_isn_t_loaded_right_now	that texture isn't loaded right now
+ui.the_picture_on_your_level_s_tile_in_game	the picture on your level's tile in-game
+ui.they_collect_in_replays_images_and_turn_up_here	they collect in Replays → Images, and turn up here next time you publish
+ui.this_material_has_no_editable_properties	this material has no editable properties
+ui.this_page_errored_check_the_log	this page errored, check the log
+ui.this_tweak_is_not_recommended_for_most_users_ena	This tweak is not recommended for most users. Enable this tweak if you want to prevent EOS from reloading audio devices that keep reconnecting due to a faulty cable, which can cause game freezes. Only enable if you don't use EOS voice-chat ever.
+ui.tilts_the_two_eyes_in_opposite_directions_in_deg	Tilts the two eyes in opposite directions, in degrees. 0 is stock.
+ui.time_attack	Time Attack
+ui.timeattack	__timeattack
+ui.timing	Timing
+ui.tint	Tint
+ui.toggle_bettrfg_ui	Toggle BettrFG UI
+ui.toggle_sidewheel	Toggle Sidewheel
+ui.tone_curve_colour_hints_at_temperature_tint	tone curve  ·  colour hints at temperature/tint
+ui.top_color	TOP COLOR
+ui.tracks	TRACKS
+ui.transition	Transition
+ui.trophy	Trophy
+ui.tweak_properties	Tweak properties >
+ui.tweaks	TWEAKS
+ui.two_lines_for_big_squads	Two lines for big squads
+ui.type_a_name_first	type a name first
+ui.ugc	UGC →
+ui.ugc_customization	UGC CUSTOMIZATION
+ui.ui	UI - 
+ui.ui_background	UI - BACKGROUND
+ui.ui_default	UI/Default
+ui.ui_font	UI - FONT
+ui.ui_pattern	UI - PATTERN
+ui.ui_scaling	UI - SCALING
+ui.unity_level	Unity level
+ui.unity_round	Unity Round
+ui.unity_round_2	Unity round
+ui.unity_round_loader	UNITY ROUND LOADER
+ui.universal_render_pipeline_unlit	Universal Render Pipeline/Unlit
+ui.unknown_category	unknown category
+ui.unlink	UNLINK
+ui.unlink_all	UNLINK ALL
+ui.unlit	UNLIT
+ui.unlit_texture	Unlit/Texture
+ui.unlit_transparent	Unlit/Transparent
+ui.unlitcolormap	_UnlitColorMap
+ui.unload	UNLOAD
+ui.unloaded	unloaded
+ui.upper	Upper
+ui.use	Use
+ui.use_the_editor_s_own_shot	USE THE EDITOR'S OWN SHOT
+ui.used	Used
+ui.user_interface	User Interface
+ui.user_interface_2	USER INTERFACE
+ui.vignette	Vignette
+ui.visibility	visibility:
+ui.visible	VISIBLE
+ui.volcano	Volcano
+ui.warn_if_a_player_s_name	Warn if a player's name:
+ui.weight	weight
+ui.welcome_to_betterfg	Welcome to BetterFG!
+ui.what_s_new	What's new:
+ui.what_s_your_pet_called	What's your pet called?
+ui.what_should_this_background_be_called	What should this background be called?
+ui.what_should_this_override_be_called	What should this override be called?
+ui.which_game_font_should_it_replace	Which game font should it replace?
+ui.which_timer_to_show	Which timer to show
+ui.white	White
+ui.white_replacement	WHITE REPLACEMENT
+ui.window	WINDOW
+ui.write_a_name	Write a name
+ui.write_a_number	Write a number
+ui.x_deletes	X deletes
+ui.yellow_replacement	YELLOW REPLACEMENT
+ui.yes	Yes
+ui.you_already_have_one_called_that	you already have one called that
+ui.you_are_not_in_creative_right_now	You are not in Creative right now....
+ui.you_re_editing_the_camera_keyframe_s_angle_and_p	you're editing the camera keyframe's angle and position  ·  left click to confirm
+ui.yourself	Yourself
+ui.lane_postfx	Post FX
+ui.lane_visibility	Visibility
+ui.camera_keyframe_fmt	Camera keyframe  ·  {0:D2}:{1:D2}.{2:D3}
+ui.postfx_keyframe_fmt	Post FX keyframe  ·  {0:D2}:{1:D2}.{2:D3}
+ui.visibility_keyframe_fmt	Visibility keyframe  ·  {0:D2}:{1:D2}.{2:D3}
+ui.shown	Shown
+ui.hidden	Hidden
+ui.auto_record_rounds_state_fmt	Auto-record rounds: {0}
+ui.replay_fps_warning	Unfortunately replays are very resource expensive. With this setting on, please beware of the giant FPS drop in certain levels.
+ui.background_images	Background Images
+ui.main_sun_rotation	Main Sun Rotation
+ui.bettrfg_credits	Bettrfg Credits
+ui.maxtabs	Maxtabs

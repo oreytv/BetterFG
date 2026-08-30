@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.UI;
 using UnityEngine;
 using UnityEngine.UI;
@@ -60,46 +60,46 @@ namespace BetterFG.Features.Replay
             _content = ReplayWindowKit.Content(_root);
 
             var stamp = TimeSpan.FromSeconds(_kf.time);
-            ReplayWindowKit.Title(_content, _width, string.Format("Post FX keyframe  ·  {0:D2}:{1:D2}.{2:D3}",
+            ReplayWindowKit.Title(_content, _width, BetterFG.Services.LocalizationService.Format("ui.postfx_keyframe_fmt",
                 stamp.Minutes, stamp.Seconds, stamp.Milliseconds), TITLE_POS);
 
             _y = ReplayWindowKit.HEAD + 4f;
             _row = 0;
 
-            Section("Exposure & color");
-            Line("Exposure", (_kf.exposure >= 0f ? "+" : "") + _kf.exposure.ToString("0.0") + " EV",
+            Section("ui.exposure_color");
+            Line("ui.exposure", (_kf.exposure >= 0f ? "+" : "") + _kf.exposure.ToString("0.0") + " EV",
                 () => StepExposure(-1), () => StepExposure(1));
-            Line("Contrast", Signed(_kf.contrast), () => StepContrast(-1), () => StepContrast(1));
-            Line("Saturation", Signed(_kf.saturation), () => StepSaturation(-1), () => StepSaturation(1));
-            Line("Temperature", Signed(_kf.temperature), () => StepTemperature(-1), () => StepTemperature(1));
-            Line("Tint", Signed(_kf.tint), () => StepTint(-1), () => StepTint(1));
+            Line("ui.contrast", Signed(_kf.contrast), () => StepContrast(-1), () => StepContrast(1));
+            Line("ui.saturation", Signed(_kf.saturation), () => StepSaturation(-1), () => StepSaturation(1));
+            Line("ui.temperature", Signed(_kf.temperature), () => StepTemperature(-1), () => StepTemperature(1));
+            Line("ui.tint", Signed(_kf.tint), () => StepTint(-1), () => StepTint(1));
 
-            Section("Effects");
-            Line("Vignette", Mathf.RoundToInt(_kf.vignette * 100f) + "%", () => StepVignette(-1), () => StepVignette(1));
-            Line("Chromatic aberration", Mathf.RoundToInt(_kf.chromaticAberration * 100f) + "%",
+            Section("ui.effects");
+            Line("ui.vignette", Mathf.RoundToInt(_kf.vignette * 100f) + "%", () => StepVignette(-1), () => StepVignette(1));
+            Line("ui.chromatic_aberration", Mathf.RoundToInt(_kf.chromaticAberration * 100f) + "%",
                 () => StepChroma(-1), () => StepChroma(1));
 
-            Section("Bloom");
-            Line("Bloom intensity", _kf.bloomIntensity.ToString("0.00"), () => StepBloomIntensity(-1), () => StepBloomIntensity(1));
-            Line("Bloom threshold", _kf.bloomThreshold.ToString("0.00"), () => StepBloomThreshold(-1), () => StepBloomThreshold(1));
+            Section("ui.bloom");
+            Line("ui.bloom_intensity", _kf.bloomIntensity.ToString("0.00"), () => StepBloomIntensity(-1), () => StepBloomIntensity(1));
+            Line("ui.bloom_threshold", _kf.bloomThreshold.ToString("0.00"), () => StepBloomThreshold(-1), () => StepBloomThreshold(1));
 
-            Section("Sharpen");
-            Line("Amount", _kf.sharpenAmount.ToString("0.00"), () => StepSharpenAmount(-1), () => StepSharpenAmount(1));
-            Line("Radius", _kf.sharpenRadius.ToString("0.00"), () => StepSharpenRadius(-1), () => StepSharpenRadius(1));
+            Section("ui.sharpen");
+            Line("ui.amount", _kf.sharpenAmount.ToString("0.00"), () => StepSharpenAmount(-1), () => StepSharpenAmount(1));
+            Line("ui.radius", _kf.sharpenRadius.ToString("0.00"), () => StepSharpenRadius(-1), () => StepSharpenRadius(1));
 
-            Section("Depth of field");
-            Line("Strength", Mathf.RoundToInt(_kf.dofStrength * 100f) + "%", () => StepDofStrength(-1), () => StepDofStrength(1));
-            Line("Distance", _kf.dofDistance.ToString("0.0") + " m", () => StepDofDistance(-1), () => StepDofDistance(1));
+            Section("ui.depth_of_field");
+            Line("ui.strength", Mathf.RoundToInt(_kf.dofStrength * 100f) + "%", () => StepDofStrength(-1), () => StepDofStrength(1));
+            Line("ui.distance", _kf.dofDistance.ToString("0.0") + " m", () => StepDofDistance(-1), () => StepDofDistance(1));
 
-            Section("Preview");
+            Section("ui.preview");
             UGUIShip.CreateLabel(_content, new Rect(PAD, _y, _width - PAD * 2f, 14f),
-                "tone curve  ·  colour hints at temperature/tint", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
+                "ui.tone_curve_colour_hints_at_temperature_tint", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
             _y += 16f;
             BuildGraph();
             _y += GRAPH_H + 6f;
 
             UGUIShip.CreateLabel(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW),
-                "X deletes", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
+                "ui.x_deletes", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
             _y += ROW;
 
             _root.sizeDelta = new Vector2(_width, _y + PAD);

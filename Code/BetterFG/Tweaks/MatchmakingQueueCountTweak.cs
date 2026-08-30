@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using FGClient;
@@ -12,7 +12,7 @@ namespace BetterFG.Tweaks
         public MatchmakingQueueCountTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "matchmaking_queue_count";
-        public override string TweakLabel => "Matchmaking Queue Count";
+        public override string TweakLabel => "tweak.matchmaking_queue_count";
         public override bool DefaultEnabled => true;
 
         public static MatchmakingQueueCountTweak Instance { get; private set; }

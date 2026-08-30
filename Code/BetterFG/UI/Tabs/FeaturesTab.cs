@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Features;
 using BetterFG.UI;
 using BetterFG.Utilities;
@@ -13,6 +13,7 @@ namespace BetterFG.UI.Tabs
         public FeaturesTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Features";
+        protected override string TitleId => "ui.features";
         protected override string BgResource => "BetterFG.assets.ui.tab.features.png";
 
         static readonly Color WHITE = UGUIShip.WHITE;
@@ -59,7 +60,7 @@ namespace BetterFG.UI.Tabs
                 {
                     var list = FeatureRegistry.all;
                     _selected = (_selected + step + list.Count) % list.Count;
-                    _carouselLabel.text = list[_selected].title;
+                    UGUIShip.RelabelText(_carouselLabel, list[_selected].title);
                     RefreshRows();
                 }), null, FS + 1);
 
@@ -111,7 +112,7 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(w - TOGGLE_W, HEADER_H - TOGGLE_H - PAD, TOGGLE_W, TOGGLE_H),
-                feature.enabled ? "ON" : "OFF",
+                feature.enabled ? "ui.on" : "ui.off",
                 feature.enabled ? ON : OFF,
                 WHITE, FS_SM,
                 new Action(() =>
@@ -202,7 +203,7 @@ namespace BetterFG.UI.Tabs
                     if (idx < 0 || idx >= choice.optionIds.Count) return;
                     feature.SetChoice(choice.id, choice.optionIds[idx]);
                     var lbl = ddBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = labels[idx];
+                    if (lbl != null) UGUIShip.RelabelText(lbl, labels[idx]);
                 }), FS_SM, ddW, 20f, true, true, true);
         }
 
@@ -314,7 +315,7 @@ namespace BetterFG.UI.Tabs
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD * 3f, 0f, w - INC_W - PAD * 4f, SETTING_H),
-                "Players to show",
+                "ui.players_to_show",
                 FS,
                 feature.enabled ? new Color(1f, 1f, 1f, 0.86f) : new Color(1f, 1f, 1f, 0.35f),
                 TextAnchor.MiddleLeft);
@@ -392,7 +393,7 @@ namespace BetterFG.UI.Tabs
             bool on = feature.GetRaw(setting.id);
             UGUIShip.CreateButton(rowGo.transform,
                 new Rect(w - TOGGLE_W, (SETTING_H - TOGGLE_H) * 0.5f, TOGGLE_W, TOGGLE_H),
-                on ? "ON" : "OFF",
+                on ? "ui.on" : "ui.off",
                 on ? ON : OFF,
                 WHITE, FS_SM,
                 new Action(() =>

@@ -8,9 +8,9 @@ namespace BetterFG.Tweaks
         public DisableAgeRatingPopupTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "disable_age_rating_popup";
-        public override string TweakLabel => "Disable Age Rating Popup";
+        public override string TweakLabel => "tweak.disable_age_rating_popup";
         public override bool DefaultEnabled => true;
-        public override string TweakTooltip => "Stops region-gated Korean age-rating/compliance screens from showing.";
+        public override string TweakTooltip => "ui.stops_region_gated_korean_age_rating_compliance";
     }
 
     internal static class NotKorea

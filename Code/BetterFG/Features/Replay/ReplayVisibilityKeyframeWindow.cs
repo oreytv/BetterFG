@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.UI;
 using UnityEngine;
 using BettrFG.uGUI;
@@ -56,14 +56,14 @@ namespace BetterFG.Features.Replay
             _content = ReplayWindowKit.Content(_root);
 
             var stamp = TimeSpan.FromSeconds(_kf.time);
-            ReplayWindowKit.Title(_content, _width, string.Format("Visibility keyframe  ·  {0:D2}:{1:D2}.{2:D3}",
+            ReplayWindowKit.Title(_content, _width, BetterFG.Services.LocalizationService.Format("ui.visibility_keyframe_fmt",
                 stamp.Minutes, stamp.Seconds, stamp.Milliseconds), TITLE_POS);
 
             _y = ReplayWindowKit.HEAD + 4f;
             _row = 0;
 
-            Line("Phrases & emoticons", _kf.showPhrases ? "Shown" : "Hidden", ToggleShowPhrases, ToggleShowPhrases);
-            Line("Crown ranks", ReplayVisibilityKeyframe.PlayersLabel(_kf.crowns), () => StepCrowns(-1), () => StepCrowns(1));
+            Line("ui.phrases_emoticons", _kf.showPhrases ? "ui.shown" : "ui.hidden", ToggleShowPhrases, ToggleShowPhrases);
+            Line("ui.crown_ranks", ReplayVisibilityKeyframe.PlayersLabel(_kf.crowns), () => StepCrowns(-1), () => StepCrowns(1));
 
             if (_kf.crowns == ReplayVisibilityMode.Only)
             {
@@ -72,11 +72,11 @@ namespace BetterFG.Features.Replay
                     PlayerRow(_kf.crownOnlyPlayers[i], RemoveCrown);
 
                 UGUIShip.CreateButton(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW),
-                    "+ Add crown", ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(AddCrown));
+                    "ui.add_crown", ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(AddCrown));
                 _y += ROW;
             }
 
-            Line("Names", ReplayVisibilityKeyframe.PlayersLabel(_kf.names), () => StepNames(-1), () => StepNames(1));
+            Line("ui.names", ReplayVisibilityKeyframe.PlayersLabel(_kf.names), () => StepNames(-1), () => StepNames(1));
 
             if (_kf.names == ReplayVisibilityMode.Only)
             {
@@ -85,11 +85,11 @@ namespace BetterFG.Features.Replay
                     PlayerRow(_kf.nameOnlyPlayers[i], RemoveName);
 
                 UGUIShip.CreateButton(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW),
-                    "+ Add name", ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(AddName));
+                    "ui.add_name", ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(AddName));
                 _y += ROW;
             }
 
-            Line("Players", ReplayVisibilityKeyframe.PlayersLabel(_kf.players), () => StepPlayers(-1), () => StepPlayers(1));
+            Line("ui.players", ReplayVisibilityKeyframe.PlayersLabel(_kf.players), () => StepPlayers(-1), () => StepPlayers(1));
 
             if (_kf.players == ReplayVisibilityMode.Only)
             {
@@ -98,16 +98,16 @@ namespace BetterFG.Features.Replay
                     PlayerRow(_kf.onlyPlayers[i], RemovePlayer);
 
                 UGUIShip.CreateButton(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW),
-                    "+ Add player", ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(AddPlayer));
+                    "ui.add_player", ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(AddPlayer));
                 _y += ROW;
             }
 
             if (_rec.ghosts.Count > 0)
-                Line("Ghosts", _kf.showGhosts ? "Shown" : "Hidden", ToggleShowGhosts, ToggleShowGhosts);
+                Line("ui.ghosts", _kf.showGhosts ? "ui.shown" : "ui.hidden", ToggleShowGhosts, ToggleShowGhosts);
 
             _y += 4f;
             UGUIShip.CreateLabel(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW),
-                "X deletes", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
+                "ui.x_deletes", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
             _y += ROW;
 
             _root.sizeDelta = new Vector2(_width, _y + PAD);

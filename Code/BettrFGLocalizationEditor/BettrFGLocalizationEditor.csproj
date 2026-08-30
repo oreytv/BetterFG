@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>BettrFGLocalizationEditor</AssemblyName>
+    <RootNamespace>TranslationEditor</RootNamespace>
+    <ApplicationIcon>App.ico</ApplicationIcon>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="App.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="App.ico" />
+  </ItemGroup>
+
+  <Target Name="LocedBuildPrompt" BeforeTargets="BeforeBuild" Condition="'$(SkipLocedPrompt)' != 'true'">
+    <PropertyGroup>
+      <LocedPromptSilent Condition="'$(BuildingInsideVisualStudio)' != 'true' Or '$(DesignTimeBuild)' == 'true'">-Silent</LocedPromptSilent>
+    </PropertyGroup>
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -STA -File &quot;$(MSBuildProjectDirectory)\..\prompt_loced.ps1&quot; $(LocedPromptSilent)" ConsoleToMSBuild="true" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="LocedPromptRaw" />
+    </Exec>
+    <ItemGroup>
+      <LocedCopyFlag Include="$([System.String]::Copy('%(LocedPromptRaw.Identity)').Substring(10))" Condition="$([System.String]::Copy('%(LocedPromptRaw.Identity)').StartsWith('LOCEDCOPY:'))" />
+      <LocedKillFlag Include="$([System.String]::Copy('%(LocedPromptRaw.Identity)').Substring(10))" Condition="$([System.String]::Copy('%(LocedPromptRaw.Identity)').StartsWith('LOCEDKILL:'))" />
+    </ItemGroup>
+    <PropertyGroup>
+      <LocedCopyVal>@(LocedCopyFlag)</LocedCopyVal>
+      <LocedKillVal>@(LocedKillFlag)</LocedKillVal>
+    </PropertyGroup>
+    <Exec Command="taskkill /F /IM $(AssemblyName).exe /T" ContinueOnError="true" Condition="'$(LocedKillVal)' == '1'" />
+  </Target>
+
+  <Target Name="LocedDeploy" AfterTargets="Build" Condition="'$(SkipLocedPrompt)' != 'true'">
+    <ItemGroup>
+      <LocedDeployTarget Include="$([System.String]::Copy('%(LocedPromptRaw.Identity)').Substring(10))" Condition="$([System.String]::Copy('%(LocedPromptRaw.Identity)').StartsWith('LOCEDDEST:')) And '$(LocedCopyVal)' == '1'" />
+    </ItemGroup>
+    <MakeDir Directories="@(LocedDeployTarget)" Condition="'@(LocedDeployTarget)' != ''" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).exe" DestinationFolder="%(LocedDeployTarget.Identity)" SkipUnchangedFiles="false" Condition="'@(LocedDeployTarget)' != ''" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb" DestinationFolder="%(LocedDeployTarget.Identity)" SkipUnchangedFiles="false" Condition="'@(LocedDeployTarget)' != '' And Exists('$(TargetDir)$(AssemblyName).pdb')" />
+    <Message Importance="high" Text="LocalizationEditor copied to %(LocedDeployTarget.Identity)" Condition="'@(LocedDeployTarget)' != ''" />
+    <Exec Command="explorer.exe &quot;$(TargetDir)$(AssemblyName).exe&quot;" ContinueOnError="true" Condition="'$(LocedKillVal)' == '1'" />
+  </Target>
+
+</Project>

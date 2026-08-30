@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Network;
 using BetterFG.Services;
@@ -15,6 +15,7 @@ namespace BetterFG.UI.Tabs
         public RepoSelectorTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Repositories";
+        protected override string TitleId => "ui.repositories";
         protected override string BgResource => "BetterFG.assets.ui.tab.reposelector.png";
         protected override float TitleYOffset => 20f;
 
@@ -148,7 +149,7 @@ namespace BetterFG.UI.Tabs
             sHlg.spacing = 3f;
 
             _searchField = UGUIShip.CreateInputField(searchGo.transform, new Rect(0f, 0f, 100f, BTN_H),
-                "search repositories...", new Color(0f, 0f, 0f, 0.4f), WHITE, FS_SM);
+                "ui.search_repositories", new Color(0f, 0f, 0f, 0.4f), WHITE, FS_SM);
             _searchField.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
             UGUIShip.SetInputText(_searchField, _searchQuery, false);
             _searchField.onValueChanged.AddListener(new Action<string>(val =>
@@ -178,7 +179,7 @@ namespace BetterFG.UI.Tabs
                 secGo.transform.SetParent(_rowsParent, false);
                 secGo.AddComponent<RectTransform>();
                 secGo.AddComponent<LayoutElement>().preferredHeight = FS + 18f;
-                var secLbl = UGUIShip.CreateStretchLabel(secGo.transform, "Added repositories", FS, WHITE);
+                var secLbl = UGUIShip.CreateStretchLabel(secGo.transform, "ui.added_repositories", FS, WHITE);
                 secLbl.alignment = TextAnchor.LowerLeft;
                 var secLblRt = secLbl.GetComponent<RectTransform>();
                 secLblRt.offsetMin = new Vector2(14f, secLblRt.offsetMin.y);
@@ -213,7 +214,7 @@ namespace BetterFG.UI.Tabs
             addHlg.childForceExpandWidth = false;
             addHlg.spacing = 3f;
 
-            var addBtn = UGUIShip.CreateButton(addRow.transform, "Add Repositories",
+            var addBtn = UGUIShip.CreateButton(addRow.transform, "ui.add_repositories",
                 BTN_DARK, CYAN, FS_SM, new Action(OnAddRepo));
             var addBtnLE = addBtn.gameObject.AddComponent<LayoutElement>();
             addBtnLE.preferredWidth = 180f;
@@ -360,7 +361,7 @@ namespace BetterFG.UI.Tabs
 
         void BuildFeaturedEntryRow(RectTransform parent)
         {
-            var btn = CreateRepoRowButton(parent, "RepoRow_Featured", "Featured Repositories", GOLD, new Action(() =>
+            var btn = CreateRepoRowButton(parent, "RepoRow_Featured", "ui.featured_repositories", GOLD, new Action(() =>
             {
                 Host.FeaturedSelected = true;
                 Host.ImportedSelected = false;
@@ -373,7 +374,7 @@ namespace BetterFG.UI.Tabs
 
         void BuildImportedEntryRow(RectTransform parent)
         {
-            var btn = CreateRepoRowButton(parent, "RepoRow_Imported", "Imported Skins", ORANGE, new Action(() =>
+            var btn = CreateRepoRowButton(parent, "RepoRow_Imported", "ui.imported_skins", ORANGE, new Action(() =>
             {
                 Host.ImportedSelected = true;
                 Host.FeaturedSelected = false;
@@ -403,7 +404,7 @@ namespace BetterFG.UI.Tabs
             rowGo.AddComponent<LayoutElement>().preferredHeight = BTN_H;
 
             var field = UGUIShip.CreateInputField(rowGo.transform, new Rect(0f, 0f, 100f, BTN_H),
-                "https://github.com/author/repo", null, CYAN, FS_SM);
+                "ui.https_github_com_author_repo", null, CYAN, FS_SM);
             field.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
             Action commit = () =>
@@ -415,7 +416,7 @@ namespace BetterFG.UI.Tabs
                     Registry?.AddRepo(url);
             };
 
-            var ok = UGUIShip.CreateButton(rowGo.transform, "OK",
+            var ok = UGUIShip.CreateButton(rowGo.transform, "ui.ok",
                 new Color(0.15f, 0.3f, 0.15f, 1f), GREEN, FS_SM, commit);
             ok.gameObject.AddComponent<LayoutElement>().preferredWidth = BTN_H * 1.5f;
 
@@ -456,9 +457,9 @@ namespace BetterFG.UI.Tabs
                 BetterFGUIMan.Instance?.PushSlotTab(host, tab);
             };
 
-            string label = host.FeaturedSelected ? "Featured Repositories (selected)"
-                : host.ImportedSelected ? "Imported Skins (selected)"
-                : activeRepo != null ? activeRepo.DisplayName + " (selected)" : "No repository";
+            string label = host.FeaturedSelected ? LocalizationService.Get("ui.featured_repositories_selected")
+                : host.ImportedSelected ? LocalizationService.Get("ui.imported_skins_selected")
+                : activeRepo != null ? LocalizationService.Format("ui.repo_name_selected_fmt", activeRepo.DisplayName) : LocalizationService.Get("ui.no_repository");
             Color labelColor = host.FeaturedSelected ? GOLD
                 : host.ImportedSelected ? ORANGE
                 : activeRepo != null ? YELLOW : HINT;

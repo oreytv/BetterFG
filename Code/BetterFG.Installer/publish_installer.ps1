@@ -32,6 +32,7 @@ $singleFileArgs = @(
     "-p:PublishSingleFile=true",
     "-p:DebugType=None",
     "-p:DebugSymbols=false",
+    "-p:SkipInstallerPublish=true",
     "-o", $publishDir
 )
 
@@ -54,23 +55,23 @@ if (!(Test-Path $publishedExe)) {
 Write-Host "installer published to $publishDir"
 Write-Host "self-contained: $selfContainedFlag"
 
-if ($CopyBuildsToDownloads) {
-    if (!(Test-Path $downloadsDir)) {
-        New-Item -ItemType Directory -Path $downloadsDir | Out-Null
+$copyTo = if ($CopyBuildsToDownloads) { $downloadsDir } else { $null }
+
+if ($copyTo) {
+    if (!(Test-Path $copyTo)) {
+        New-Item -ItemType Directory -Path $copyTo | Out-Null
     }
 
-    # the running installer holds a lock on its own Downloads copy, so close it then wait for the handle to
-    # actually drop (kill returns early) before overwriting. retry the copy a few times; if it truly can't
-    # land, throw — a stale exe silently passing as "updated" is the bug we're avoiding.
     & (Join-Path $projectRoot "close_installer.ps1")
     for ($i = 0; $i -lt 20 -and (Get-Process -Name "BettrFG.Installer" -ErrorAction SilentlyContinue); $i++) {
         Start-Sleep -Milliseconds 200
     }
 
+    $destExe = Join-Path $copyTo $installerExeName
     $copied = $false
     for ($i = 0; $i -lt 10; $i++) {
         try {
-            Copy-Item -LiteralPath $publishedExe -Destination $downloadsExe -Force
+            Copy-Item -LiteralPath $publishedExe -Destination $destExe -Force
             $copied = $true
             break
         }
@@ -80,9 +81,9 @@ if ($CopyBuildsToDownloads) {
     }
 
     if ($copied) {
-        Write-Host "installer copied to $downloadsExe"
+        Write-Host "installer copied to $destExe"
     }
     else {
-        throw "couldnt copy installer to Downloads (still locked?). published copy is at $publishedExe"
+        throw "couldnt copy installer to $copyTo (still locked?). published copy is at $publishedExe"
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -1369,7 +1369,7 @@ namespace BetterFG.Features.Replay
             row.GetComponent<Image>().raycastTarget = false;
             _controlsRt = row;
 
-            _deleteBtn = UGUIShip.CreateButton(row, new Rect(0f, 0f, rowW, CONTROLS_H), "DELETE", BTN_RED, Color.white, UIScale.FS_SM, new Action(DeleteSelected));
+            _deleteBtn = UGUIShip.CreateButton(row, new Rect(0f, 0f, rowW, CONTROLS_H), "ui.delete", BTN_RED, Color.white, UIScale.FS_SM, new Action(DeleteSelected));
             _deleteBtn.gameObject.SetActive(false);
         }
 
@@ -1625,7 +1625,7 @@ namespace BetterFG.Features.Replay
             RefreshPostFxTicks();
             RefreshCutOverlays();
             _clock.text = Stamp(_time) + "  /  " + Stamp(_rec.trimEnd);
-            _playLabel.text = _paused ? "paused" : "playing";
+            UGUIShip.RelabelText(_playLabel, _paused ? "ui.paused" : "ui.playing");
             RefreshPlayPauseIcon();
             RefreshSnapIcon();
             if (_deleteBtn.gameObject.activeSelf != _selected.Count > 0)

@@ -10,7 +10,7 @@ namespace BetterFG.Tweaks
         public StripSizeTagsTweak(System.IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "strip_size_tags";
-        public override string TweakLabel => "Strip Rich Text Tags (anti-grief)";
+        public override string TweakLabel => "tweak.strip_rich_text_tags_anti_grief";
         public override bool DefaultEnabled => true;
 
         public static StripSizeTagsTweak Instance { get; private set; }

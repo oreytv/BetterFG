@@ -20,9 +20,9 @@ namespace BetterFG.Tweaks
         public MultiShowSelectTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "multi_show_select";
-        public override string TweakLabel => "Multi-Show Queue";
+        public override string TweakLabel => "tweak.multi_show_queue";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Confirm shows to add them to the set instead of matchmaking, then hit the Start Queue prompt to queue for all of them at once.";
+        public override string TweakTooltip => "ui.confirm_shows_to_add_them_to_the_set_instead_of";
 
         public static MultiShowSelectTweak Instance { get; private set; }
         void Awake() => Instance = this;

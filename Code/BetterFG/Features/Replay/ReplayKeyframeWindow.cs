@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.UI;
 using UnityEngine;
@@ -87,51 +87,51 @@ namespace BetterFG.Features.Replay
             _content = ReplayWindowKit.Content(_root);
 
             var stamp = TimeSpan.FromSeconds(_kf.time);
-            ReplayWindowKit.Title(_content, _width, string.Format("Camera keyframe  ·  {0:D2}:{1:D2}.{2:D3}",
+            ReplayWindowKit.Title(_content, _width, BetterFG.Services.LocalizationService.Format("ui.camera_keyframe_fmt",
                 stamp.Minutes, stamp.Seconds, stamp.Milliseconds), TITLE_POS);
 
             _y = ReplayWindowKit.HEAD + 4f;
             _row = 0;
 
-            Section("Camera");
-            Line("Camera", ReplayKeyframe.TypeLabel(_kf.cameraType), () => StepType(-1), () => StepType(1));
+            Section("ui.camera");
+            Line("ui.camera", ReplayKeyframe.TypeLabel(_kf.cameraType), () => StepType(-1), () => StepType(1));
 
             if (_kf.cameraType == ReplayCameraType.Fixed)
-                Line("Attached to", PlayerLabel(_kf.targetPlayerId), () => StepPlayer(false, -1), () => StepPlayer(false, 1), () => Pick(false, false));
+                Line("ui.attached_to", PlayerLabel(_kf.targetPlayerId), () => StepPlayer(false, -1), () => StepPlayer(false, 1), () => Pick(false, false));
             else if (_kf.cameraType == ReplayCameraType.FixedObject)
-                Line("Attached to", ObjectLabel(_kf.targetObject), () => StepObject(false, -1), () => StepObject(false, 1), () => Pick(false, true));
+                Line("ui.attached_to", ObjectLabel(_kf.targetObject), () => StepObject(false, -1), () => StepObject(false, 1), () => Pick(false, true));
 
-            Section("Look at");
-            Line("Look at", ReplayKeyframe.LookAtLabel(_kf.lookAt), () => StepLookAt(-1), () => StepLookAt(1));
+            Section("ui.look_at");
+            Line("ui.look_at", ReplayKeyframe.LookAtLabel(_kf.lookAt), () => StepLookAt(-1), () => StepLookAt(1));
 
             if (_kf.lookAt == ReplayLookAt.Player)
-                Line("Look target", PlayerLabel(_kf.lookAtPlayerId), () => StepPlayer(true, -1), () => StepPlayer(true, 1), () => Pick(true, false));
+                Line("ui.look_target", PlayerLabel(_kf.lookAtPlayerId), () => StepPlayer(true, -1), () => StepPlayer(true, 1), () => Pick(true, false));
             else if (_kf.lookAt == ReplayLookAt.Object)
-                Line("Look target", ObjectLabel(_kf.lookAtObject), () => StepObject(true, -1), () => StepObject(true, 1), () => Pick(true, true));
+                Line("ui.look_target", ObjectLabel(_kf.lookAtObject), () => StepObject(true, -1), () => StepObject(true, 1), () => Pick(true, true));
 
-            Section("Easing");
-            Line("Easing", ReplayKeyframe.EasingLabel(_kf.easingCurve), () => StepEasing(-1), () => StepEasing(1));
+            Section("ui.easing");
+            Line("ui.easing", ReplayKeyframe.EasingLabel(_kf.easingCurve), () => StepEasing(-1), () => StepEasing(1));
 
             if (_kf.easingCurve != ReplayEasingCurve.Linear && _kf.easingCurve != ReplayEasingCurve.Constant)
-                Line("Direction", ReplayKeyframe.DirectionLabel(_kf.easingDirection), () => StepDirection(-1), () => StepDirection(1));
+                Line("ui.direction", ReplayKeyframe.DirectionLabel(_kf.easingDirection), () => StepDirection(-1), () => StepDirection(1));
 
-            Section("Timing");
-            Line("Transition", ReplayKeyframe.CutLabel(_kf.cut), ToggleCut, ToggleCut);
-            Line("Game speed", _kf.cutToNext ? "Cut" : ReplayKeyframe.SpeedLabel(_kf.speed), () => StepSpeed(-1), () => StepSpeed(1));
+            Section("ui.timing");
+            Line("ui.transition", ReplayKeyframe.CutLabel(_kf.cut), ToggleCut, ToggleCut);
+            Line("ui.game_speed", _kf.cutToNext ? "Cut" : ReplayKeyframe.SpeedLabel(_kf.speed), () => StepSpeed(-1), () => StepSpeed(1));
 
-            Section("Shake");
-            Line("Shake", ReplayKeyframe.ShakeKindLabel(_kf.shakeKind), () => StepShakeKind(-1), () => StepShakeKind(1));
+            Section("ui.shake");
+            Line("ui.shake", ReplayKeyframe.ShakeKindLabel(_kf.shakeKind), () => StepShakeKind(-1), () => StepShakeKind(1));
             if (_kf.shakeKind != ReplayShakeKind.None)
-                Line("Intensity", ReplayShake.TierLabels[Mathf.Clamp(_kf.shakeTier, 0, ReplayShake.TierCount - 1)],
+                Line("ui.intensity", ReplayShake.TierLabels[Mathf.Clamp(_kf.shakeTier, 0, ReplayShake.TierCount - 1)],
                     () => StepShakeTier(-1), () => StepShakeTier(1));
 
             _y += 4f;
-            UGUIShip.CreateButton(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW + 4f), "Edit camera",
+            UGUIShip.CreateButton(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW + 4f), "ui.edit_camera",
                 ReplayWindowKit.BTN_GREEN, Color.white, UIScale.FS_SM, new Action(EditCamera));
             _y += ROW + 6f;
 
             UGUIShip.CreateLabel(_content, new Rect(PAD, _y, _width - PAD * 2f, ROW),
-                "X deletes", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
+                "ui.x_deletes", UIScale.FS_SM - 1, ReplayWindowKit.HINT);
 
             _root.sizeDelta = new Vector2(_width, _y + ROW + PAD);
         }

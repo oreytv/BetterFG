@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
 using BetterFG.Services;
@@ -14,6 +14,7 @@ namespace BetterFG.UI.Tabs
         public CustomSkinTextureTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Skin Texture";
+        protected override string TitleId => "ui.skin_texture";
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
 
 
@@ -66,9 +67,9 @@ namespace BetterFG.UI.Tabs
 
             float halfW = (w - PAD * 0.5f) / 2f;
             UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, halfW, BTN_H),
-                "Apply Selected", BTN_APPLY, WHITE, FS_SM, new Action(OnApplySelected));
+                "ui.apply_selected", BTN_APPLY, WHITE, FS_SM, new Action(OnApplySelected));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + halfW + PAD * 0.5f, y, halfW, BTN_H),
-                "Revert All", BTN_REMOVE, WHITE, FS_SM, new Action(OnRevert));
+                "ui.revert_all", BTN_REMOVE, WHITE, FS_SM, new Action(OnRevert));
             y += BTN_H + 2f;
 
             _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), "", FS_SM, HINT, TextAnchor.MiddleCenter);
@@ -140,10 +141,10 @@ namespace BetterFG.UI.Tabs
                     FS_SM, WHITE, TextAnchor.MiddleLeft);
 
                 UGUIShip.CreateRowEndButton(rowBtn.transform, -(removeW + toggleW + editW + 4f), editW, ROW_H,
-                    "edit", BTN_DARK, () => OpenWizard(idx));
+                    "ui.edit_2", BTN_DARK, () => OpenWizard(idx));
 
                 var toggleBtn = UGUIShip.CreateRowEndButton(rowBtn.transform, -(removeW + toggleW + 2f), toggleW, ROW_H,
-                    "on", BTN_APPLY, () => ToggleEntry(idx));
+                    "ui.on_2", BTN_APPLY, () => ToggleEntry(idx));
 
                 UGUIShip.CreateRowEndButton(rowBtn.transform, -2f, removeW, ROW_H, "x", BTN_REMOVE, () => RemoveEntry(idx));
 
@@ -159,7 +160,7 @@ namespace BetterFG.UI.Tabs
             PaintRows();
 
             var addBtn = UGUIShip.CreateButton(_entryContent, new Rect(0f, 0f, TabWidth - PAD * 2f - 8f, ROW_H),
-                "+ Add Texture", BTN_ADD, WHITE, FS, new Action(() => OpenWizard(-1)));
+                "ui.add_texture", BTN_ADD, WHITE, FS, new Action(() => OpenWizard(-1)));
             var addLe = addBtn.gameObject.AddComponent<LayoutElement>();
             addLe.preferredHeight = ROW_H;
             addLe.flexibleWidth = 1f;
@@ -185,7 +186,7 @@ namespace BetterFG.UI.Tabs
                 UGUIShip.PaintListRow(row.Row, i, i == _selectedEntry);
 
                 UGUIShip.SetButtonColor(row.Toggle, entry.enabled ? BTN_APPLY : BTN_DARK);
-                row.ToggleLbl.text = entry.enabled ? "on" : "off";
+                UGUIShip.RelabelText(row.ToggleLbl, entry.enabled ? "ui.on_2" : "ui.off_2");
                 row.Name.color = entry.enabled ? WHITE : DIM;
             }
         }
@@ -233,10 +234,10 @@ namespace BetterFG.UI.Tabs
         {
             if (_selectedEntry < 0 || _selectedEntry >= _entries.Count)
             {
-                SetStatus("select an entry first");
+                SetStatus("ui.select_an_entry_first");
                 return;
             }
-            if (!_entries[_selectedEntry].enabled) { SetStatus("entry is disabled"); return; }
+            if (!_entries[_selectedEntry].enabled) { SetStatus("ui.entry_is_disabled"); return; }
             RevertAllEnabled();
         }
 
@@ -246,12 +247,12 @@ namespace BetterFG.UI.Tabs
         private void OnRevert()
         {
             SkinApplicationService.RevertAllBeans();
-            SetStatus("reverted");
+            SetStatus("ui.reverted");
         }
 
         public void SetStatus(string msg)
         {
-            if (_statusLbl != null) _statusLbl.text = msg;
+            if (_statusLbl != null) UGUIShip.RelabelText(_statusLbl, msg);
         }
     }
 }

@@ -88,7 +88,8 @@ if ($BuildOutput -and (Test-Path $BuildOutput)) {
         "BetterFG.pdb",
         "uGUIship.dll",
         "uGUIship.pdb",
-        "FallGuysLib.dll"
+        "FallGuysLib.dll",
+        "localization.bak"
     )
 
     foreach ($name in $filesToReplace) {

@@ -10,9 +10,9 @@ namespace BetterFG.Tweaks
         public NotifyRoundStartTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "notify_round_start";
-        public override string TweakLabel => "Notify round start";
+        public override string TweakLabel => "tweak.notify_round_start";
         public override bool DefaultEnabled => false;
-        public override string TweakTooltip => "Only works for Windows. Notification will appear when a round starts while you're tabbed out of the game, click it to jump back.";
+        public override string TweakTooltip => "ui.only_works_for_windows_notification_will_appear";
 
         public override void OnRoundStart()
         {

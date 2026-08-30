@@ -88,6 +88,7 @@ namespace BettrFG.uGUI
             if (t.gameObject.GetComponent<StylizeGuard>() == null) t.gameObject.AddComponent<StylizeGuard>();
 
             var go = new GameObject("TmpMirror");
+            go.SetActive(false);
             go.transform.SetParent(t.transform, false);
             var rt = go.AddComponent<RectTransform>();
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
@@ -98,6 +99,7 @@ namespace BettrFG.uGUI
             d.richText = t.supportRichText;
             d.enableWordWrapping = t.horizontalOverflow == HorizontalWrapMode.Wrap;
             d.overflowMode = TMPro.TextOverflowModes.Overflow;
+            go.SetActive(true);
 
             _mirrors.Add(new TmpMirror { src = t, dst = d });
         }

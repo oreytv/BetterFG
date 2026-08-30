@@ -12,7 +12,7 @@ namespace BetterFG.Tweaks
         public MuteSocialSoundsTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "mute_social_sounds";
-        public override string TweakLabel => "Disable Ranked Emoticons";
+        public override string TweakLabel => "tweak.disable_ranked_emoticons";
         public override bool DefaultEnabled => false;
 
         // flipped by the toggle. the harmony patch below only acts when this is on,

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Customization.Profiles;
@@ -24,7 +24,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
-        protected override string WindowTitle => "Profiles";
+        protected override string WindowTitle => "ui.profiles";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private const float ROW_H = 22f;
@@ -102,7 +102,7 @@ namespace BetterFG.UI.Windows
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(ROW_PAD + 20f, 0f, 150f, ROW_H),
-                "export my setup to a file", 12, new Color(1f, 1f, 1f, 0.7f), TextAnchor.MiddleLeft);
+                "ui.export_my_setup_to_a_file", 12, new Color(1f, 1f, 1f, 0.7f), TextAnchor.MiddleLeft);
 
             var btnGo = new GameObject("ExportBtn");
             btnGo.transform.SetParent(rowGo.transform, false);
@@ -112,7 +112,7 @@ namespace BetterFG.UI.Windows
             btnRt.anchoredPosition = new Vector2(-ROW_PAD, 0f);
             btnRt.sizeDelta = new Vector2(54f, BTN_H);
 
-            UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 54f, BTN_H), "EXPORT", BTN_SAVE, Color.white, 9)
+            UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 54f, BTN_H), "ui.export_2", BTN_SAVE, Color.white, 9)
                 .onClick.AddListener(new Action(() =>
                     WinDialogs.SaveFile("Export profile", "bfgprofile", ProfileService.LocalPlayerName(), path =>
                     {
@@ -133,7 +133,7 @@ namespace BetterFG.UI.Windows
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(ROW_PAD + 20f, 0f, 150f, ROW_H),
-                "drop profile here →", 12, new Color(1f, 1f, 1f, 0.6f), TextAnchor.MiddleLeft);
+                "ui.drop_profile_here", 12, new Color(1f, 1f, 1f, 0.6f), TextAnchor.MiddleLeft);
 
             var btnGo = new GameObject("ImportBtn");
             btnGo.transform.SetParent(rowGo.transform, false);
@@ -143,7 +143,7 @@ namespace BetterFG.UI.Windows
             btnRt.anchoredPosition = new Vector2(-ROW_PAD, 0f);
             btnRt.sizeDelta = new Vector2(60f, BTN_H);
 
-            UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 60f, BTN_H), "IMPORT", BTN_IMPORT, Color.white, 9)
+            UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 60f, BTN_H), "ui.import_2", BTN_IMPORT, Color.white, 9)
                 .onClick.AddListener(new Action(() =>
                     WinDialogs.PickFile("Select a .bfgprofile", path =>
                     {
@@ -168,10 +168,10 @@ namespace BetterFG.UI.Windows
                 name, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             float right = ROW_PAD;
-            AddRowButton(rowGo, "DEL", 34f, ref right, BTN_DEL, () => { ProfileService.Delete(name); RebuildKeepingScroll(); });
+            AddRowButton(rowGo, "ui.del", 34f, ref right, BTN_DEL, () => { ProfileService.Delete(name); RebuildKeepingScroll(); });
 
             bool on = ProfileService.IsEnabled(name);
-            AddRowButton(rowGo, on ? "ON" : "OFF", 38f, ref right, on ? ON_COL : OFF_COL, () =>
+            AddRowButton(rowGo, on ? "ui.on" : "ui.off", 38f, ref right, on ? ON_COL : OFF_COL, () =>
             {
                 ProfileService.SetEnabled(name, !ProfileService.IsEnabled(name));
                 RebuildKeepingScroll();

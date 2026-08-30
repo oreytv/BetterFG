@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
@@ -16,6 +16,7 @@ namespace BetterFG.UI.Tabs
         public UIPatternPickerTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "UI - Pattern";
+        protected override string TitleId => "ui.ui_pattern";
         protected override Tab MakeSwitchTarget()
         {
             var t = BetterFGTabRegistry.NewTab<UIBackgroundTab>();

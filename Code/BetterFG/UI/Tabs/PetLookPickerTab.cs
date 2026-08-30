@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -21,8 +21,9 @@ namespace BetterFG.UI.Tabs
         public PetLookPickerTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Choose Pet Look";
+        protected override string TitleId => "ui.choose_pet_look";
         protected override string BgResource => "BetterFG.assets.ui.tab.customskintexture.png";
-        protected override string SwitchLabel => "< Back";
+        protected override string SwitchLabel => "ui.back_3";
 
         public PetData Snapshot;
         public int EditIndexCarry = -1;
@@ -38,7 +39,7 @@ namespace BetterFG.UI.Tabs
         const string Upper = "upper", Lower = "lower", Pattern = "pattern", Faceplate = "faceplate", Colour = "colour";
         static readonly (string id, string label)[] CATEGORIES =
         {
-            (Upper, "Upper"), (Lower, "Lower"), (Pattern, "Pattern"), (Faceplate, "Faceplate"), (Colour, "Colour"),
+            (Upper, "ui.upper"), (Lower, "ui.lower"), (Pattern, "ui.pattern_2"), (Faceplate, "ui.faceplate"), (Colour, "ui.colour_2"),
         };
 
         string _category = Upper;
@@ -104,13 +105,13 @@ namespace BetterFG.UI.Tabs
 
             float fetchW = 60f * UIScale.S;
             _searchField = UGUIShip.CreateInputField(contentRoot, new Rect(PAD, y, w - fetchW - PAD, BTN_H),
-                "search by name", Color.black, WHITE, FS_SM);
+                "ui.search_by_name", Color.black, WHITE, FS_SM);
             _searchField.onEndEdit.AddListener(new Action<string>(v => OnFetch()));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - fetchW, y, fetchW, BTN_H),
-                "SEARCH", BTN_BLUE, WHITE, FS_SM, new Action(OnFetch));
+                "ui.search", BTN_BLUE, WHITE, FS_SM, new Action(OnFetch));
             y += BTN_H + SH;
 
-            _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), "search to see options", FS_SM, HINT);
+            _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD, y, w, LH), "ui.search_to_see_options", FS_SM, HINT);
             y += LH + SH;
 
             float catY = TabHeight - VPAD - catH;
@@ -152,9 +153,9 @@ namespace BetterFG.UI.Tabs
             _category = cat;
             _results.Clear();
             RebuildResultRows();
-            if (_categoryLbl != null) _categoryLbl.text = CATEGORIES[CategoryIndex(_category)].label;
-            if (_clearLbl != null) _clearLbl.text = ClearText();
-            if (_currentLbl != null) _currentLbl.text = CurrentText();
+            if (_categoryLbl != null) UGUIShip.RelabelText(_categoryLbl, CATEGORIES[CategoryIndex(_category)].label);
+            if (_clearLbl != null) UGUIShip.RelabelText(_clearLbl, ClearText());
+            if (_currentLbl != null) UGUIShip.RelabelText(_currentLbl, CurrentText());
             OnFetch();
         }
 
@@ -171,7 +172,7 @@ namespace BetterFG.UI.Tabs
         void ClearCurrent()
         {
             SetCurrent("");
-            if (_currentLbl != null) _currentLbl.text = CurrentText();
+            if (_currentLbl != null) UGUIShip.RelabelText(_currentLbl, CurrentText());
         }
 
         void SetCurrent(string name)
@@ -210,7 +211,7 @@ namespace BetterFG.UI.Tabs
         {
             _results.Clear();
             RebuildResultRows();
-            SetStatus("searching...");
+            SetStatus("ui.searching");
 
             for (int i = 0; i < 2; i++) yield return null;
 
@@ -302,11 +303,11 @@ namespace BetterFG.UI.Tabs
         void Pick(ItemDefinitionSO opt)
         {
             SetCurrent(opt.name ?? "");
-            if (_currentLbl != null) _currentLbl.text = CurrentText();
+            if (_currentLbl != null) UGUIShip.RelabelText(_currentLbl, CurrentText());
             SetStatus(SkinApplicationService.GetOptionDisplayName(opt) + " set as " + CATEGORIES[CategoryIndex(_category)].label);
         }
 
-        void SetStatus(string msg) { if (_statusLbl != null) _statusLbl.text = msg; }
+        void SetStatus(string msg) { if (_statusLbl != null) UGUIShip.RelabelText(_statusLbl, msg); }
 
         protected override Tab MakeSwitchTarget() => BuildWizard();
         public override Tab MakeFallbackTab() => BuildWizard();

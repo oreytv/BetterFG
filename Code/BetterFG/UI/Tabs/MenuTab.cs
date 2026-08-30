@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
@@ -14,6 +14,7 @@ namespace BetterFG.UI.Tabs
         public MenuTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Main Menu";
+        protected override string TitleId => "ui.main_menu";
         protected override string BgResource => "BetterFG.assets.ui.tab.menu.png";
 
 
@@ -122,11 +123,11 @@ namespace BetterFG.UI.Tabs
             // subtab bar
             float halfw = (w - PAD * 0.5f) / 2f;
             _btnSubBg = UGUIShip.CreateButton(contentRoot,
-                new Rect(PAD, y, halfw, subTabH), "Background",
+                new Rect(PAD, y, halfw, subTabH), "ui.background",
                 _sub == SubTab.Background ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() => SetSubTab(SubTab.Background)));
             _btnSubCam = UGUIShip.CreateButton(contentRoot,
-                new Rect(PAD + halfw + PAD * 0.5f, y, halfw, subTabH), "Foreground",
+                new Rect(PAD + halfw + PAD * 0.5f, y, halfw, subTabH), "ui.foreground",
                 _sub == SubTab.Camera ? SEL_COLOR : BTN_DARK, WHITE, FS_SM,
                 new Action(() => SetSubTab(SubTab.Camera)));
             y += subTabH + SH;
@@ -162,9 +163,9 @@ namespace BetterFG.UI.Tabs
             by += 1f + PAD;
             float btnw = (w - PAD * 0.5f) / 2f;
             UGUIShip.CreateButton(contentRoot, new Rect(PAD, by, btnw, BTN_H),
-                "Apply", BTN_APPLY, WHITE, FS, new Action(OnApply));
+                "ui.apply", BTN_APPLY, WHITE, FS, new Action(OnApply));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + btnw + PAD * 0.5f, by, btnw, BTN_H),
-                "Remove", BTN_REMOVE, WHITE, FS, new Action(OnRemove));
+                "ui.remove_2", BTN_REMOVE, WHITE, FS, new Action(OnRemove));
 
             RefreshSubTabVisibility();
         }
@@ -198,7 +199,7 @@ namespace BetterFG.UI.Tabs
             var beanTex = BetterFG.Utilities.EmbeddedResourceandUnity.LoadTexture("BetterFG.assets.ui.bean.bean_victorious.png");
             if (beanTex != null) UGUIShip.CreateImage(parent, new Rect(x, cy, beanW, noticeH), beanTex, "NoticeBean");
             UGUIShip.CreateLinkText(parent, new Rect(x + beanW + PAD, cy, w - beanW - PAD, noticeH),
-                "Background gradient and pattern moved to the UI tab, under Background. Take me there",
+                "ui.background_gradient_and_pattern_moved_to_the_ui",
                 new Action(() => BetterFGUIMan.Instance?.OpenUIScreen()), fontSize: FS_SM);
             cy += noticeH + PAD;
 
@@ -229,15 +230,15 @@ namespace BetterFG.UI.Tabs
         private void CycleBgPage(int d)
         {
             _bgPage = (BgCarouselPage)(((int)_bgPage + d + 3) % 3);
-            if (_bgCarouselLabel != null) _bgCarouselLabel.text = BgPageTitle(_bgPage);
+            if (_bgCarouselLabel != null) UGUIShip.RelabelText(_bgCarouselLabel, BgPageTitle(_bgPage));
             RebuildBgCarouselBody();
         }
 
         private static string BgPageTitle(BgCarouselPage p) => p switch
         {
-            BgCarouselPage.Images => "Background Images",
-            BgCarouselPage.Ambient => "Ambient Light",
-            BgCarouselPage.Sun => "Main Sun Rotation",
+            BgCarouselPage.Images => "ui.background_images",
+            BgCarouselPage.Ambient => "ui.ambient_light",
+            BgCarouselPage.Sun => "ui.main_sun_rotation",
             _ => "?"
         };
 
@@ -334,16 +335,16 @@ namespace BetterFG.UI.Tabs
                     FS_SM, active ? WHITE : DIM, TextAnchor.MiddleLeft);
 
                 BgRowBtn(rowBtn.transform, -(removeW + toggleW + editW + 4f), editW,
-                    "edit", BTN_DARK, () => OpenBgWizard(idx));
+                    "ui.edit_2", BTN_DARK, () => OpenBgWizard(idx));
 
                 BgRowBtn(rowBtn.transform, -(removeW + toggleW + 2f), toggleW,
-                    active ? "on" : "off", active ? BTN_ON : BTN_DARK, () => ToggleBgEntry(idx));
+                    active ? "ui.on_2" : "ui.off_2", active ? BTN_ON : BTN_DARK, () => ToggleBgEntry(idx));
 
                 BgRowBtn(rowBtn.transform, -2f, removeW, "x", BTN_REMOVE, () => RemoveBgEntry(idx));
             }
 
             var addBtn = UGUIShip.CreateButton(_bgImagesContent, new Rect(0f, 0f, TabWidth - PAD * 2f - 8f, BG_ROW_H),
-                "+ Add Background Image", BTN_ADD, WHITE, FS, new Action(() => OpenBgWizard(-1)));
+                "ui.add_background_image", BTN_ADD, WHITE, FS, new Action(() => OpenBgWizard(-1)));
             var addLe = addBtn.gameObject.AddComponent<LayoutElement>();
             addLe.preferredHeight = BG_ROW_H;
             addLe.flexibleWidth = 1f;
@@ -413,14 +414,14 @@ namespace BetterFG.UI.Tabs
             float ambSliderW = w - ambSwatchW - PAD;
 
             _ambientToggleBtn = UGUIShip.CreateButton(content, new Rect(x, cy, ambSliderW, BTN_H),
-                _ambientOn ? "Ambient: ON" : "Ambient: OFF",
+                _ambientOn ? "ui.ambient_on" : "ui.ambient_off",
                 _ambientOn ? BTN_ON : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _ambientOn = !_ambientOn;
                     MenuCustomizationApplication.Instance?.SetAmbientEnabled(_ambientOn);
                     var lbl = _ambientToggleBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _ambientOn ? "Ambient: ON" : "Ambient: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _ambientOn ? "ui.ambient_on" : "ui.ambient_off");
                     var img = _ambientToggleBtn?.GetComponent<Image>();
                     if (img != null) img.color = _ambientOn ? BTN_ON : BTN_DARK;
                 }));
@@ -449,14 +450,14 @@ namespace BetterFG.UI.Tabs
             float cy = PAD;
 
             _sunToggleBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
-                _sunOn ? "Sun override: ON" : "Sun override: OFF",
+                _sunOn ? "ui.sun_override_on" : "ui.sun_override_off",
                 _sunOn ? BTN_ON : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _sunOn = !_sunOn;
                     MenuCustomizationApplication.Instance?.SetSunEnabled(_sunOn);
                     var lbl = _sunToggleBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _sunOn ? "Sun override: ON" : "Sun override: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _sunOn ? "ui.sun_override_on" : "ui.sun_override_off");
                     var img = _sunToggleBtn?.GetComponent<Image>();
                     if (img != null) img.color = _sunOn ? BTN_ON : BTN_DARK;
                 }));
@@ -503,7 +504,7 @@ namespace BetterFG.UI.Tabs
             float cy = PAD;
 
             _camToggleBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
-                _camOn ? "Custom camera: ON" : "Custom camera: OFF",
+                _camOn ? "ui.custom_camera_on" : "ui.custom_camera_off",
                 _camOn ? BTN_ON : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
@@ -512,13 +513,13 @@ namespace BetterFG.UI.Tabs
                     if (_camOn) ApplyCam();
                     else MenuCustomizationApplication.Instance?.ResetCam();
                     var lbl = _camToggleBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _camOn ? "Custom camera: ON" : "Custom camera: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _camOn ? "ui.custom_camera_on" : "ui.custom_camera_off");
                     var img = _camToggleBtn?.GetComponent<Image>();
                     if (img != null) img.color = _camOn ? BTN_ON : BTN_DARK;
                 }));
             cy += BTN_H + PAD;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "FOV", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.fov", FS_SM, HINT);
             cy += LH + SH;
             BuildSliderRaw(content, x, cy, w, "FOV", _fov, 20f, 120f,
                 v => _fov = v, 40f);
@@ -527,7 +528,7 @@ namespace BetterFG.UI.Tabs
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "POSITION", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.position", FS_SM, HINT);
             cy += LH + SH;
 
             BuildSliderRaw(content, x, cy, w, "X", _camX, -5f, 5f, v => _camX = v, 0f);
@@ -540,7 +541,7 @@ namespace BetterFG.UI.Tabs
             UGUIShip.CreatePanel(content, new Rect(x, cy, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             cy += 1f + PAD;
 
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "LOOK AT OFFSET", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.look_at_offset", FS_SM, HINT);
             cy += LH + SH;
 
             BuildSliderRaw(content, x, cy, w, "X", _lookAtX, -5f, 5f, v => _lookAtX = v, 0f);
@@ -554,21 +555,21 @@ namespace BetterFG.UI.Tabs
             cy += 1f + PAD;
 
             // ── Plinth colour ─────────────────────────────────────────────────
-            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "PLINTH COLOUR", FS_SM, HINT);
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "ui.plinth_colour", FS_SM, HINT);
             cy += LH + SH;
 
             float plinthSwatchW = BTN_H;
             float plinthToggleW = w - plinthSwatchW - PAD;
 
             _plinthColToggleBtn = UGUIShip.CreateButton(content, new Rect(x, cy, plinthToggleW, BTN_H),
-                _plinthColOn ? "Plinth colour: ON" : "Plinth colour: OFF",
+                _plinthColOn ? "ui.plinth_colour_on" : "ui.plinth_colour_off",
                 _plinthColOn ? BTN_ON : BTN_DARK, WHITE, FS_SM,
                 new Action(() =>
                 {
                     _plinthColOn = !_plinthColOn;
                     MenuCustomizationApplication.Instance?.SetPlinthColorEnabled(_plinthColOn);
                     var lbl = _plinthColToggleBtn?.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _plinthColOn ? "Plinth colour: ON" : "Plinth colour: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _plinthColOn ? "ui.plinth_colour_on" : "ui.plinth_colour_off");
                     var img = _plinthColToggleBtn?.GetComponent<Image>();
                     if (img != null) img.color = _plinthColOn ? BTN_ON : BTN_DARK;
                 }));
@@ -665,7 +666,7 @@ namespace BetterFG.UI.Tabs
 
                 RestorePattern();
                 SettingsService.Remove(KEY_PATTERN_PATH);
-                if (_patternLabel != null) _patternLabel.text = "none";
+                if (_patternLabel != null) UGUIShip.RelabelText(_patternLabel, "ui.none");
             }
             else
             {
@@ -684,7 +685,7 @@ namespace BetterFG.UI.Tabs
                 if (_camToggleBtn != null)
                 {
                     var camLbl = _camToggleBtn.GetComponentInChildren<Text>();
-                    if (camLbl != null) camLbl.text = "Custom camera: OFF";
+                    if (camLbl != null) UGUIShip.RelabelText(camLbl, "ui.custom_camera_off");
                     var camImg = _camToggleBtn.GetComponent<Image>();
                     if (camImg != null) camImg.color = BTN_DARK;
                 }
@@ -700,7 +701,7 @@ namespace BetterFG.UI.Tabs
                 if (_plinthColToggleBtn != null)
                 {
                     var lbl = _plinthColToggleBtn.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = "Plinth colour: OFF";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, "ui.plinth_colour_off");
                     var img = _plinthColToggleBtn.GetComponent<Image>();
                     if (img != null) img.color = BTN_DARK;
                 }

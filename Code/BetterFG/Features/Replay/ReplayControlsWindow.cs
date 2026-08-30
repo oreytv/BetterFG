@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.UI;
 using UnityEngine;
 using BettrFG.uGUI;
@@ -56,14 +56,14 @@ namespace BetterFG.Features.Replay
             float y = ReplayWindowKit.HEAD + 4f;
 
             ReplayWindowKit.Stripe(content, y, _width, 0);
-            UGUIShip.CreateLabel(content, new Rect(PAD, y, _width - PAD * 2f, ROW), "Speed", UIScale.FS_SM, ReplayWindowKit.HINT);
+            UGUIShip.CreateLabel(content, new Rect(PAD, y, _width - PAD * 2f, ROW), "ui.speed", UIScale.FS_SM, ReplayWindowKit.HINT);
             y += ROW;
 
             UGUIShip.CreateSlider(content, PAD, y, _width - PAD * 2f, "", _initSpeedT, ROW, PAD, UIScale.FS_SM,
                 _onSpeedChanged, null, null, false, _resetSpeedT);
             y += ROW + 6f;
 
-            UGUIShip.CreateButton(content, new Rect(PAD, y, _width - PAD * 2f, ROW + 4f), "Close",
+            UGUIShip.CreateButton(content, new Rect(PAD, y, _width - PAD * 2f, ROW + 4f), "ui.close_2",
                 ReplayWindowKit.BTN_DARK, Color.white, UIScale.FS_SM, new Action(Close));
             y += ROW + 4f;
 

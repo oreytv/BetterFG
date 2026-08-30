@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Features.UnityRound.Editor;
 using BetterFG.Services;
 using UnityEngine;
@@ -19,7 +19,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 340f;
         protected override float WindowHeight => 160f;
-        protected override string WindowTitle => "Unity Round Loader";
+        protected override string WindowTitle => "ui.unity_round_loader";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
         protected override bool DraggableFromTitle => true;
 
@@ -88,7 +88,7 @@ namespace BetterFG.UI.Windows
             float gap = 6f;
 
             MakeLabel(contentRoot, new Rect(PAD, cy, w, rh),
-                "Round info.json path", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+                "ui.round_info_json_path", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + gap;
 
             // path field + browse on the same row
@@ -96,7 +96,7 @@ namespace BetterFG.UI.Windows
             float fieldW = w - browseW - 4f;
             _pathField = UGUIShip.CreateInputField(contentRoot,
                 new Rect(PAD, cy, fieldW, rh + 4f),
-                "C:\\path\\to\\info.json",
+                "ui.c_path_to_info_json",
                 new Color(0.12f, 0.12f, 0.12f, 1f),
                 WHITE,
                 FS_SM);
@@ -109,7 +109,7 @@ namespace BetterFG.UI.Windows
 
             UGUIShip.CreateButton(contentRoot,
                 new Rect(PAD + fieldW + 4f, cy, browseW, rh + 4f),
-                "BROWSE", BTN_BROWSE, WHITE, FS_SM,
+                "ui.browse_2", BTN_BROWSE, WHITE, FS_SM,
                 new Action(OnBrowse));
             cy += rh + 4f + gap;
 
@@ -147,7 +147,7 @@ namespace BetterFG.UI.Windows
                 urt.sizeDelta = new Vector2(bw, bh);
                 urt.anchoredPosition = new Vector2(-(PAD + bw + bgap), PAD);
                 UGUIShip.CreateButton(unloadGo.transform, new Rect(0f, 0f, bw, bh),
-                    "UNLOAD", BTN_UNLOAD, WHITE, FS_SM, new Action(OnUnload));
+                    "ui.unload", BTN_UNLOAD, WHITE, FS_SM, new Action(OnUnload));
 
                 // obstacle textures (bottom-left)
                 var texGo = new GameObject("TexturesBtn");
@@ -158,7 +158,7 @@ namespace BetterFG.UI.Windows
                 trt.sizeDelta = new Vector2(80f, bh);
                 trt.anchoredPosition = new Vector2(PAD, PAD);
                 UGUIShip.CreateButton(texGo.transform, new Rect(0f, 0f, 80f, bh),
-                    "TEXTURES", BTN_BROWSE, WHITE, FS_SM, new Action(OnTextures));
+                    "ui.textures", BTN_BROWSE, WHITE, FS_SM, new Action(OnTextures));
             }
         }
 
@@ -207,7 +207,7 @@ namespace BetterFG.UI.Windows
         private void OnUnload()
         {
             UnityRoundLoader.Unload();
-            SetStatus("unloaded", HINT_COL);
+            SetStatus("ui.unloaded", HINT_COL);
             RefreshLoadLabel();
         }
 
@@ -223,7 +223,7 @@ namespace BetterFG.UI.Windows
 
         private void RefreshLoadLabel()
         {
-            if (_loadLabel != null) _loadLabel.text = LoadLabel();
+            if (_loadLabel != null) UGUIShip.RelabelText(_loadLabel, LoadLabel());
         }
 
         private void SetStatus(string text, Color col)

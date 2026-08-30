@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 using BetterFG.Features.QualificationTime;
@@ -19,6 +19,7 @@ namespace BetterFG.UI.Tabs
         public PersonalBestTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Personal Bests";
+        protected override string TitleId => "ui.personal_bests_2";
         protected override string BgResource => "BetterFG.assets.ui.tab.pb.png";
 
 
@@ -110,7 +111,7 @@ namespace BetterFG.UI.Tabs
             float searchW = w - (ddW + PAD) * 2f - (dirW + PAD) - (refreshW + PAD);
 
             _searchField = UGUIShip.CreateInputField(contentRoot, new Rect(PAD, y, searchW, HEADER_H),
-                "search personal bests...", new Color(0f, 0f, 0f, 0.4f), Color.white, FS_SM);
+                "ui.search_personal_bests", new Color(0f, 0f, 0f, 0.4f), Color.white, FS_SM);
             _searchField.onValueChanged.AddListener(new Action<string>(val =>
             {
                 _query = val ?? "";
@@ -122,8 +123,8 @@ namespace BetterFG.UI.Tabs
 
             // Filters: multi-select with checkmarks. button label stays "Filters", goes yellow when any on.
             _filterBtn = UGUIShip.CreateMultiSelectDropdown(contentRoot, new Rect(ddX, y, ddW, HEADER_H),
-                "Filters",
-                new List<string> { "Favorited", "Has ghost", "Creative level", "Unity level" },
+                "ui.filters",
+                new List<string> { "ui.favorited", "ui.has_ghost", "ui.creative_level", "ui.unity_level" },
                 new List<bool> { _filterFav, _filterGhost, _filterCreative, _filterUnity },
                 new Action<int, bool>((i, on) =>
                 {
@@ -138,8 +139,8 @@ namespace BetterFG.UI.Tabs
 
             // Sort: single-select, same control/look as Filters (radio checkmarks, closes on pick)
             var sortBtn = UGUIShip.CreateMultiSelectDropdown(contentRoot, new Rect(ddX + ddW + PAD, y, ddW, HEADER_H),
-                "Sort",
-                new List<string> { "Sort by time", "Sort by name", "Sort by date" },
+                "ui.sort",
+                new List<string> { "ui.sort_by_time", "ui.sort_by_name", "ui.sort_by_date" },
                 new List<bool> { _sort == SortMode.Time, _sort == SortMode.Name, _sort == SortMode.Date },
                 new Action<int, bool>((i, on) =>
                 {
@@ -156,7 +157,7 @@ namespace BetterFG.UI.Tabs
                 {
                     _sortDesc = !_sortDesc;
                     var lbl = dirBtn.GetComponentInChildren<Text>();
-                    if (lbl != null) lbl.text = _sortDesc ? "↓" : "↑";
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _sortDesc ? "↓" : "↑");
                     SortRows();
                 }));
             var dirTxt = dirBtn.GetComponentInChildren<Text>();
@@ -187,16 +188,16 @@ namespace BetterFG.UI.Tabs
             float subH = BTN_H * 0.9f;
             float quarterW = (w - PAD * 1.5f) / 4f;
             float subStep = quarterW + PAD * 0.5f;
-            _btnSolos = UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, quarterW, subH), "Solos",
+            _btnSolos = UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, quarterW, subH), "ui.solos",
                 _subType == PbType.Solos ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
                 new Action(() => SetSubType(PbType.Solos)));
-            _btnDuos = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep, y, quarterW, subH), "Duos",
+            _btnDuos = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep, y, quarterW, subH), "ui.duos",
                 _subType == PbType.Duos ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
                 new Action(() => SetSubType(PbType.Duos)));
-            _btnSquads = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep * 2f, y, quarterW, subH), "Squads",
+            _btnSquads = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep * 2f, y, quarterW, subH), "ui.squads",
                 _subType == PbType.Squads ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
                 new Action(() => SetSubType(PbType.Squads)));
-            _btnTimeAttack = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep * 3f, y, quarterW, subH), "Time Attack",
+            _btnTimeAttack = UGUIShip.CreateButton(contentRoot, new Rect(PAD + subStep * 3f, y, quarterW, subH), "ui.time_attack",
                 _subType == PbType.TimeAttack ? SUBTAB_SEL : SUBTAB_OFF, Color.white, FS_SM,
                 new Action(() => SetSubType(PbType.TimeAttack)));
 
@@ -228,9 +229,9 @@ namespace BetterFG.UI.Tabs
 
             // bottom bar: [< prev]   status   [next >]
             float pageBtnW = 52f;
-            _prevBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, statusY, pageBtnW, statusH), "‹ Prev",
+            _prevBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, statusY, pageBtnW, statusH), "ui.prev",
                 SUBTAB_OFF, Color.white, FS_SM, new Action(() => { _page--; RenderPage(); }));
-            _nextBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - pageBtnW, statusY, pageBtnW, statusH), "Next ›",
+            _nextBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - pageBtnW, statusY, pageBtnW, statusH), "ui.next_2",
                 SUBTAB_OFF, Color.white, FS_SM, new Action(() => { _page++; RenderPage(); }));
             _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD + pageBtnW, statusY, w - pageBtnW * 2f, statusH),
                 "", FS_SM, HINT, TextAnchor.MiddleCenter);
@@ -379,10 +380,10 @@ namespace BetterFG.UI.Tabs
             if (_nextBtn != null) _nextBtn.gameObject.SetActive(pageCount > 1);
             if (_statusLbl != null)
             {
-                if (_data.Count == 0) _statusLbl.text = "no personal bests recorded yet";
-                else if (total == 0) _statusLbl.text = "no results";
-                else if (pageCount > 1) _statusLbl.text = string.Format("{0} pbs  ·  page {1}/{2}", total, _page + 1, pageCount);
-                else _statusLbl.text = total + (total == 1 ? " pb" : " pbs");
+                if (_data.Count == 0) UGUIShip.RelabelText(_statusLbl, "ui.no_personal_bests_recorded_yet");
+                else if (total == 0) UGUIShip.RelabelText(_statusLbl, "ui.no_results");
+                else if (pageCount > 1) UGUIShip.RelabelText(_statusLbl, LocalizationService.Format("ui.pbs_page_fmt", total, _page + 1, pageCount));
+                else UGUIShip.RelabelText(_statusLbl, LocalizationService.Format(total == 1 ? "ui.pb_count_singular_fmt" : "ui.pb_count_plural_fmt", total));
             }
         }
 

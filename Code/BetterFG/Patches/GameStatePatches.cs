@@ -953,10 +953,17 @@ namespace BetterFG.Patches.GameStates
     [HarmonyPatch(typeof(ClientGameManager), "HandleServerPlayerProgress")]
     internal static class HandleServerPlayerProgressHub
     {
+        // the fall feed notification fires synchronously inside the original method - a postfix
+        // here runs too late to have the qual time stored for FallFeedQualTimeTweak to read.
+        [HarmonyPrefix]
+        public static void Prefix(GameMessageServerPlayerProgress progressMessage)
+        {
+            BetterFG.Features.TimePlacement.FeatureTimePlacement.OnServerPlayerProgress(progressMessage);
+        }
+
         [HarmonyPostfix]
         public static void Postfix(ClientGameManager __instance, GameMessageServerPlayerProgress progressMessage)
         {
-            BetterFG.Features.TimePlacement.FeatureTimePlacement.OnServerPlayerProgress(progressMessage);
             BetterFG.Features.Stars.FeatureStars.OnServerPlayerProgress(__instance, progressMessage);
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnServerPlayerProgress(__instance, progressMessage);
             BetterFG.Features.Replay.FeatureReplay.OnServerPlayerProgress(progressMessage);
@@ -1831,6 +1838,19 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(LobbyScreenViewModel), nameof(LobbyScreenViewModel.ShowCancelConfirmationPopup))]
+    internal static class Patch_LobbyScreenViewModel_ShowCancelConfirmationPopup
+    {
+        [HarmonyPrefix]
+        private static bool Prefix()
+        {
+            if (BetterFG.Tweaks.LobbyAudioPromptTweak.Instance != null && BetterFG.Tweaks.LobbyAudioPromptTweak.Instance.IsOpen)
+                return false;
+            if (BetterFG.Tweaks.LobbyCustomiserTweak.Instance != null && BetterFG.Tweaks.LobbyCustomiserTweak.Instance.IsBrowsing)
+                return false;
+            return true;
+        }
+    }
 
 }
 

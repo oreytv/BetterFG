@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -24,6 +24,7 @@ namespace BetterFG.UI.Tabs
         public CustomizationTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "UGC Customization";
+        protected override string TitleId => "ui.ugc_customization";
         protected override string BgResource => "BetterFG.assets.ui.cskins.bg.png";
 
         // pick-mode: when set, this tab is on loan to a picker flow (currently the pet wizard).
@@ -395,10 +396,10 @@ namespace BetterFG.UI.Tabs
                 float gap = PAD * 0.5f;
                 float bx = PAD;
 
-                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Fetch", BTN_FETCH, WHITE, FS, new Action(OnFetch)); bx += singleW + gap;
-                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Import", BTN_IMPORT, WHITE, FS, new Action(OnImport)); bx += singleW + gap;
-                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Apply", BTN_APPLY, WHITE, FS, new Action(OnApply)); bx += singleW + gap;
-                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "Remove All", BTN_REMOVE, WHITE, FS, new Action(OnRemoveAll));
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "ui.fetch", BTN_FETCH, WHITE, FS, new Action(OnFetch)); bx += singleW + gap;
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "ui.import", BTN_IMPORT, WHITE, FS, new Action(OnImport)); bx += singleW + gap;
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "ui.apply", BTN_APPLY, WHITE, FS, new Action(OnApply)); bx += singleW + gap;
+                UGUIShip.CreateButton(belowRt, new Rect(bx, y, singleW, BTN_H), "ui.remove_all", BTN_REMOVE, WHITE, FS, new Action(OnRemoveAll));
             }
 
             Refresh();
@@ -463,10 +464,10 @@ namespace BetterFG.UI.Tabs
             float btnW = (w - gap * 3f) / 4f;
             float bx = PAD;
 
-            _btnCostumes = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Costumes", GetFilterBg(SkinType.Costume), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Costume))); bx += btnW + gap;
-            _btnAccessories = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Accessories", GetFilterBg(SkinType.Accessory), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Accessory))); bx += btnW + gap;
-            _btnItems = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Items", GetFilterBg(SkinType.Item), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Item))); bx += btnW + gap;
-            _btnEmotes = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "Emotes", GetFilterBg(SkinType.Emote), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Emote)));
+            _btnCostumes = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "ui.costumes", GetFilterBg(SkinType.Costume), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Costume))); bx += btnW + gap;
+            _btnAccessories = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "ui.accessories", GetFilterBg(SkinType.Accessory), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Accessory))); bx += btnW + gap;
+            _btnItems = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "ui.items", GetFilterBg(SkinType.Item), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Item))); bx += btnW + gap;
+            _btnEmotes = UGUIShip.CreateButton(parent, new Rect(bx, y, btnW, BTN_H), "ui.emotes", GetFilterBg(SkinType.Emote), WHITE, FS_SM, new Action(() => SetFilter(SkinType.Emote)));
         }
 
         private void SetFilter(SkinType type)
@@ -767,7 +768,7 @@ namespace BetterFG.UI.Tabs
             else if (empty)
             {
                 var txt = _searchEmptyGo.GetComponentInChildren<Text>(true);
-                if (txt != null) txt.text = string.Format(EMPTY_NO_RESULTS, _searchQuery);
+                if (txt != null) UGUIShip.RelabelText(txt, string.Format(EMPTY_NO_RESULTS, _searchQuery));
                 if (!_searchEmptyGo.activeSelf) _searchEmptyGo.SetActive(true);
             }
             else if (_searchEmptyGo != null && _searchEmptyGo.activeSelf)
@@ -834,11 +835,11 @@ namespace BetterFG.UI.Tabs
             infoVlg.padding = new RectOffset(0, 0, (int)(PAD * 0.5f), (int)(PAD * 0.5f));
 
             UGUIShip.CreateFlowLabel(infoGo.transform, skin.name, FS, WHITE);
-            UGUIShip.CreateFlowLabel(infoGo.transform, "by " + skin.author, FS_SM, HINT);
+            UGUIShip.CreateFlowLabel(infoGo.transform, LocalizationService.Format("ui.by_author_fmt", skin.author), FS_SM, HINT);
             if (!string.IsNullOrEmpty(skin.description))
                 UGUIShip.CreateFlowLabel(infoGo.transform, skin.description, FS_SM, HINT, multiline: true);
             if (skin.isLocalImport)
-                UGUIShip.CreateFlowLabel(infoGo.transform, "[Local]", FS_SM, GOLD);
+                UGUIShip.CreateFlowLabel(infoGo.transform, "ui.local", FS_SM, GOLD);
 
             if (type == SkinType.Item && (skin.left != null || skin.right != null))
             {
@@ -906,7 +907,7 @@ namespace BetterFG.UI.Tabs
 
                 // always build Configure; toggle active by selection (no structural change on click)
                 string cfgFile = fileKey;
-                var cfgBtn = UGUIShip.CreateButton(handRow.transform, "Configure",
+                var cfgBtn = UGUIShip.CreateButton(handRow.transform, "ui.configure",
                     BTN_DARK, ORANGE, FS_SM, new Action(() => OpenConfigWindow(cfgFile)));
                 cfgBtn.gameObject.AddComponent<LayoutElement>().preferredWidth = SEL_W;
                 cfgBtn.gameObject.SetActive(isSelected);
@@ -939,13 +940,13 @@ namespace BetterFG.UI.Tabs
                 {
                     skinCovers.Remove(coverKey);
                     coverImg.color = new Color(1f, 1f, 1f, 0f);
-                    UGUIShip.CreateStretchLabel(coverSlot, "No Preview", FS_SM, HINT);
+                    UGUIShip.CreateStretchLabel(coverSlot, "ui.no_preview", FS_SM, HINT);
                 }
             }
             else
             {
                 catalogService?.EnsureCover(skin, true);
-                UGUIShip.CreateStretchLabel(coverSlot, "No Preview", FS_SM, HINT);
+                UGUIShip.CreateStretchLabel(coverSlot, "ui.no_preview", FS_SM, HINT);
             }
 
             // Action button. emotes are copy-to-clipboard (not select+apply) — everything else uses Select
@@ -954,7 +955,7 @@ namespace BetterFG.UI.Tabs
             {
                 var copyBtn = UGUIShip.CreateButton(
                     rowGo.transform,
-                    "Copy",
+                    "ui.copy",
                     new Color(0.18f, 0.18f, 0.18f, 1f),
                     YELLOW,
                     FS_SM,
@@ -969,7 +970,7 @@ namespace BetterFG.UI.Tabs
             {
                 var selBtn = UGUIShip.CreateButton(
                     rowGo.transform,
-                    "Select",
+                    "ui.select",
                     new Color(0.18f, 0.18f, 0.18f, 1f),
                     btnTxtColor,
                     FS_SM,
@@ -1125,15 +1126,15 @@ namespace BetterFG.UI.Tabs
             infoVlg.spacing = 0f;
 
             UGUIShip.CreateFlowLabel(infoGo.transform, repo.repoName, FS, WHITE);
-            UGUIShip.CreateFlowLabel(infoGo.transform, "by " + repo.author, FS_SM, HINT);
+            UGUIShip.CreateFlowLabel(infoGo.transform, LocalizationService.Format("ui.by_author_fmt", repo.author), FS_SM, HINT);
             if (!string.IsNullOrEmpty(description))
                 UGUIShip.CreateFlowLabel(infoGo.transform, description, FS_SM, HINT, multiline: true);
 
             // full-width action button at the bottom
             string capturedUrl = repo.githubUrl;
             var actBtn = added
-                ? UGUIShip.CreateButton(rowGo.transform, "Select", new Color(0.18f, 0.18f, 0.18f, 1f), YELLOW, FS_SM, new Action(() => OnSelectFeatured(capturedUrl)))
-                : UGUIShip.CreateButton(rowGo.transform, "Add", BTN_FETCH, WHITE, FS_SM, new Action(() => OnAddFeatured(capturedUrl)));
+                ? UGUIShip.CreateButton(rowGo.transform, "ui.select", new Color(0.18f, 0.18f, 0.18f, 1f), YELLOW, FS_SM, new Action(() => OnSelectFeatured(capturedUrl)))
+                : UGUIShip.CreateButton(rowGo.transform, "ui.add", BTN_FETCH, WHITE, FS_SM, new Action(() => OnAddFeatured(capturedUrl)));
             actBtn.gameObject.AddComponent<LayoutElement>().preferredHeight = BTN_H;
         }
 
@@ -1230,7 +1231,7 @@ namespace BetterFG.UI.Tabs
 
             if (PetPickTarget != null)
             {
-                if (type != SkinType.Costume) { SetStatus("pets can only wear a Costume"); return; }
+                if (type != SkinType.Costume) { SetStatus("ui.pets_can_only_wear_a_costume"); return; }
                 var target = PetPickTarget(skin);
                 if (target != null) BetterFGUIMan.Instance?.SwitchSlotTab(this, target);
                 return;
@@ -1901,7 +1902,7 @@ namespace BetterFG.UI.Tabs
                 iImg.raycastTarget = false;
             }
 
-            _searchPlaceholder = UGUIShip.CreateLabel(go.transform, default, "search...", FS_SM,
+            _searchPlaceholder = UGUIShip.CreateLabel(go.transform, default, "ui.search_2", FS_SM,
                 new Color(1f, 1f, 1f, 0.2f), TextAnchor.MiddleLeft);
             _searchPlaceholder.fontStyle = FontStyle.Italic;
             var phRt = _searchPlaceholder.rectTransform;

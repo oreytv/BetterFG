@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
@@ -12,7 +12,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 340f;
         protected override float WindowHeight => 118f;
-        protected override string WindowTitle => "Player Scale";
+        protected override string WindowTitle => "ui.player_scale";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private static readonly Color HINT_COL = new Color(1f, 1f, 1f, 0.35f);
@@ -62,19 +62,19 @@ namespace BetterFG.UI.Windows
             float bx = PAD + sliderW + spacing;
             UGUIShip.CreateButton(contentRoot,
                 new Rect(bx, cy, resetW, bh),
-                "Reset", new Color(0.22f, 0.22f, 0.22f, 1f), WHITE, FS_SM,
+                "ui.reset_2", new Color(0.22f, 0.22f, 0.22f, 1f), WHITE, FS_SM,
                 new Action(OnReset));
 
             UGUIShip.CreateButton(contentRoot,
                 new Rect(bx + resetW + spacing, cy, btnW, bh),
-                "Apply", BTN_APPLY, WHITE, FS_SM,
+                "ui.apply", BTN_APPLY, WHITE, FS_SM,
                 new Action(OnApply));
 
             cy -= bh + gap;
 
             var visualLabel = MakeLabel(contentRoot,
                 new Rect(PAD, cy, w, lh),
-                "Only affects your visual.. hitboxes stay the same.",
+                "ui.only_affects_your_visual_hitboxes_stay_the_same",
                 FS_SM,
                 new Color(1f, 1f, 1f, 0.4f));
             visualLabel.transform.localPosition = new Vector3(-160.4f, 68.1997f, 0f);
@@ -83,7 +83,7 @@ namespace BetterFG.UI.Windows
 
             MakeLabel(contentRoot,
                 new Rect(PAD, cy, w, lh * 2f),
-                "In a round this only works when you're solo, In main menu you'll scale anytime.",
+                "ui.in_a_round_this_only_works_when_you_re_solo_in_m",
                 FS_SM,
                 new Color(1f, 0.75f, 0.4f, 0.85f));
         }

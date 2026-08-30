@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -45,7 +45,7 @@ namespace BetterFG.Features.Replay
                 BTN_DARK, Color.white, UIScale.FS_SM, new Action(Restore));
             _restoreBtn.gameObject.SetActive(false);
 
-            _doneBtn = UGUIShip.CreateButton(_canvas.transform, new Rect(2f, 2f, 62f, 20f), "DONE",
+            _doneBtn = UGUIShip.CreateButton(_canvas.transform, new Rect(2f, 2f, 62f, 20f), "ui.done",
                 BTN_GREEN, Color.white, UIScale.FS_SM, new Action(EndCameraEdit));
             _doneBtn.gameObject.SetActive(false);
 
@@ -54,18 +54,18 @@ namespace BetterFG.Features.Replay
             y += ROW * 4f + 2f;
 
             float labelW = ReplayWindowKit.LABEL_W;
-            UGUIShip.CreateLabel(win, new Rect(PAD, y, labelW, ROW), "Name", UIScale.FS_SM, HINT);
+            UGUIShip.CreateLabel(win, new Rect(PAD, y, labelW, ROW), "ui.name", UIScale.FS_SM, HINT);
             var nameField = UGUIShip.CreateInputField(win, new Rect(PAD + labelW, y, WIN_W - PAD * 2f - labelW, ROW),
-                "replay name...", new Color(0f, 0f, 0f, 0.55f), Color.white, UIScale.FS_SM);
+                "ui.replay_name", new Color(0f, 0f, 0f, 0.55f), Color.white, UIScale.FS_SM);
             nameField.text = ReplayName();
             nameField.onEndEdit.AddListener(new Action<string>(OnNameChanged));
             y += ROW + PAD;
 
-            WindowRow(win, y, 0, "Save", new Action(SaveAs)); y += ROW;
-            WindowRow(win, y, 1, "Load", new Action(LoadFrom)); y += ROW;
-            WindowRow(win, y, 2, "Export", new Action(OpenExportWindow)); y += ROW;
-            WindowRow(win, y, 3, "Controls", new Action(OpenControlsWindow)); y += ROW;
-            WindowRow(win, y, 4, "Exit", new Action(Exit)); y += ROW;
+            WindowRow(win, y, 0, "ui.save", new Action(SaveAs)); y += ROW;
+            WindowRow(win, y, 1, "ui.load", new Action(LoadFrom)); y += ROW;
+            WindowRow(win, y, 2, "ui.export", new Action(OpenExportWindow)); y += ROW;
+            WindowRow(win, y, 3, "ui.controls", new Action(OpenControlsWindow)); y += ROW;
+            WindowRow(win, y, 4, "ui.exit", new Action(Exit)); y += ROW;
 
             win.sizeDelta = new Vector2(WIN_W, y + PAD);
         }
@@ -121,7 +121,7 @@ namespace BetterFG.Features.Replay
                 float y = LANES_Y + i * (LANE_H + LANE_GAP);
                 UGUIShip.CreatePanel(bar, new Rect(_trackLeft, y, trackW, LANE_H), LANE_BG, "Lane").GetComponent<Image>().raycastTarget = false;
 
-                string name = i == LANE_COUNT - 1 ? "Camera" : i == LANE_COUNT - 2 ? "Post FX" : "Visibility";
+                string name = i == LANE_COUNT - 1 ? "ui.camera" : i == LANE_COUNT - 2 ? "ui.lane_postfx" : "ui.lane_visibility";
                 UGUIShip.CreateLabel(bar, new Rect(PAD, y, LANE_NAME_W - 6f, LANE_H),
                     name, UIScale.FS_SM - 1, HINT, TextAnchor.MiddleRight);
             }

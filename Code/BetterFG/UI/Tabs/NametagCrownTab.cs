@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Services;
 using BetterFG.Nametag;
 using UnityEngine;
@@ -12,6 +12,7 @@ namespace BetterFG.UI.Tabs
         public NametagCrownTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Nametag - Crown Rank";
+        protected override string TitleId => "ui.nametag_crown_rank";
         protected override string BgResource => "BetterFG.assets.ui.nametag.bg.png";
 
         private static readonly Color WHITE2 = Color.white;
@@ -25,7 +26,7 @@ namespace BetterFG.UI.Tabs
         private float _crHiR, _crHiG, _crHiB;
         private float _crOutR, _crOutG, _crOutB;
 
-        protected override string[] StepTitles => new[] { "Crown rank", "Crown colours", "Outline colour" };
+        protected override string[] StepTitles => new[] { "ui.crown_rank", "ui.crown_colours", "ui.outline_colour_2" };
         protected override bool HasRemove => true;
         protected override Tab MakeListTarget() => BetterFGTabRegistry.NewTab<NametagTab>();
 
@@ -58,7 +59,7 @@ namespace BetterFG.UI.Tabs
 
             bool en = CrownRankService.Enabled;
             var enBtn = UGUIShip.CreateButton(c, new Rect(x, cy, w, bh),
-                en ? "Crown rank: ON" : "Crown rank: OFF",
+                en ? "ui.crown_rank_on" : "ui.crown_rank_off",
                 en ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(OnToggleCrownEnabled));
             _crownEnabledLabel = enBtn.GetComponentInChildren<Text>();
             cy += bh + PAD;
@@ -67,16 +68,16 @@ namespace BetterFG.UI.Tabs
             cy += 1f + PAD;
 
             float rankLblW = w * 0.42f;
-            UGUIShip.CreateLabel(c, new Rect(x, cy, rankLblW, bh), "RANK TEXT", FS_SM, HINT, TextAnchor.MiddleLeft);
+            UGUIShip.CreateLabel(c, new Rect(x, cy, rankLblW, bh), "ui.rank_text", FS_SM, HINT, TextAnchor.MiddleLeft);
             _crownRankField = UGUIShip.CreateInputField(c, new Rect(x + rankLblW + PAD, cy, w - rankLblW - PAD, bh),
-                "rank text", new Color(0.12f, 0.12f, 0.12f, 1f), WHITE2, FS_SM);
+                "ui.rank_text_2", new Color(0.12f, 0.12f, 0.12f, 1f), WHITE2, FS_SM);
             UGUIShip.SetInputText(_crownRankField, CrownRankService.RankText, false);
             _crownRankField.onEndEdit.AddListener(new Action<string>(OnCrownRankEdited));
             cy += bh + PAD;
 
             bool swap = CrownRankService.SwapSide;
             var swapBtn = UGUIShip.CreateButton(c, new Rect(x, cy, w, bh),
-                swap ? "Crown side: LEFT" : "Crown side: RIGHT",
+                swap ? "ui.crown_side_left" : "ui.crown_side_right",
                 swap ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(OnToggleCrownSwap));
             _crownSwapLabel = swapBtn.GetComponentInChildren<Text>();
             cy += bh + PAD;
@@ -90,7 +91,7 @@ namespace BetterFG.UI.Tabs
 
             bool recol = CrownRankService.RecolourOn;
             var recolBtn = UGUIShip.CreateButton(c, new Rect(x, cy, w, bh),
-                recol ? "Recolour: ON" : "Recolour: OFF",
+                recol ? "ui.recolour_on" : "ui.recolour_off",
                 recol ? SEL_COLOR : BTN_DARK2, WHITE2, FS_SM, new Action(OnToggleCrownRecolour));
             _crownRecolourOnLabel = recolBtn.GetComponentInChildren<Text>();
             cy += bh + PAD;
@@ -113,14 +114,14 @@ namespace BetterFG.UI.Tabs
             _crownPreview = prevTexGo.AddComponent<RawImage>();
             _crownPreview.raycastTarget = false;
 
-            UGUIShip.CreateLabel(c, new Rect(x, cy, slidersW, LH), "CROWN COLOUR", FS_SM, HINT);
+            UGUIShip.CreateLabel(c, new Rect(x, cy, slidersW, LH), "ui.crown_colour", FS_SM, HINT);
             cy += LH + SH;
             UGUIShip.CreateColorControls(c, x, ref cy, slidersW,
                 () => _crMainR, () => _crMainG, () => _crMainB,
                 v => _crMainR = v, v => _crMainG = v, v => _crMainB = v, () => { RefreshCrownPreview(); RefreshPreview(); },
                 out _, out _, out _, new Color(1f, 0.55f, 0.1f));
 
-            UGUIShip.CreateLabel(c, new Rect(x, cy, slidersW, LH), "HIGHLIGHT COLOUR", FS_SM, HINT);
+            UGUIShip.CreateLabel(c, new Rect(x, cy, slidersW, LH), "ui.highlight_colour", FS_SM, HINT);
             cy += LH + SH;
             UGUIShip.CreateColorControls(c, x, ref cy, slidersW,
                 () => _crHiR, () => _crHiG, () => _crHiB,
@@ -135,7 +136,7 @@ namespace BetterFG.UI.Tabs
         private void BuildOutlineStep(RectTransform c, float w)
         {
             float x = PAD, cy = PAD;
-            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "OUTLINE COLOUR", FS_SM, HINT);
+            UGUIShip.CreateLabel(c, new Rect(x, cy, w, LH), "ui.outline_colour", FS_SM, HINT);
             cy += LH + SH;
             UGUIShip.CreateColorControls(c, x, ref cy, w,
                 () => _crOutR, () => _crOutG, () => _crOutB,
@@ -167,7 +168,7 @@ namespace BetterFG.UI.Tabs
         {
             bool on = !CrownRankService.Enabled;
             CrownRankService.SetEnabled(on);
-            if (_crownEnabledLabel != null) _crownEnabledLabel.text = on ? "Crown rank: ON" : "Crown rank: OFF";
+            if (_crownEnabledLabel != null) UGUIShip.RelabelText(_crownEnabledLabel, on ? "ui.crown_rank_on" : "ui.crown_rank_off");
             UGUIShip.SetButtonSelected(_crownEnabledLabel?.transform.parent?.GetComponent<Button>(), on, SEL_COLOR);
             CrownRankService.ApplyLocal();
             RefreshPreview();
@@ -186,7 +187,7 @@ namespace BetterFG.UI.Tabs
         {
             bool on = !CrownRankService.RecolourOn;
             CrownRankService.SetRecolourOn(on);
-            if (_crownRecolourOnLabel != null) _crownRecolourOnLabel.text = on ? "Recolour: ON" : "Recolour: OFF";
+            if (_crownRecolourOnLabel != null) UGUIShip.RelabelText(_crownRecolourOnLabel, on ? "ui.recolour_on" : "ui.recolour_off");
             UGUIShip.SetButtonSelected(_crownRecolourOnLabel?.transform.parent?.GetComponent<Button>(), on, SEL_COLOR);
             CrownRankService.ApplyLocal();
             RefreshPreview();
@@ -196,7 +197,7 @@ namespace BetterFG.UI.Tabs
         {
             bool on = !CrownRankService.SwapSide;
             CrownRankService.SetSwapSide(on);
-            if (_crownSwapLabel != null) _crownSwapLabel.text = on ? "Crown side: LEFT" : "Crown side: RIGHT";
+            if (_crownSwapLabel != null) UGUIShip.RelabelText(_crownSwapLabel, on ? "ui.crown_side_left" : "ui.crown_side_right");
             UGUIShip.SetButtonSelected(_crownSwapLabel?.transform.parent?.GetComponent<Button>(), on, SEL_COLOR);
             if (SettingsService.Get("nametag.icon.mode", "none") != "none")
                 NametagIconApplicator.ApplyIcon();

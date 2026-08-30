@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.UI.SideWheel;
 using UnityEngine;
 using BettrFG.uGUI;
@@ -14,7 +14,7 @@ namespace BetterFG.UI.Windows
 
         protected static readonly Color LINK = new Color(1f, 0.72f, 0.35f, 0.85f);
 
-        protected virtual string BackLabel => "back";
+        protected virtual string BackLabel => "ui.back_5";
         protected virtual BetterFGWindow MakeBackTarget() => null;
 
         protected override void BuildTitleExtras(Transform titleRoot)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -16,7 +16,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
-        protected override string WindowTitle => "Menu Music";
+        protected override string WindowTitle => "ui.menu_music";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private RectTransform _listRt;
@@ -100,10 +100,10 @@ namespace BetterFG.UI.Windows
 
         public static void BuildRows(RectTransform parent, MenuMusicWindow window)
         {
-            BuildHeader(parent, "CUSTOM MUSIC");
+            BuildHeader(parent, "ui.custom_music");
             BuildEnabledRow(parent, ROW_EVEN);
 
-            BuildHeader(parent, "TRACKS");
+            BuildHeader(parent, "ui.tracks");
             BuildRefreshRow(parent, ROW_EVEN, window);
 
             int i = 0;
@@ -145,7 +145,7 @@ namespace BetterFG.UI.Windows
 
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(PAD + 20f, 0f, 200f, ROW_H),
-                "Custom song", 13,
+                "ui.custom_song", 13,
                 new Color(1f, 1f, 1f, 0.85f),
                 TextAnchor.MiddleLeft);
 
@@ -161,7 +161,7 @@ namespace BetterFG.UI.Windows
             bool on = MenuMusicService.Enabled;
             var btn = UGUIShip.CreateButton(btnGo.transform,
                 new Rect(0f, 0f, TOGGLE_W, TOGGLE_H),
-                on ? "ON" : "OFF",
+                on ? "ui.on" : "ui.off",
                 on ? ON_COL : OFF_COL,
                 Color.white, 9);
             var lbl = btn.GetComponentInChildren<Text>();
@@ -171,7 +171,7 @@ namespace BetterFG.UI.Windows
                 bool next = !MenuMusicService.Enabled;
                 MenuMusicService.SetEnabled(next);
                 Paint(btn, next ? ON_COL : OFF_COL);
-                if (lbl != null) lbl.text = next ? "ON" : "OFF";
+                if (lbl != null) UGUIShip.RelabelText(lbl, next ? "ui.on" : "ui.off");
             }));
         }
 
@@ -204,7 +204,7 @@ namespace BetterFG.UI.Windows
 
             UGUIShip.CreateButton(btnGo.transform,
                 new Rect(0f, 0f, BTN_W, TOGGLE_H),
-                "Refresh", DL_COL, Color.white, 9)
+                "ui.refresh_2", DL_COL, Color.white, 9)
                 .onClick.AddListener(new Action(() => window.StartFetch()));
         }
 
@@ -246,7 +246,7 @@ namespace BetterFG.UI.Windows
 
                 UGUIShip.CreateButton(useGo.transform,
                     new Rect(0f, 0f, BTN_W, TOGGLE_H),
-                    isUsed ? "Used" : "Use",
+                    isUsed ? "ui.used" : "ui.use",
                     isUsed ? USED_COL : OFF_COL,
                     Color.white, 9)
                     .onClick.AddListener(new Action(() =>
@@ -272,7 +272,7 @@ namespace BetterFG.UI.Windows
             {
                 UGUIShip.CreateLabel(dlGo.transform,
                     new Rect(0f, 0f, BTN_W, TOGGLE_H),
-                    "Saved", 9, new Color(1f, 1f, 1f, 0.4f),
+                    "ui.saved", 9, new Color(1f, 1f, 1f, 0.4f),
                     TextAnchor.MiddleCenter);
             }
             else
@@ -280,7 +280,7 @@ namespace BetterFG.UI.Windows
                 bool busy = MenuMusicCatalog.Downloading.ContainsKey(track.name);
                 var dlBtn = UGUIShip.CreateButton(dlGo.transform,
                     new Rect(0f, 0f, BTN_W, TOGGLE_H),
-                    busy ? "..." : "Get", DL_COL, Color.white, 9);
+                    busy ? "..." : "ui.get", DL_COL, Color.white, 9);
                 dlBtn.interactable = !busy;
                 dlBtn.onClick.AddListener(new Action(() =>
                     window.StartDownload(track, ok => window.RefreshList())));

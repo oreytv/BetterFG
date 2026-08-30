@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using BetterFG.Utilities;
@@ -44,9 +44,9 @@ namespace BetterFG.UI.Tabs
             BuildListLayout(content);
 
             float pageBtnW = 52f;
-            _prevBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, statusY, pageBtnW, statusH), "‹ Prev",
+            _prevBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, statusY, pageBtnW, statusH), "ui.prev",
                 DARK, Color.white, FS_SM, new Action(() => { Page--; RenderPage(); }));
-            _nextBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - pageBtnW, statusY, pageBtnW, statusH), "Next ›",
+            _nextBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - pageBtnW, statusY, pageBtnW, statusH), "ui.next_2",
                 DARK, Color.white, FS_SM, new Action(() => { Page++; RenderPage(); }));
             _statusLbl = UGUIShip.CreateLabel(contentRoot, new Rect(PAD + pageBtnW, statusY, w - pageBtnW * 2f, statusH),
                 "", FS_SM, HINT, TextAnchor.MiddleCenter);
@@ -62,7 +62,7 @@ namespace BetterFG.UI.Tabs
 
         protected void SetStatus(string msg)
         {
-            if (_statusLbl != null) _statusLbl.text = msg;
+            if (_statusLbl != null) UGUIShip.RelabelText(_statusLbl, msg);
         }
 
         protected void ShowPaging(bool on)

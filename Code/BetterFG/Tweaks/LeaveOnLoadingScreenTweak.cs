@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Core;
 using BetterFG.Utilities;
 using FallGuysLib.Round;
@@ -19,15 +19,19 @@ namespace BetterFG.Tweaks
     // generated property returns the live Rewired id for Menu_UICancel — Circle/B/A-cancel across
     // every controller layout) so we don't need to scrape NavigationOverlayManager and we don't
     // have a startup race where the id isn't cached yet.
+    //
+    // the button goes in the game's real NavigationOverlay row, but the press is read by our own
+    // Rewired poll rather than the button's UIButtonSolo: the Menu input category is disabled
+    // during loading, so anything routed through the game's own button callback never fires there.
     public class LeaveOnLoadingScreenTweak : BfgTweak
     {
         public LeaveOnLoadingScreenTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "leave_on_loading_screen";
-        public override string TweakLabel => "Allow leaving during loading";
+        public override string TweakLabel => "tweak.allow_leaving_during_loading";
         public override bool DefaultEnabled => true;
 
-        private static NavPromptHandle _prompt;
+        private static bool _claimed;
 
         private const string TitleKey = "bfg_leaveloading_title";
         private const string MessageKey = "bfg_leaveloading_msg";
@@ -74,32 +78,18 @@ namespace BetterFG.Tweaks
 
         void Update()
         {
-            if (!_stateLeavable && !ExternalWindowOpen)
-            {
-                if (_prompt != null) DestroyPrompt();
-                return;
-            }
-
-            if (!IsInLeavableLoadingState())
+            if ((!_stateLeavable && !ExternalWindowOpen) || !IsInLeavableLoadingState())
             {
                 DestroyPrompt();
                 return;
             }
 
-            EnsurePromptSpawned();
+            if (!_claimed || !NavPromptCore.OverlayRowActive) Claim();
 
-            if (_prompt == null || !_prompt.IsPressed()) return;
-            // eliminated banner is a one-tap exit — no confirm popup, just close the banner.
-            if (ActiveEliminatedBannerClose != null)
-            {
-                try { ActiveEliminatedBannerClose(); }
-                catch (Exception ex) { Plugin.Log?.LogWarning("LeaveOnLoading: banner OnClosed: " + ex.Message); }
-                ActiveEliminatedBannerClose = null;
-                OnExternalLeaveTriggerEnd();
-                DestroyPrompt();
-                return;
-            }
-            ShowLeaveConfirm();
+            // eliminated banner is a one-tap exit — OnLeavePressed closes it instead of confirming.
+            if (NavPromptCore.PollActionDirect(RewiredConsts.Action.Menu_UICancel, IsBackElementName, false)
+                || Input.GetKeyDown(KeyCode.Escape))
+                OnLeavePressed();
         }
 
         // called when StateRewardScreen takes over — kill any active prompt + state.
@@ -110,35 +100,36 @@ namespace BetterFG.Tweaks
             DestroyPrompt();
         }
 
-        // spawn one copy of the game's own Back nav prompt onto our own overlay canvas. FG's
-        // NavigationPromptButtonController handles all glyph switching itself (controller change
-        // -> right glyph), so the core just Instantiates + Init's once and the visual stays
-        // correct for whatever input the user picks up. element-name filter rejects X-on-PS
-        // since across controller layouts the Menu_UICancel binding's elementIdentifierId
-        // collides with Cross on DualShock.
-        private static void EnsurePromptSpawned()
+        // FG's NavigationPromptButtonController handles all glyph switching itself (controller
+        // change -> right glyph), so the core just Instantiates + Init's once and the visual stays
+        // correct for whatever input the user picks up. element-name filter rejects X-on-PS since
+        // across controller layouts the Menu_UICancel binding's elementIdentifierId collides with
+        // Cross on DualShock.
+        private static void Claim()
         {
-            if (_prompt != null && _prompt.IsAlive) return;
-            _prompt = NavPromptCore.From(NavPrompt.Back)
-                .WithLabel("Leave", LeaveLabelKey)
-                .AnchoredAt(NavPromptAnchor.BottomRight)
-                .OnOwnCanvas()
-                .AlsoAcceptEscape()
-                // NavPrompt.Back's InputActions don't include Menu_UICancel, so the disabled-category
-                // poll path wouldn't see B/Circle. force-poll Menu_UICancel directly (the action the
-                // controller's back button is actually bound to) + filter element names to keep X/Cross
-                // from sneaking through on PS.
-                .PollActions(RewiredConsts.Action.Menu_UICancel)
-                .FilterElement(IsBackElementName)
-                .NoAutoResize()
-                .AllowWhileUnfocused()
-                .SpawnOn(null);
+            NavPromptCore.ClaimOverlayRow(NavPrompt.Back, LeaveLabelKey, "Leave", OnLeavePressed);
+            _claimed = true;
         }
 
         private static void DestroyPrompt()
         {
-            _prompt?.Destroy();
-            _prompt = null;
+            if (!_claimed) return;
+            _claimed = false;
+            NavPromptCore.ReleaseOverlayRow();
+        }
+
+        private static void OnLeavePressed()
+        {
+            if (ActiveEliminatedBannerClose != null)
+            {
+                try { ActiveEliminatedBannerClose(); }
+                catch (Exception ex) { Plugin.Log?.LogWarning("LeaveOnLoading: banner OnClosed: " + ex.Message); }
+                ActiveEliminatedBannerClose = null;
+                OnExternalLeaveTriggerEnd();
+                DestroyPrompt();
+                return;
+            }
+            ShowLeaveConfirm();
         }
 
         // popup title/message are looked up as CMS localisation keys, so register ours before show.
@@ -252,16 +243,13 @@ namespace BetterFG.Tweaks
         // names Rewired's templates use for the cancel/back face button across the controller
         // layouts the game ships with. Xbox = B, PS = Circle, generic DInput = Button 1 / 2.
         // anything else (Cross/A/X, shoulders, sticks, dpad) is rejected so X on PS doesn't fire.
-        // passed to NavPromptCore's element-name filter so the core's joystick-poll loop only
-        // accepts presses on actual back buttons.
         private static bool IsBackElementName(string n)
         {
             if (string.IsNullOrEmpty(n)) return false;
-            // case-insensitive contains-style match; Rewired names vary ("B Button", "Circle Button", etc)
             string s = n.ToLowerInvariant();
             if (s.Contains("circle")) return true;
             if (s == "b" || s.StartsWith("b ") || s.Contains("b button")) return true;
-            if (s.Contains("button 1") || s.Contains("button1")) return true; // DInput generic
+            if (s.Contains("button 1") || s.Contains("button1")) return true;
             return false;
         }
     }

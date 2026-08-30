@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Customization.Presets;
 using UnityEngine;
 using UnityEngine.UI;
@@ -12,7 +12,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
-        protected override string WindowTitle => "Presets";
+        protected override string WindowTitle => "ui.presets";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private const float ROW_H = 22f;
@@ -68,7 +68,7 @@ namespace BetterFG.UI.Windows
             rowGo.AddComponent<Image>().color = new Color(0.2f, 0.3f, 0.45f, 0.18f);
 
             _nameField = UGUIShip.CreateInputField(rowGo.transform,
-                new Rect(ROW_PAD, (ROW_H - BTN_H) * 0.5f, 150f, BTN_H), "preset name…");
+                new Rect(ROW_PAD, (ROW_H - BTN_H) * 0.5f, 150f, BTN_H), "ui.preset_name");
 
             var btnGo = new GameObject("SaveBtn");
             btnGo.transform.SetParent(rowGo.transform, false);
@@ -79,7 +79,7 @@ namespace BetterFG.UI.Windows
             btnRt.anchoredPosition = new Vector2(-ROW_PAD, 0f);
             btnRt.sizeDelta = new Vector2(50f, BTN_H);
 
-            UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 50f, BTN_H), "SAVE",
+            UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 50f, BTN_H), "ui.save_2",
                 BTN_SAVE, Color.white, 9)
                 .onClick.AddListener(new Action(() =>
                 {
@@ -105,8 +105,8 @@ namespace BetterFG.UI.Windows
 
             // right-anchored: Del then Load, walking in from the edge.
             float right = ROW_PAD;
-            AddRowButton(rowGo, "DEL", 36f, ref right, BTN_DEL, () => { PresetService.Delete(name); RebuildContent(); });
-            AddRowButton(rowGo, "LOAD", 44f, ref right, BTN_LOAD, () => PresetService.Load(name));
+            AddRowButton(rowGo, "ui.del", 36f, ref right, BTN_DEL, () => { PresetService.Delete(name); RebuildContent(); });
+            AddRowButton(rowGo, "ui.load_2", 44f, ref right, BTN_LOAD, () => PresetService.Load(name));
         }
 
         private void AddRowButton(GameObject row, string label, float w, ref float rightOffset, Color col, Action onClick)

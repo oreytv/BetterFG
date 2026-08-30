@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Pets;
 using BetterFG.Customization.Player;
@@ -21,7 +21,7 @@ namespace BetterFG.UI.Tabs
         enum WizardStep { Name, Cosmetics, Scale, SkinTexture, UgcCustomization, Phrases }
         protected override string[] StepTitles => new[]
         {
-            "Name", "In-Game Cosmetics", "Scale", "Skin Texture (optional)", "BettrFG UGC Customization (optional)", "Phrases (optional)"
+            "ui.name", "ui.in_game_cosmetics", "ui.scale_2", "ui.skin_texture_optional", "ui.bettrfg_ugc_customization_optional", "ui.phrases_optional"
         };
 
         string _id = Guid.NewGuid().ToString("N");
@@ -80,9 +80,9 @@ namespace BetterFG.UI.Tabs
         void BuildNameStep(RectTransform root, float w)
         {
             float y = SH;
-            UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH), "What's your pet called?", FS_SM, LABEL);
+            UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH), "ui.what_s_your_pet_called", FS_SM, LABEL);
             y += LH + SH;
-            _nameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w, BTN_H), "pet name", Color.black, WHITE, FS_SM);
+            _nameField = UGUIShip.CreateInputField(root, new Rect(PAD, y, w, BTN_H), "ui.pet_name", Color.black, WHITE, FS_SM);
         }
 
         void BuildCosmeticsStep(RectTransform root, float w)
@@ -91,14 +91,14 @@ namespace BetterFG.UI.Tabs
             _lookLbl = UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH * 2f), LookSummary(), FS_SM, WHITE, TextAnchor.UpperLeft);
             y += LH * 2f + SH;
 
-            UGUIShip.CreateButton(root, new Rect(PAD, y, w, BTN_H), "Choose Look", BTN_DARK, WHITE, FS_SM,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, w, BTN_H), "ui.choose_look", BTN_DARK, WHITE, FS_SM,
                 new Action(OpenLookPicker));
         }
 
         void BuildScaleStep(RectTransform root, float w)
         {
             float y = SH;
-            UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH), "How big should the pet be?", FS_SM, LABEL);
+            UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH), "ui.how_big_should_the_pet_be", FS_SM, LABEL);
             y += LH + SH;
 
             float valW = 50f * UIScale.S;
@@ -108,7 +108,7 @@ namespace BetterFG.UI.Tabs
         }
 
         string ScaleText() => _scale.ToString("0.00") + "x";
-        void RefreshScaleLabel() { if (_scaleValueLbl != null) _scaleValueLbl.text = ScaleText(); }
+        void RefreshScaleLabel() { if (_scaleValueLbl != null) UGUIShip.RelabelText(_scaleValueLbl, ScaleText()); }
 
         string LookSummary() =>
             $"Upper: {ResolvedOrNone(_top)}\n" +
@@ -132,13 +132,13 @@ namespace BetterFG.UI.Tabs
         {
             float y = SH;
             UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH),
-                "Optional: give this pet its own texture overrides.", FS_SM, HINT, TextAnchor.UpperLeft);
+                "ui.optional_give_this_pet_its_own_texture_overrides", FS_SM, HINT, TextAnchor.UpperLeft);
             y += LH + SH;
 
             _skinTexLbl = UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH), SkinTexSummary(), FS_SM, WHITE);
             y += LH + SH;
 
-            UGUIShip.CreateButton(root, new Rect(PAD, y, w, BTN_H), "Edit Skin Textures >", BTN_BLUE, WHITE, FS_SM,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, w, BTN_H), "ui.edit_skin_textures", BTN_BLUE, WHITE, FS_SM,
                 new Action(OpenSkinTextures));
         }
 
@@ -156,7 +156,7 @@ namespace BetterFG.UI.Tabs
         {
             float y = SH;
             UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH),
-                "Optional: dress the pet in a full costume from your skin catalog instead of the base look.",
+                "ui.optional_dress_the_pet_in_a_full_costume_from_yo",
                 FS_SM, HINT, TextAnchor.UpperLeft);
             y += LH * 2f + SH;
 
@@ -165,10 +165,10 @@ namespace BetterFG.UI.Tabs
             y += LH + SH;
 
             float halfW = (w - PAD * 0.5f) / 2f;
-            UGUIShip.CreateButton(root, new Rect(PAD, y, halfW, BTN_H), "Choose Costume", BTN_DARK, WHITE, FS_SM,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, halfW, BTN_H), "ui.choose_costume", BTN_DARK, WHITE, FS_SM,
                 new Action(OpenCostumePicker));
-            UGUIShip.CreateButton(root, new Rect(PAD + halfW + PAD * 0.5f, y, halfW, BTN_H), "Remove Costume", BTN_REMOVE, WHITE, FS_SM,
-                new Action(() => { _costume = null; if (_costumeLbl != null) _costumeLbl.text = "No costume attached"; RefreshPreviewFromLook(); }));
+            UGUIShip.CreateButton(root, new Rect(PAD + halfW + PAD * 0.5f, y, halfW, BTN_H), "ui.remove_costume", BTN_REMOVE, WHITE, FS_SM,
+                new Action(() => { _costume = null; if (_costumeLbl != null) UGUIShip.RelabelText(_costumeLbl, "ui.no_costume_attached"); RefreshPreviewFromLook(); }));
         }
 
         // reuses the real UGC Customization tab to pick a costume rather than a trimmed rebuild of
@@ -196,14 +196,14 @@ namespace BetterFG.UI.Tabs
         {
             float y = SH;
             UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH),
-                "Optional: phrases the pet pops up above its head while it's out.", FS_SM, HINT, TextAnchor.UpperLeft);
+                "ui.optional_phrases_the_pet_pops_up_above_its_head", FS_SM, HINT, TextAnchor.UpperLeft);
             y += LH + SH;
 
             UGUIShip.CreateLabel(root, new Rect(PAD, y, w, LH),
                 _phrases.Count == 0 ? "none yet" : $"{_phrases.Count} phrase(s)", FS_SM, WHITE);
             y += LH + SH;
 
-            UGUIShip.CreateButton(root, new Rect(PAD, y, w, BTN_H), "Edit Phrases >", BTN_BLUE, WHITE, FS_SM,
+            UGUIShip.CreateButton(root, new Rect(PAD, y, w, BTN_H), "ui.edit_phrases", BTN_BLUE, WHITE, FS_SM,
                 new Action(OpenPhrases));
         }
 
@@ -309,9 +309,9 @@ namespace BetterFG.UI.Tabs
             _phraseIntervalMin = data.phraseIntervalMin;
             _phraseIntervalMax = data.phraseIntervalMax;
             UGUIShip.SetInputText(_nameField, data.name, false);
-            if (_lookLbl != null) _lookLbl.text = LookSummary();
-            if (_costumeLbl != null) _costumeLbl.text = _costume != null ? _costume.name : "No costume attached";
-            if (_skinTexLbl != null) _skinTexLbl.text = SkinTexSummary();
+            if (_lookLbl != null) UGUIShip.RelabelText(_lookLbl, LookSummary());
+            if (_costumeLbl != null) UGUIShip.RelabelText(_costumeLbl, _costume != null ? _costume.name : "No costume attached");
+            if (_skinTexLbl != null) UGUIShip.RelabelText(_skinTexLbl, SkinTexSummary());
         }
 
         protected override Tab MakeListTarget() => BetterFGTabRegistry.CreateTab("Pets");
@@ -319,7 +319,7 @@ namespace BetterFG.UI.Tabs
         protected override bool Save()
         {
             var data = CurrentData();
-            if (string.IsNullOrEmpty(data.name)) { SetStatus("give your pet a name first"); return false; }
+            if (string.IsNullOrEmpty(data.name)) { SetStatus("ui.give_your_pet_a_name_first"); return false; }
             PetService.Instance?.SavePet(data);
             Plugin.Log.LogInfo($"pet saved: {data.name} ({data.costumeTop}/{data.costumeBottom}/{data.pattern}, scale {data.scale})");
             return true;

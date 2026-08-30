@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Customization.Menu;
 using BetterFG.Services;
 using UnityEngine;
@@ -15,7 +15,7 @@ namespace BetterFG.UI.Tabs
 
         public UIForegroundKind What;
 
-        public override string TabTitle => "UI - " + Label(What);
+        public override string TabTitle => "UI - " + Label(What) + Label(What);
 
         public static string Label(UIForegroundKind k)
         {
@@ -59,11 +59,11 @@ namespace BetterFG.UI.Tabs
             by += 1f + PAD;
             float btnw = (w - PAD) / 3f;
             UGUIShip.CreateButton(contentRoot, new Rect(PAD, by, btnw, BTN_H),
-                "Apply", BTN_APPLY, WHITE, FS, new Action(OnApplyClicked));
+                "ui.apply", BTN_APPLY, WHITE, FS, new Action(OnApplyClicked));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + btnw + PAD * 0.5f, by, btnw, BTN_H),
-                "Enable all", BTN_ON, WHITE, FS_SM, new Action(() => SetAllEnabled(true)));
+                "ui.enable_all_2", BTN_ON, WHITE, FS_SM, new Action(() => SetAllEnabled(true)));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + (btnw + PAD * 0.5f) * 2f, by, btnw, BTN_H),
-                "Disable all", BTN_REMOVE, WHITE, FS_SM, new Action(() => SetAllEnabled(false)));
+                "ui.disable_all_2", BTN_REMOVE, WHITE, FS_SM, new Action(() => SetAllEnabled(false)));
 
             PositionSwitchLink();
         }
@@ -83,7 +83,7 @@ namespace BetterFG.UI.Tabs
             def.enabled = on;
             SettingsService.Set(def.enabledKey, on ? "true" : "false");
             var elbl = def.enabledBtn?.GetComponentInChildren<Text>();
-            if (elbl != null) elbl.text = on ? "CUSTOM COLOURS: ON" : "CUSTOM COLOURS: OFF";
+            if (elbl != null) UGUIShip.RelabelText(elbl, on ? "ui.custom_colours_on_2" : "ui.custom_colours_off_2");
             UGUIShip.SetButtonSelected(def.enabledBtn, on, SEL_COLOR);
             foreach (var s in def.slots) SetBannerToggle(s.ui, on);
             SetBannerToggle(def.highlight.ui, on);
@@ -94,7 +94,7 @@ namespace BetterFG.UI.Tabs
         private static void SetToggle(Button btn, bool on)
         {
             var lbl = btn?.GetComponentInChildren<Text>();
-            if (lbl != null) lbl.text = on ? "ON" : "OFF";
+            if (lbl != null) UGUIShip.RelabelText(lbl, on ? "ui.on" : "ui.off");
             UGUIShip.SetButtonSelected(btn, on, SEL_COLOR);
         }
     }

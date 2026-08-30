@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterFG.Services;
 using BetterFG.Customization.Player;
 using UnityEngine;
@@ -13,7 +13,7 @@ namespace BetterFG.UI.Windows
 
         protected override float WindowWidth => 320f;
         protected override float WindowHeight => 220f;
-        protected override string WindowTitle => "Item Config";
+        protected override string WindowTitle => "ui.item_config";
         protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         protected override bool DraggableFromTitle => true;
@@ -61,7 +61,7 @@ namespace BetterFG.UI.Windows
             SettingsService.Remove($"itemrrot.{f}.x"); SettingsService.Remove($"itemrrot.{f}.y"); SettingsService.Remove($"itemrrot.{f}.z");
             _handOverride = 1;
             _targetSkin.handOverride = 1;
-            if (_handLabel != null) _handLabel.text = HandLabel();
+            if (_handLabel != null) UGUIShip.RelabelText(_handLabel, HandLabel());
             RebuildContent();
             Dirty();
         }
@@ -147,7 +147,7 @@ namespace BetterFG.UI.Windows
                     {
                         _handOverride = _handOverride == 1 ? 2 : 1;
                         if (_targetSkin != null) _targetSkin.handOverride = _handOverride;
-                        if (_handLabel != null) _handLabel.text = HandLabel();
+                        if (_handLabel != null) UGUIShip.RelabelText(_handLabel, HandLabel());
                         RebuildContent();
                         Dirty();
                     })).GetComponentInChildren<Text>();
@@ -161,10 +161,10 @@ namespace BetterFG.UI.Windows
                 resetRt.sizeDelta = new Vector2(resetW, bh);
                 resetRt.anchoredPosition = new Vector2(-PAD, yOff);
                 UGUIShip.CreateButton(resetGo.transform, new Rect(0f, 0f, resetW, bh),
-                    "RESET", BTN_RESET, WHITE, FS_SM, new Action(OnReset));
+                    "ui.reset", BTN_RESET, WHITE, FS_SM, new Action(OnReset));
             }
 
-            MakeLabel(contentRoot, new Rect(PAD, cy, w, rh), "POSITION", FS_SM, HINT_COL);
+            MakeLabel(contentRoot, new Rect(PAD, cy, w, rh), "ui.position", FS_SM, HINT_COL);
             cy += rh + gap;
             BuildPosRow(contentRoot, cy, lw, sw, vw, rh, "X", "x"); cy += rh + gap;
             BuildPosRow(contentRoot, cy, lw, sw, vw, rh, "Y", "y"); cy += rh + gap;
@@ -172,7 +172,7 @@ namespace BetterFG.UI.Windows
 
             MakeSeparator(contentRoot, new Rect(PAD, cy, w, 1f)); cy += 1f + gap;
 
-            MakeLabel(contentRoot, new Rect(PAD, cy, w, rh), "ROTATION", FS_SM, HINT_COL);
+            MakeLabel(contentRoot, new Rect(PAD, cy, w, rh), "ui.rotation", FS_SM, HINT_COL);
             cy += rh + gap;
             BuildRotRow(contentRoot, cy, lw, sw, vw, rh, "X", "x"); cy += rh + gap;
             BuildRotRow(contentRoot, cy, lw, sw, vw, rh, "Y", "y"); cy += rh + gap;
@@ -191,7 +191,7 @@ namespace BetterFG.UI.Windows
             {
                 float m = v * 0.6f - 0.3f;
                 SettingsService.Set(key, m.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                if (valLbl != null) valLbl.text = m.ToString("F2");
+                if (valLbl != null) UGUIShip.RelabelText(valLbl, m.ToString("F2"));
                 Dirty();
             }));
         }
@@ -208,7 +208,7 @@ namespace BetterFG.UI.Windows
             {
                 float m = v * 360f;
                 SettingsService.Set(key, m.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                if (valLbl != null) valLbl.text = m.ToString("F0");
+                if (valLbl != null) UGUIShip.RelabelText(valLbl, m.ToString("F0"));
                 Dirty();
             }));
         }

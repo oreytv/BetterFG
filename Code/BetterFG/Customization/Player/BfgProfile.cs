@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -450,7 +450,7 @@ namespace BetterFG.Customization.Player
                     imageB64 = JsonUtil.GetValue(s, "imageB64"),
                     imageExt = JsonUtil.GetValue(s, "imageExt"),
                     soundB64 = new[] { JsonUtil.GetValue(s, "s0B64"), JsonUtil.GetValue(s, "s1B64"), JsonUtil.GetValue(s, "s2B64") },
-                    soundExt = new[] { JsonUtil.GetValue(s, "s0Ext"), JsonUtil.GetValue(s, "s1Ext"), JsonUtil.GetValue(s, "s2Ext") },
+                    soundExt = new[] { JsonUtil.GetValue(s, "ui.s0ext"), JsonUtil.GetValue(s, "ui.s1ext"), JsonUtil.GetValue(s, "ui.s2ext") },
                 });
 
             string plinthObj = JsonUtil.GetObject(json, "plinth");

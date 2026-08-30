@@ -16,7 +16,7 @@ namespace BetterFG.Tweaks
         public PlayerNameWarningTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "player_name_warning";
-        public override string TweakLabel => "Warn On Player Names";
+        public override string TweakLabel => "tweak.warn_on_player_names";
         public override bool DefaultEnabled => true;
 
         public static PlayerNameWarningTweak Instance { get; private set; }
@@ -42,7 +42,7 @@ namespace BetterFG.Tweaks
 
         public override List<TweakButton> GetCustomButtons() => new List<TweakButton>
         {
-            new TweakButton { Label = "CFG", Width = 30f, OnClick = OpenConfig }
+            new TweakButton { Label = "ui.cfg", Width = 30f, OnClick = OpenConfig }
         };
 
         private void OpenConfig()

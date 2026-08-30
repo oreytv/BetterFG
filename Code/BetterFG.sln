@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BetterFG.Installer", "Bette
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BetterFG.uGUI", "BetterFG.uGUI\BetterFG.uGUI.csproj", "{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BettrFGLocalizationEditor", "BettrFGLocalizationEditor\BettrFGLocalizationEditor.csproj", "{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -51,6 +53,14 @@ Global
 		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Release|Any CPU.Build.0 = Release|Any CPU
 		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Release_Profiles|Any CPU.ActiveCfg = Release_Profiles|Any CPU
 		{7C1E5A94-2D63-4B8E-9F41-3A6C8D0B5E27}.Release_Profiles|Any CPU.Build.0 = Release_Profiles|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.EarlyAccess|Any CPU.ActiveCfg = Debug|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.EarlyAccess|Any CPU.Build.0 = Debug|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.Release_Profiles|Any CPU.ActiveCfg = Release|Any CPU
+		{0A1B96E1-A9B1-4950-B0D4-6C664F7CFD4B}.Release_Profiles|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

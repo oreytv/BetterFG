@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Customization.Player;
+using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
 using BettrFG.uGUI;
@@ -12,8 +13,9 @@ namespace BetterFG.UI.Tabs
         public PlinthsUgcTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Plinths - UGC";
+        protected override string TitleId => "ui.plinths_ugc";
 
-        protected override string SwitchLabel => "In-game →";
+        protected override string SwitchLabel => "ui.in_game";
         protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<PlinthsInGameTab>();
 
         readonly Dictionary<string, Image> _coverImgs = new Dictionary<string, Image>();
@@ -33,7 +35,7 @@ namespace BetterFG.UI.Tabs
             _coverImgs.Clear();
 
             var catalog = Catalog;
-            if (catalog == null) { SetStatus("Catalog isn't up yet."); return; }
+            if (catalog == null) { SetStatus("ui.catalog_isn_t_up_yet"); return; }
 
             var plinths = new List<SkinInfo>();
             foreach (var skin in catalog.AvailableSkins)
@@ -49,8 +51,8 @@ namespace BetterFG.UI.Tabs
                 hintGo.AddComponent<RectTransform>();
                 hintGo.AddComponent<LayoutElement>().preferredHeight = ROW_H;
                 UGUIShip.CreateStretchLabel(hintGo.transform,
-                    fetching ? "Fetching..." : "No plinths in this repo. Pick another above.", FS_SM, HINT);
-                SetStatus(fetching ? "Fetching..." : "Nothing here yet.");
+                    fetching ? "ui.fetching" : "ui.no_plinths_in_this_repo_pick_another_above", FS_SM, HINT);
+                SetStatus(fetching ? "ui.fetching" : "ui.nothing_here_yet");
                 return;
             }
 
@@ -58,7 +60,7 @@ namespace BetterFG.UI.Tabs
             foreach (var skin in plinths)
             {
                 var captured = skin;
-                var img = BuildRow(skin.name, "by " + skin.author, skin.file == activeFile, new Action(() =>
+                var img = BuildRow(skin.name, LocalizationService.Format("ui.by_author_fmt", skin.author), skin.file == activeFile, new Action(() =>
                 {
                     PlinthApp?.ApplyPlinthFromSource(captured, new Action<string>(SetStatus));
                     SetStatus($"Applying {captured.name}...");
@@ -71,7 +73,7 @@ namespace BetterFG.UI.Tabs
                 else
                 {
                     catalog.EnsureCover(skin, true);
-                    UGUIShip.CreateStretchLabel(img.transform, "No Preview", FS_SM, HINT);
+                    UGUIShip.CreateStretchLabel(img.transform, "ui.no_preview", FS_SM, HINT);
                 }
             }
 

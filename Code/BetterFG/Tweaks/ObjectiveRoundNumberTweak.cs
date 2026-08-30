@@ -8,7 +8,7 @@ namespace BetterFG.Tweaks
         public ObjectiveRoundNumberTweak(IntPtr ptr) : base(ptr) { }
 
         public override string TweakId => "objective_round_number";
-        public override string TweakLabel => "Show round number in objective";
+        public override string TweakLabel => "tweak.show_round_number_in_objective";
         public override bool DefaultEnabled => true;
 
         public static ObjectiveRoundNumberTweak Instance { get; private set; }

@@ -49,6 +49,11 @@ namespace BetterFG.UI.SideWheel
                 "BetterFG.assets.ui.side.profileset.png",
                 "BetterFG_ProfilesWindow");
 #endif
+
+            Register<CreditsWindow>(wheel,
+                "Credits",
+                "BetterFG.assets.ui.feature.star.featurestar_star.png",
+                "BetterFG_CreditsWindow");
         }
 
         private static void Register<T>(SideWheelManager wheel, string label, string iconResource, string goName)

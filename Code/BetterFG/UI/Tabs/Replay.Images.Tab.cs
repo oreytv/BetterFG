@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -19,8 +19,9 @@ namespace BetterFG.UI.Tabs
         public ReplayImagesTab(IntPtr ptr) : base(ptr) { }
 
         public override string TabTitle => "Replays - Images";
+        protected override string TitleId => "ui.replays_images";
 
-        protected override string SwitchLabel => "Replays →";
+        protected override string SwitchLabel => "ui.replays";
         protected override Tab MakeSwitchTarget() => BetterFGTabRegistry.NewTab<ReplaysTab>();
 
         const int PAGE_SIZE = 12;
@@ -50,12 +51,12 @@ namespace BetterFG.UI.Tabs
             float folderW = 86f;
             float refreshW = 24f;
 
-            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, folderW, topH), "Open folder",
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD, y, folderW, topH), "ui.open_folder",
                 DARK, Color.white, FS_SM - 1, new Action(() => ReplayExport.Reveal(ReplayImages.Dir)));
 
             UGUIShip.CreateLabel(contentRoot,
                 new Rect(PAD + folderW + PAD, y, w - folderW - refreshW - PAD * 2f, topH),
-                "hide the replay UI, then hit the picture prompt", FS_SM - 1, HINT, TextAnchor.MiddleLeft);
+                "ui.hide_the_replay_ui_then_hit_the_picture_prompt", FS_SM - 1, HINT, TextAnchor.MiddleLeft);
 
             var refreshBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD + w - refreshW, y, refreshW, topH),
                 "↻", DARK, Color.white, FS_SM, new Action(Refresh));
@@ -113,7 +114,7 @@ namespace BetterFG.UI.Tabs
 
             ShowPaging(pageCount > 1);
 
-            if (total == 0) SetStatus("no pictures yet");
+            if (total == 0) SetStatus("ui.no_pictures_yet");
             else if (pageCount > 1) SetStatus(string.Format("{0} pictures  ·  page {1}/{2}", total, Page + 1, pageCount));
             else SetStatus(total + (total == 1 ? " picture" : " pictures"));
         }
