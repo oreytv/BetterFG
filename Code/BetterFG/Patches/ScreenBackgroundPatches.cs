@@ -113,7 +113,18 @@ namespace BetterFG.Patches
             var publish = __instance.TryCast<LevelEditorPublishPopupViewModel>();
             if (publish != null)
             {
+                BetterFG.Tweaks.ImmediateRespawnTweak.SuppressWhile(publish);
+                MenuCustomizationApplication.Instance?.ReapplyForegroundFromSettings(publish.transform, null, true);
                 BetterFG.UI.Windows.Creative.PublishThumbnailWindow.Open(publish);
+                return;
+            }
+
+            var published = __instance.TryCast<LevelEditorPublishSuccessViewModel>();
+            if (published != null)
+            {
+                BetterFG.Tweaks.ImmediateRespawnTweak.SuppressWhile(published);
+                BetterFG.Features.CopyCode.CopyCodePrompt.OnPublishSuccess(published);
+                ApplyCreativeNow(published.transform, null, false);
                 return;
             }
 
@@ -172,6 +183,21 @@ namespace BetterFG.Patches
                 ApplyCreativeNow(__instance.transform, null, true);
                 return;
             }
+            if (__instance.TryCast<LevelEditorTestOverlayViewModel>() != null)
+            {
+                foreach (var t in __instance.transform.GetComponentsInChildren<Transform>(true))
+                {
+                    var p = t.parent;
+                    if (p == null) continue;
+                    if ((t.name == "ObjectiveContainer" && p.name == "SafeArea" && p.parent != null && p.parent.name == "PB_UI_Playing")
+                        || (t.name == "SafeArea" && p.name == "PB_UI_SharedOverlay"))
+                    {
+                        inst.ReapplyForegroundFromSettings(t, null, true);
+                        inst.ApplyEditorShader(t);
+                    }
+                }
+                return;
+            }
 
             // colour picker: panel chrome only. Swatches/Colors/ColorPickSliders ARE the colour previews,
             // so recolouring them would lie about what you're picking.
@@ -184,6 +210,7 @@ namespace BetterFG.Patches
             // exit popup: just the foreground colours, no shader.
             if (__instance.TryCast<LevelEditorExitPopupViewModel>() != null)
             {
+                BetterFG.Tweaks.ImmediateRespawnTweak.SuppressWhile(__instance);
                 inst.ReapplyForegroundFromSettings(__instance.transform, null, true);
                 return;
             }

@@ -61,7 +61,27 @@ namespace BetterFG.Tweaks
         // closes - which is the whole reason the prompt follows the options menu correctly instead
         // of us trying to guess when to re-add it.
         private static InGamePlayingState _playingState;
-        private static bool _playingStateScanned;
+        private static LevelEditorTestOverlayViewModel _testOverlay;
+        private static float _nextFocusOwnerScan;
+
+        private static ScreenViewModel _editorPopup;
+
+        internal static void SuppressWhile(ScreenViewModel popup)
+        {
+            _editorPopup = popup;
+            DestroyPrompt();
+        }
+
+        private static bool EditorPopupUp
+        {
+            get
+            {
+                if (_editorPopup == null) return false;
+                if (_editorPopup.gameObject.activeInHierarchy && !_editorPopup.IsBeingRemoved) return true;
+                _editorPopup = null;
+                return false;
+            }
+        }
 
         public override void EnableTweak()
         {
@@ -96,7 +116,8 @@ namespace BetterFG.Tweaks
         {
             _respawning = false;
             _playingState = null;
-            _playingStateScanned = false;
+            _testOverlay = null;
+            _nextFocusOwnerScan = 0f;
             _startSpawn = null;
             _eligible = on
                 && IsEnabled
@@ -109,31 +130,29 @@ namespace BetterFG.Tweaks
         {
             if (!_eligible) return;
 
+            if (EditorPopupUp) { DestroyPrompt(); return; }
+
             if (_startSpawn == null) TryCaptureStartSpawn();
 
-            // GameObject.Find can't see it - the SwitchableView deactivates whichever state isn't
-            // current, so PlayingState is an inactive object most of the time. same scene-filtered
-            // FindObjectsOfTypeAll walk NavPromptCore uses for the overlay manager.
-            if (_playingState == null && !_playingStateScanned)
+            if (_playingState == null && _testOverlay == null && Time.unscaledTime >= _nextFocusOwnerScan)
             {
+                _nextFocusOwnerScan = Time.unscaledTime + 0.5f;
                 foreach (var st in Resources.FindObjectsOfTypeAll<InGamePlayingState>())
                     if (st != null && st.gameObject.scene.IsValid()) { _playingState = st; break; }
-                _playingStateScanned = true;
+                foreach (var ov in Resources.FindObjectsOfTypeAll<LevelEditorTestOverlayViewModel>())
+                    if (ov != null && ov.gameObject.scene.IsValid()) { _testOverlay = ov; break; }
             }
 
-            // no PlayingState (editor playtest runs its own UI) means nothing is going to steal the
-            // row from us, so just keep the prompt up.
-            bool shouldShow = _playingState == null || _playingState._isInFocus;
+            bool shouldShow = _testOverlay != null && _testOverlay.gameObject.activeInHierarchy
+                ? _testOverlay._isInFocus
+                : _playingState == null || _playingState._isInFocus;
 
-            // step aside while the options menu or a banner owns focus: give the slot's real data
-            // back so their prompts resolve normally, but don't clear the row they just claimed.
-            if (!shouldShow) { _claimed = false; NavPromptCore.YieldOverlayRow(); return; }
+            if (!shouldShow) { DestroyPrompt(); return; }
 
-            // re-claim on the frame focus comes back to gameplay (options menu closing, banner
-            // ending) and whenever something else switched the row off behind us.
             if (!_claimed || !NavPromptCore.OverlayRowActive) Claim();
 
             if (_respawning || RespawnMenu.AnyOpen) return;
+            if (FGInputLockService.IsLocked) return;
             if (!Rewired.ReInput.isReady) return;
             var p = Rewired.ReInput.players.GetPlayer(0);
             if (p == null) return;

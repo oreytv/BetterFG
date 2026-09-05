@@ -323,10 +323,16 @@ namespace BetterFG.Tweaks
 
         private static bool Resolve(GameObject root)
         {
+            _background = null;
+            _swap = null;
             if (root == null) return false;
 
             string bgName = root.name.Replace("(Clone)", "");
-            if (!bgName.StartsWith("Background_")) return false;
+            if (!bgName.StartsWith("Background_"))
+            {
+                Plugin.Log.LogInfo($"'{root.name}' isn't a Background_ root, no 3d terrain to map onto it");
+                return false;
+            }
 
             var tokens = bgName.Substring("Background_".Length).Split('_');
 
@@ -337,7 +343,6 @@ namespace BetterFG.Tweaks
                     return false;
                 }
 
-            _swap = null;
             int best = 0;
             foreach (var kv in SwapFor)
             {
@@ -391,8 +396,6 @@ namespace BetterFG.Tweaks
         internal static void OnThemeLighting(LevelEditorThemeLighting settings)
         {
             if (GameObjectHelper.IsMainMenuUp()) return;
-            if (BetterFG.Features.CustomBackgrounds.Definers.HasDefiner()) return;
-            if (BetterFG.Features.CustomBackgrounds.DisableBackgroundRulebook.IsDisabled()) return;
 
             var root = settings.transform.root.gameObject;
             string raw = root != null ? root.name.Replace("(Clone)", "") : "";
@@ -401,11 +404,11 @@ namespace BetterFG.Tweaks
 
             ApplyFarClip(raw);
 
-            if (!Resolve(root)) return;
-
             _envSaved = false;
             _prevSkybox = null;
             Instance?.DisableTweak();
+
+            Resolve(root);
             ApplyIfWanted();
         }
 
@@ -420,6 +423,13 @@ namespace BetterFG.Tweaks
             var inst = Instance;
             if (inst == null || !inst.IsEnabled || _busy || _spawned != null) return;
             if (GameObjectHelper.IsMainMenuUp()) return;
+
+            if (BetterFG.Features.CustomBackgrounds.Definers.HasDefiner())
+            {
+                Plugin.Log.LogInfo("a custom theme owns this level, our 3d terrain stays out of it");
+                return;
+            }
+            if (BetterFG.Features.CustomBackgrounds.DisableBackgroundRulebook.IsDisabled()) return;
             if (_background == null && !Resolve(ThemeManager._sceneBackgroundAndLighting)) return;
 
             inst.StartCoroutine(inst.Apply().WrapToIl2Cpp());

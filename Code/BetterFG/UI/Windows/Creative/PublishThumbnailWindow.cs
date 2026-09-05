@@ -13,17 +13,13 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows.Creative
 {
-    // Rides alongside the editor's publish popup and picks what goes on your level's tile. The pictures
-    // are the ones BettrFG snapped in a replay OF THIS LEVEL — nothing else can appear here, which is
-    // also why the empty state spells out how to take one rather than just showing nothing.
-    //
-    // Mouse only on purpose: the publish popup behind us still needs the pad, so unlike BatchEditWindow
-    // this one never claims the controller cursor.
     public class PublishThumbnailWindow : BetterFGWindow
     {
         public PublishThumbnailWindow(IntPtr ptr) : base(ptr) { }
 
         public static PublishThumbnailWindow Instance { get; private set; }
+
+        public static bool StepActive => Instance != null;
 
         protected override float WindowWidth => 310f;
         protected override float WindowHeight => 340f;
@@ -36,14 +32,23 @@ namespace BetterFG.UI.Windows.Creative
         protected override Vector3 InitialBgScale => new Vector3(1.41f, 1.6f, 1f);
 
         private static readonly Color BTN_APPLY = new Color(0.25f, 0.5f, 0.25f, 1f);
-        private static readonly Color BTN_STEP = new Color(0.22f, 0.34f, 0.55f, 1f);
         private static readonly Color HINT_COL = new Color(1f, 1f, 1f, 0.55f);
         private static readonly Color STEP_COL = new Color(0.55f, 0.75f, 1f, 0.9f);
         private static readonly Color CELL_BG = new Color(1f, 1f, 1f, 0.07f);
-        private static readonly Color OK_COL = new Color(0.55f, 0.85f, 0.55f, 1f);
 
         private const int COLUMNS = 2;
         private const float GAP = 6f;
+
+        private static readonly string[] GAME_UI_ROOTS =
+        {
+            "UICanvas_Client_V2(Clone)/Default",
+            "UICanvas_Client_V2(Clone)/Popup",
+            "UICanvas_Client_V2(Clone)/Overlay",
+            "Prefab_UI_NavigationOverlay(Clone)",
+            "NavigationHintUI/Prime_UI_LE_HUDMessageManager",
+        };
+
+        private readonly List<CanvasGroup> _dimmed = new List<CanvasGroup>();
 
         private LevelEditorPublishPopupViewModel _vm;
         private Texture _gameImage;
@@ -51,13 +56,10 @@ namespace BetterFG.UI.Windows.Creative
         private bool _gameAskThumb, _gameUploadThumb;
         private string _shareCode;
 
-        private Text _statusLabel;
-        private Button _defaultBtn;
         private Coroutine _thumbRoutine;
         private Texture2D _previewTex;
         private readonly List<string> _files = new List<string>();
-        private readonly List<(string path, Image frame, RawImage raw)> _cells
-            = new List<(string, Image, RawImage)>();
+        private readonly List<(string path, RawImage raw)> _cells = new List<(string, RawImage)>();
 
         // ── api ───────────────────────────────────────────────────────────────
 
@@ -89,33 +91,68 @@ namespace BetterFG.UI.Windows.Creative
             _files.AddRange(PublishThumbnail.PicturesFor(_shareCode));
             Plugin.Log.LogInfo($"publish popup for {_shareCode ?? "an unpublished level"}, {_files.Count} picture(s) of it to offer");
 
-            SetAnchorPosition(new Vector2(60f, 0f));
+            SetAnchorPosition(new Vector2(
+                UIScaleService.CurrentRef.x * 0.5f - (WindowWidth * 0.5f + InitialBgPosition.x),
+                -InitialBgPosition.y));
+            DimGameUi();
             ShowWindow();
             RebuildContent();
         }
 
-        protected override bool ShowCloseButton => true;
+        protected override bool ShowCloseButton => false;
 
         public override void Close()
         {
             if (Instance == this) Instance = null;
+            RestoreGameUi();
             base.Close();
         }
 
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
+            RestoreGameUi();
         }
 
         protected override void ManagedUpdate()
         {
             base.ManagedUpdate();
             // popup's gone, so are we. the pick survives — closing this isn't cancelling it.
-            if (_vm == null) Close();
+            if (_vm == null) { Close(); return; }
+            DimGameUi();
         }
 
-        // the nav prompts are all the publish popup's, so this is the only way out that doesn't
-        // also answer the popup
+        private void DimGameUi()
+        {
+            if (_dimmed.Count == 0)
+                foreach (string path in GAME_UI_ROOTS)
+                {
+                    var go = GameObject.Find(path);
+                    if (go == null) continue;
+                    _dimmed.Add(go.GetComponent<CanvasGroup>() ?? go.AddComponent<CanvasGroup>());
+                }
+
+            foreach (var cg in _dimmed)
+            {
+                if (cg == null || cg.alpha == 0f) continue;
+                cg.alpha = 0f;
+                cg.interactable = false;
+                cg.blocksRaycasts = false;
+            }
+        }
+
+        private void RestoreGameUi()
+        {
+            foreach (var cg in _dimmed)
+            {
+                if (cg == null) continue;
+                cg.alpha = 1f;
+                cg.interactable = true;
+                cg.blocksRaycasts = true;
+            }
+            _dimmed.Clear();
+        }
+
         // ── content ───────────────────────────────────────────────────────────
 
         protected override void BuildContent(RectTransform contentRoot)
@@ -137,15 +174,12 @@ namespace BetterFG.UI.Windows.Creative
             MakeSeparator(contentRoot, new Rect(PAD, y, w, 1f));
             y += 6f;
 
-            if (_files.Count == 0) { BuildEmpty(contentRoot, w, y); return; }
-
             float footY = WindowHeight - TITLE_H - 26f;
-            BuildGrid(contentRoot, w, y, footY - 22f - y);
+            if (_files.Count == 0) BuildEmpty(contentRoot, w, y);
+            else BuildGrid(contentRoot, w, y, footY - 6f - y);
 
-            _statusLabel = MakeLabel(contentRoot, new Rect(PAD, footY - 20f, w, 16f), "", FS_SM, HINT_COL, TextAnchor.MiddleCenter);
-            _defaultBtn = UGUIShip.CreateButton(contentRoot, new Rect(PAD, footY, w, 24f),
+            UGUIShip.CreateButton(contentRoot, new Rect(PAD, footY, w, 24f),
                 "ui.use_the_editor_s_own_shot", BTN_APPLY, WHITE, FS_SM, new Action(UseDefault));
-            Highlight();
         }
 
         // nothing to show is the case that actually needs explaining — the pictures come from a corner
@@ -246,7 +280,7 @@ namespace BetterFG.UI.Windows.Creative
             iRt.offsetMin = iRt.offsetMax = Vector2.zero;
             var raw = imgGo.AddComponent<RawImage>();
             raw.raycastTarget = false;
-            _cells.Add((path, cellImg, raw));
+            _cells.Add((path, raw));
 
             var stamp = MakeLabel(cellGo.transform, new Rect(0f, 0f, cellW - 6f, 12f),
                 File.GetLastWriteTime(path).ToString("g", System.Globalization.CultureInfo.CurrentCulture),
@@ -259,7 +293,7 @@ namespace BetterFG.UI.Windows.Creative
         // full-res pngs, so decode them a frame apart rather than hitching the publish screen
         private IEnumerator LoadThumbs()
         {
-            foreach (var (path, _, raw) in _cells)
+            foreach (var (path, raw) in _cells)
             {
                 var tex = ReplayImages.Thumb(path);
                 if (tex != null && raw != null) raw.texture = tex;
@@ -289,7 +323,7 @@ namespace BetterFG.UI.Windows.Creative
             _vm._shouldAskThumbnailUpload = false;
             _vm._shouldUploadThumbnailDirectly = true;
 
-            Highlight();
+            Close();
         }
 
         private void UseDefault()
@@ -302,25 +336,7 @@ namespace BetterFG.UI.Windows.Creative
             _vm.HasImage = _gameHasImage && alive;
             _vm._shouldAskThumbnailUpload = _gameAskThumb;
             _vm._shouldUploadThumbnailDirectly = _gameUploadThumb;
-            Highlight();
-        }
-
-        private void Highlight()
-        {
-            bool custom = PublishThumbnail.HasChoice;
-            foreach (var (path, frame, raw) in _cells)
-            {
-                frame.color = path == PublishThumbnail.ChosenPath ? BTN_APPLY : CELL_BG;
-                // re-assert rather than assume: a thumbnail handed out and released elsewhere would
-                // otherwise leave a blank cell here with nothing to redraw it
-                if (raw.texture == null) raw.texture = ReplayImages.Thumb(path);
-            }
-
-            UGUIShip.SetButtonColor(_defaultBtn, custom ? BTN_STEP : BTN_APPLY);
-            _statusLabel.text = custom
-                ? "publishing with " + Path.GetFileName(PublishThumbnail.ChosenPath)
-                : "publishing with the editor's own shot";
-            _statusLabel.color = custom ? OK_COL : HINT_COL;
+            Close();
         }
     }
 }

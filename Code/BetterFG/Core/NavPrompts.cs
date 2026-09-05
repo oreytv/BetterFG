@@ -142,6 +142,7 @@ namespace BetterFG.Core
                 }
 
                 dict[c.Key] = (Il2CppSystem.Action)c.OnPressed;
+                ClaimedKeys.Add(c.Key);
             }
 
             Broadcaster.Instance?.Broadcast(new NavPromptChanged(dict));
@@ -170,6 +171,7 @@ namespace BetterFG.Core
 
         private static readonly List<(NavPrompt key, NavigationPromptData original)> _installedList
             = new List<(NavPrompt, NavigationPromptData)>();
+        internal static readonly HashSet<NavPrompt> ClaimedKeys = new HashSet<NavPrompt>();
         // buttons whose glyphs we pinned via PostBuild. NavigationOverlayManager pools/reuses these
         // GameObjects across rebuilds - when the row goes back to a game screen, the same button
         // gets a new prompt but keeps whatever _mappeable=false / notMappeableSprite we set here.
@@ -194,6 +196,7 @@ namespace BetterFG.Core
         private static void RestoreInstalledData()
         {
             ResetPinnedGlyphs();
+            ClaimedKeys.Clear();
             if (_installedList.Count == 0) return;
             var dict = Manager?._navPromptsDictionary;
             if (dict != null)
@@ -930,7 +933,7 @@ namespace BetterFG.Core
             _pristine.Clear();
             foreach (var kv in dict)
             {
-                if (_injected.ContainsKey(kv.Key)) continue;
+                if (_injected.ContainsKey(kv.Key) || NavPromptCore.ClaimedKeys.Contains(kv.Key)) continue;
                 _pristine[kv.Key] = kv.Value;
             }
             _pristineSeen = true;

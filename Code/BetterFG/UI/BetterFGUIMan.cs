@@ -557,7 +557,8 @@ namespace BetterFG.UI
             // input, fighting our controller-driven cursor. re-assert our desired state every frame
             // while the UI/wheel is up so it can't win — F1 flips _cursorFree if the player wants it locked.
             // the PB top-bar tab wants a cursor too; force it free there even if _cursorFree was toggled off.
-            if (BetterFG.Features.QualificationTime.PBTabView.IsOpen)
+            if (BetterFG.Features.QualificationTime.PBTabView.IsOpen
+                || UI.Windows.Creative.PublishThumbnailWindow.StepActive)
             { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
             else if (_visible || (SideWheelManager.Instance?.IsWheelVisible ?? false))
                 ApplyCursorState();
@@ -733,7 +734,8 @@ namespace BetterFG.UI
             // window counts too even when the main overlay's closed, else clicking a selected object
             // under the cursor deselects it out from under the batch op.
             bool inLE = Features.UnityRound.Editor.UnityRoundLoader.InLevelEditor;
-            bool inputRestricted = inLE && (_visible || UI.Windows.Creative.BatchEditWindow.AnyOpen);
+            bool inputRestricted = inLE && (_visible || UI.Windows.Creative.BatchEditWindow.AnyOpen
+                                            || UI.Windows.Creative.PublishThumbnailWindow.StepActive);
             FGInputLockService.SetEditorUiLock(inputRestricted);
 
             // show the hint whenever the UI is open (not just in creative), since game input is

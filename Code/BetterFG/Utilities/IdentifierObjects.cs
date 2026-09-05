@@ -276,6 +276,22 @@ namespace BetterFG.Utilities
 
             if (selectAtReticle)
             {
+                if (mgr.PlaceObjectFromLibrary(lepo, true, true))
+                {
+                    var held = mgr.GetReticleBase()?.SelectedObject;
+                    if (held == null)
+                    {
+                        Plugin.Log.LogWarning($"{prefabName} went through the library path but the reticle is holding nothing, leaving it where it landed");
+                        return lepo;
+                    }
+                    if (held.Pointer == lepo.Pointer) return lepo;
+
+                    Plugin.Log.LogInfo($"library handed the reticle its own copy of {prefabName}, binning the one we loaded");
+                    Remove(lepo);
+                    return held;
+                }
+
+                Plugin.Log.LogWarning($"{prefabName} wouldn't go in hand off the library path, falling back to register + select");
                 if (!LevelIO.IsObjectRegistered(lepo)) mgr.RegisterObject(lepo, true, true, true);
                 var reticle = mgr.GetReticleBase()?.TryCast<LevelEditorStateReticleInputHandler>();
                 if (reticle != null)

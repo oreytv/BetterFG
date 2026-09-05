@@ -321,6 +321,8 @@ namespace BetterFG.Tweaks
         {
             if (_defaultUiGroup != null) { _defaultUiGroup.alpha = 1f; _defaultUiGroup.interactable = true; _defaultUiGroup.blocksRaycasts = true; }
             if (_overlayUiGroup != null) { _overlayUiGroup.alpha = 1f; _overlayUiGroup.interactable = true; _overlayUiGroup.blocksRaycasts = true; }
+            if (_nextRoundBtn != null && !_nextRoundBtn.activeSelf) _nextRoundBtn.SetActive(true);
+            if (_subMenuNavRight != null && !_subMenuNavRight.activeSelf) _subMenuNavRight.SetActive(true);
         }
 
         Transform CurrentTargetTransform()

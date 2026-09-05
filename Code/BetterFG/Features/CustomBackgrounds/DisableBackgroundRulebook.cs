@@ -54,7 +54,9 @@ namespace BetterFG.Features.CustomBackgrounds
             else if (existing != null) IdentifierObjects.Remove(existing);
 
             Plugin.Log.LogInfo($"level background disable -> {on}");
+            if (on) BetterFG.Tweaks.Background3dTweak.Cancel();
             SetHidden(_liveRoot ?? ThemeManager._sceneBackgroundAndLighting, on);
+            if (!on) BetterFG.Tweaks.Background3dTweak.ApplyIfWanted();
             _live?.Repaint();
         }
 
@@ -107,8 +109,6 @@ namespace BetterFG.Features.CustomBackgrounds
 
                 foreach (var r in child.GetComponentsInChildren<Renderer>(true))
                     r.forceRenderingOff = hidden;
-
-                child.gameObject.SetActive(!hidden);
                 touched++;
             }
 

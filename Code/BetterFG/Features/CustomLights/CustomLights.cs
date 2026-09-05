@@ -242,47 +242,56 @@ namespace BetterFG.Features.CustomLights
             {
                 for (int i = 0; i < w; i++) yield return null;
                 Sync();
+                CustomIntroCams.CustomIntroCams.Sync();
             }
             _delayedRunning = false;
         }
 
+        private static bool _syncing;
+
         internal static void Sync()
         {
-            bool inEditor = InEditor();
-
-            var lepos = LevelEditorPlaceableObject.Collection;
-            var handled = new HashSet<int>();
-            if (lepos != null)
+            if (_syncing) return;
+            _syncing = true;
+            try
             {
-                for (int idx = 0; idx < lepos.Count; idx++)
+                bool inEditor = InEditor();
+
+                var lepos = LevelEditorPlaceableObject.Collection;
+                var handled = new HashSet<int>();
+                if (lepos != null)
                 {
-                    var lepo = lepos[idx];
-                    if (!IsLight(lepo)) continue;
-                    handled.Add(lepo.gameObject.GetInstanceID());
-                    ApplyLight(lepo.transform, lepo, inEditor);
+                    for (int idx = 0; idx < lepos.Count; idx++)
+                    {
+                        var lepo = lepos[idx];
+                        if (!IsLight(lepo)) continue;
+                        handled.Add(lepo.gameObject.GetInstanceID());
+                        ApplyLight(lepo.transform, lepo, inEditor);
+                    }
+                }
+
+                foreach (var mr in UnityEngine.Object.FindObjectsOfType<MeshRenderer>())
+                {
+                    if (mr == null) continue;
+                    var t = mr.transform;
+                    var root = t.parent != null && t.parent.name.StartsWith(MarkerName, StringComparison.Ordinal) ? t.parent : t;
+                    if (!root.name.StartsWith(MarkerName, StringComparison.Ordinal)) continue;
+                    if (handled.Contains(root.gameObject.GetInstanceID())) continue;
+                    if (Vector3.Distance(root.eulerAngles, IdentityRotation) >= RotationTolerance) continue;
+                    handled.Add(root.gameObject.GetInstanceID());
+                    ApplyLight(root, null, inEditor);
+                }
+
+                if (_markers.Count > 0)
+                {
+                    List<int> orphans = null;
+                    foreach (var kvp in _markers)
+                        if (!handled.Contains(kvp.Key)) (orphans ?? (orphans = new List<int>())).Add(kvp.Key);
+                    if (orphans != null)
+                        foreach (int id in orphans) RemoveMarker(id);
                 }
             }
-
-            foreach (var mr in UnityEngine.Object.FindObjectsOfType<MeshRenderer>())
-            {
-                if (mr == null) continue;
-                var t = mr.transform;
-                var root = t.parent != null && t.parent.name.StartsWith(MarkerName, StringComparison.Ordinal) ? t.parent : t;
-                if (!root.name.StartsWith(MarkerName, StringComparison.Ordinal)) continue;
-                if (handled.Contains(root.gameObject.GetInstanceID())) continue;
-                if (Vector3.Distance(root.eulerAngles, IdentityRotation) >= RotationTolerance) continue;
-                handled.Add(root.gameObject.GetInstanceID());
-                ApplyLight(root, null, inEditor);
-            }
-
-            if (_markers.Count > 0)
-            {
-                List<int> orphans = null;
-                foreach (var kvp in _markers)
-                    if (!handled.Contains(kvp.Key)) (orphans ?? (orphans = new List<int>())).Add(kvp.Key);
-                if (orphans != null)
-                    foreach (int id in orphans) RemoveMarker(id);
-            }
+            finally { _syncing = false; }
         }
 
         private static void ApplyLight(Transform root, LevelEditorPlaceableObject lepo, bool inEditor)

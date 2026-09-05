@@ -60,13 +60,17 @@ namespace BetterFG.Features.CustomLights
         public static void Postfix([HarmonyArgument(0)] LevelEditorPlaceableObject placeableObject,
             [HarmonyArgument(1)] bool clone)
         {
-            bool shot = BetterFG.Features.CustomIntroCams.CustomIntroCams.IsShot(placeableObject);
-            if (shot && clone) BetterFG.Features.CustomIntroCams.CustomIntroCams.AssignFreeOrder(placeableObject);
-            else if (shot || BetterFG.Features.CustomIntroCams.CustomIntroCams.IsBase(placeableObject))
-                BetterFG.Features.CustomIntroCams.CustomIntroCams.Sync();
+            if (placeableObject == null) return;
 
-            if (!CustomLights.IsLight(placeableObject)) return;
+            if (clone && BetterFG.Features.CustomIntroCams.CustomIntroCams.IsShot(placeableObject))
+                BetterFG.Features.CustomIntroCams.CustomIntroCams.AssignFreeOrder(placeableObject);
+
+            string n = placeableObject.name;
+            if (!n.StartsWith(CustomLights.MarkerName, StringComparison.Ordinal)
+                && !n.StartsWith(BetterFG.Features.CustomIntroCams.CustomIntroCams.MarkerName, StringComparison.Ordinal)) return;
+
             CustomLights.Sync();
+            BetterFG.Features.CustomIntroCams.CustomIntroCams.Sync();
             CustomLights.SyncDelayed();
         }
     }

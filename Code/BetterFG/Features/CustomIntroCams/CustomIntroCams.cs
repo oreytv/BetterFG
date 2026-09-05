@@ -22,6 +22,7 @@ namespace BetterFG.Features.CustomIntroCams
         internal const int MinOrder = 1;
         internal const int MaxOrder = 40;
         private const float LookDistance = 30f;
+        private const float RigDrop = 2f;
 
         private const string HoverChildName = "BettrFG_IntroCamHover";
         private const string FrustumChildName = "BettrFG_IntroCamFrustum";
@@ -98,27 +99,14 @@ namespace BetterFG.Features.CustomIntroCams
             var reticleBase = mgr.GetReticleBase();
             var origin = reticleBase != null ? reticleBase.ReticlePosition : Vector3.zero;
 
-            bool haveRig = false;
             int nextOrder = MinOrder;
             var col = LevelEditorPlaceableObject.Collection;
             if (col != null)
                 for (int i = 0; i < col.Count; i++)
-                {
-                    var lepo = col[i];
-                    if (IsBase(lepo)) { haveRig = true; continue; }
-                    if (IsShot(lepo)) nextOrder = Mathf.Max(nextOrder, OrderOf(lepo) + 1);
-                }
-
-            if (!haveRig)
-            {
-                IdentifierObjects.Spawn(MarkerName, origin, Vector3.zero,
-                    new Vector3(BaseScale, BaseScale, DefaultDuration), "#FFFFFF");
-                Plugin.Log.LogInfo("dropped the intro cam rig, first shot goes on top of it");
-            }
+                    if (IsShot(col[i])) nextOrder = Mathf.Max(nextOrder, OrderOf(col[i]) + 1);
 
             IdentifierObjects.Spawn(MarkerName, origin, Vector3.zero,
                 new Vector3(ShotScale, ShotScale, Mathf.Min(nextOrder, MaxOrder)), "#FFFFFF", selectAtReticle: true);
-            Sync();
         }
 
         internal static void DropMarker(LevelEditorPlaceableObject lepo)
@@ -129,32 +117,57 @@ namespace BetterFG.Features.CustomIntroCams
             DropLabel(id);
         }
 
+        private static bool _syncing;
+        private static bool _rigPending;
+
         internal static void Sync()
         {
+            if (_syncing) return;
             if (!IdentifierObjects.InEditor()) { SyncRound(); return; }
 
             var col = LevelEditorPlaceableObject.Collection;
             if (col == null) return;
 
-            var keptBases = new HashSet<int>();
-            var keptShots = new HashSet<int>();
-            for (int i = 0; i < col.Count; i++)
+            _syncing = true;
+            Transform firstShot = null;
+            int firstOrder = int.MaxValue;
+            try
             {
-                var lepo = col[i];
-                bool isBase = IsBase(lepo);
-                if (!isBase && !IsShot(lepo)) continue;
+                var keptBases = new HashSet<int>();
+                var keptShots = new HashSet<int>();
+                for (int i = 0; i < col.Count; i++)
+                {
+                    var lepo = col[i];
+                    bool isBase = IsBase(lepo);
+                    if (!isBase && !IsShot(lepo)) continue;
 
-                (isBase ? keptBases : keptShots).Add(lepo.gameObject.GetInstanceID());
-                Dress(lepo, isBase);
+                    (isBase ? keptBases : keptShots).Add(lepo.gameObject.GetInstanceID());
+                    Dress(lepo, isBase);
+
+                    if (isBase) continue;
+                    int order = OrderOf(lepo);
+                    if (order < firstOrder) { firstOrder = order; firstShot = lepo.transform; }
+                }
+
+                GizmoMarkers.Prune(BaseGizmo, keptBases);
+                GizmoMarkers.Prune(ShotGizmo, keptShots);
+
+                List<int> orphans = null;
+                foreach (var kv in _labels)
+                    if (!keptShots.Contains(kv.Key)) (orphans ?? (orphans = new List<int>())).Add(kv.Key);
+                if (orphans != null) foreach (int id in orphans) DropLabel(id);
+
+                if (keptBases.Count > 0 || keptShots.Count == 0) { firstShot = null; _rigPending = false; }
             }
+            finally { _syncing = false; }
 
-            GizmoMarkers.Prune(BaseGizmo, keptBases);
-            GizmoMarkers.Prune(ShotGizmo, keptShots);
+            if (firstShot == null || _rigPending) return;
 
-            List<int> orphans = null;
-            foreach (var kv in _labels)
-                if (!keptShots.Contains(kv.Key)) (orphans ?? (orphans = new List<int>())).Add(kv.Key);
-            if (orphans != null) foreach (int id in orphans) DropLabel(id);
+            _rigPending = true;
+            var at = firstShot.position + Vector3.down * RigDrop;
+            IdentifierObjects.Spawn(MarkerName, at, Vector3.zero,
+                new Vector3(BaseScale, BaseScale, DefaultDuration), "#FFFFFF");
+            Plugin.Log.LogInfo($"shots but no rig in this level, dropped one under shot {firstOrder} at {at}");
         }
 
         private static bool _gizmosSuppressed;

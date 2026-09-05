@@ -151,10 +151,18 @@ namespace BetterFG.Features.CustomBackgrounds
         private static float _prevReflectionIntensity;
         private static AmbientMode _prevAmbientMode;
         private static bool _envSaved;
+        private static bool _busy;
+
+        internal static void OnBackgroundRebuilt()
+        {
+            _skyboxSaved = false;
+            _prevSkybox = null;
+            Teardown();
+        }
 
         internal static void Teardown()
         {
-            if (_spawned != null) UnityEngine.Object.Destroy(_spawned);
+            if (_spawned != null) { _spawned.SetActive(false); UnityEngine.Object.Destroy(_spawned); }
             _spawned = null;
 
             if (_hiddenCutout != null) _hiddenCutout.gameObject.SetActive(true);
@@ -180,8 +188,9 @@ namespace BetterFG.Features.CustomBackgrounds
             var entry = FindEntry();
             if (entry == null) return false;
 
-            if (GameObject.Find(entry.Value.Bundle) != null) return true;
+            if (_busy || GameObject.Find(entry.Value.Bundle) != null) return true;
 
+            _busy = true;
             Background3dTweak.Instance?.StartCoroutine(ApplyRoutine(root, entry.Value).WrapToIl2Cpp());
             return true;
         }
@@ -197,74 +206,85 @@ namespace BetterFG.Features.CustomBackgrounds
 
         private static IEnumerator ApplyRoutine(GameObject root, Entry entry)
         {
-            AssetBundle bundle = BetterFG.Utilities.Bundles.Get(entry.Bundle);
-            if (bundle == null)
+            try
             {
-                string path = Path.Combine(Background3dTweak.BundleDir, entry.Bundle);
-                if (!File.Exists(path)) yield return Background3dTweak.Fetch(entry.Bundle).WrapToIl2Cpp();
-                if (!File.Exists(path))
+                AssetBundle bundle = BetterFG.Utilities.Bundles.Get(entry.Bundle);
+                if (bundle == null)
                 {
-                    Plugin.Log.LogWarning($"custom background '{entry.Title}' wants {entry.Bundle}, download didn't land in {Background3dTweak.BundleDir}");
+                    string path = Path.Combine(Background3dTweak.BundleDir, entry.Bundle);
+                    if (!File.Exists(path)) yield return Background3dTweak.Fetch(entry.Bundle).WrapToIl2Cpp();
+                    if (!File.Exists(path))
+                    {
+                        Plugin.Log.LogWarning($"custom background '{entry.Title}' wants {entry.Bundle}, download didn't land in {Background3dTweak.BundleDir}");
+                        yield break;
+                    }
+
+                    AssetBundle loaded = null;
+                    yield return BetterFG.Utilities.Bundles.LoadFile(entry.Bundle, path, ab => loaded = ab).WrapToIl2Cpp();
+                    bundle = loaded;
+                    if (bundle == null) { Plugin.Log.LogWarning($"{entry.Bundle} didn't load as a bundle"); yield break; }
+                }
+
+                string prefabPath = null;
+                string skyboxPath = null;
+                foreach (string name in bundle.GetAllAssetNames())
+                {
+                    if (prefabPath == null && name.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)) prefabPath = name;
+                    if (entry.Skybox != null && skyboxPath == null && name.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) &&
+                        name.IndexOf(entry.Skybox, StringComparison.OrdinalIgnoreCase) >= 0) skyboxPath = name;
+                }
+
+                if (prefabPath == null) { Plugin.Log.LogWarning($"{entry.Bundle} holds no prefab"); yield break; }
+
+                var assetReq = bundle.LoadAssetAsync(prefabPath);
+                yield return assetReq;
+
+                var prefab = assetReq.asset != null ? assetReq.asset.TryCast<GameObject>() : null;
+                if (prefab == null || root == null) yield break;
+
+                if (GameObject.Find(entry.Bundle) != null)
+                {
+                    Plugin.Log.LogInfo($"{entry.Bundle} landed while we were loading it, not stacking a second one");
                     yield break;
                 }
 
-                AssetBundle loaded = null;
-                yield return BetterFG.Utilities.Bundles.LoadFile(entry.Bundle, path, ab => loaded = ab).WrapToIl2Cpp();
-                bundle = loaded;
-                if (bundle == null) { Plugin.Log.LogWarning($"{entry.Bundle} didn't load as a bundle"); yield break; }
-            }
-
-            string prefabPath = null;
-            string skyboxPath = null;
-            foreach (string name in bundle.GetAllAssetNames())
-            {
-                if (prefabPath == null && name.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)) prefabPath = name;
-                if (entry.Skybox != null && skyboxPath == null && name.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) &&
-                    name.IndexOf(entry.Skybox, StringComparison.OrdinalIgnoreCase) >= 0) skyboxPath = name;
-            }
-
-            if (prefabPath == null) { Plugin.Log.LogWarning($"{entry.Bundle} holds no prefab"); yield break; }
-
-            var assetReq = bundle.LoadAssetAsync(prefabPath);
-            yield return assetReq;
-
-            var prefab = assetReq.asset != null ? assetReq.asset.TryCast<GameObject>() : null;
-            if (prefab == null || root == null) yield break;
-
-            if (skyboxPath != null)
-            {
-                var matReq = bundle.LoadAssetAsync(skyboxPath);
-                yield return matReq;
-
-                var mat = matReq.asset != null ? matReq.asset.TryCast<Material>() : null;
-                if (mat != null)
+                if (skyboxPath != null)
                 {
-                    if (!_skyboxSaved) { _prevSkybox = RenderSettings.skybox; _skyboxSaved = true; }
-                    RenderSettings.skybox = mat;
+                    var matReq = bundle.LoadAssetAsync(skyboxPath);
+                    yield return matReq;
+
+                    var mat = matReq.asset != null ? matReq.asset.TryCast<Material>() : null;
+                    if (mat != null)
+                    {
+                        if (!_skyboxSaved) { _prevSkybox = RenderSettings.skybox; _skyboxSaved = true; }
+                        RenderSettings.skybox = mat;
+                    }
                 }
+
+                var cutout = root.transform.Find("CutoutSphere");
+                if (cutout != null) cutout.gameObject.SetActive(false);
+                _hiddenCutout = cutout;
+
+                if (entry.HideLighting)
+                {
+                    var lighting = root.transform.Find("LIGHTING");
+                    if (lighting != null) lighting.gameObject.SetActive(false);
+                    _hiddenLighting = lighting;
+
+                    if (!_envSaved) { _prevReflectionIntensity = RenderSettings.reflectionIntensity; _prevAmbientMode = RenderSettings.ambientMode; _envSaved = true; }
+                    RenderSettings.reflectionIntensity = 0f;
+                    RenderSettings.ambientMode = AmbientMode.Flat;
+                }
+
+                var spawned = UnityEngine.Object.Instantiate(prefab, root.transform, true);
+                spawned.name = entry.Bundle;
+                spawned.SetActive(true);
+                _spawned = spawned;
+                Plugin.Log.LogInfo($"'{entry.Title}' up under {root.name}");
+
+                if (DisableBackgroundRulebook.IsDisabled()) DisableBackgroundRulebook.ReapplyHide(root);
             }
-
-            var cutout = root.transform.Find("CutoutSphere");
-            if (cutout != null) cutout.gameObject.SetActive(false);
-            _hiddenCutout = cutout;
-
-            if (entry.HideLighting)
-            {
-                var lighting = root.transform.Find("LIGHTING");
-                if (lighting != null) lighting.gameObject.SetActive(false);
-                _hiddenLighting = lighting;
-
-                if (!_envSaved) { _prevReflectionIntensity = RenderSettings.reflectionIntensity; _prevAmbientMode = RenderSettings.ambientMode; _envSaved = true; }
-                RenderSettings.reflectionIntensity = 0f;
-                RenderSettings.ambientMode = AmbientMode.Flat;
-            }
-
-            var spawned = UnityEngine.Object.Instantiate(prefab, root.transform, true);
-            spawned.name = entry.Bundle;
-            spawned.SetActive(true);
-            _spawned = spawned;
-
-            if (DisableBackgroundRulebook.IsDisabled()) DisableBackgroundRulebook.ReapplyHide(root);
+            finally { _busy = false; }
         }
 
         private static int _rowVmId = int.MinValue;
@@ -332,6 +352,7 @@ namespace BetterFG.Features.CustomBackgrounds
         public static void Postfix(LevelEditorThemeLighting __instance)
         {
             var root = __instance.transform.root.gameObject;
+            Definers.OnBackgroundRebuilt();
             DisableBackgroundRulebook.Sync(root);
             Definers.TryApply(root);
         }

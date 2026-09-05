@@ -99,6 +99,17 @@ namespace BetterFG.Features.CopyCode
             Instance._levelTile = tile;
         }
 
+        public static void OnPublishSuccess(LevelEditorPublishSuccessViewModel vm)
+        {
+            if (Instance == null) return;
+            Instance._publishVm = vm;
+        }
+
+        private LevelEditorPublishSuccessViewModel _publishVm;
+
+        private bool PublishScreenUp =>
+            _publishVm != null && _publishVm.gameObject.activeInHierarchy && !_publishVm.IsBeingRemoved;
+
         void Update()
         {
             bool screenActive = ScreenActive();
@@ -126,18 +137,14 @@ namespace BetterFG.Features.CopyCode
 
         private bool ScreenActive()
         {
-            if (_showListActive) return !string.IsNullOrEmpty(_showListCode);
+            if (_showListActive && !PublishScreenUp) return !string.IsNullOrEmpty(_showListCode);
             return !string.IsNullOrEmpty(CurrentCode());
         }
 
         private string CurrentCode()
         {
-            if (!string.IsNullOrEmpty(_showListCode)) return _showListCode;
-            if (!string.IsNullOrEmpty(_showCode)) return _showCode;
-            if (_levelTile != null && _levelTile.gameObject.activeInHierarchy && _levelTile.HasLevel)
-                return _levelTile.TileData?.LevelCode;
-            if (_lobbyVm != null && _lobbyVm._isInFocus) return _lobbyVm.Code;
-            return null;
+            ResolveCurrent(out string code, out _);
+            return code;
         }
 
         private void Copy()
@@ -175,6 +182,7 @@ namespace BetterFG.Features.CopyCode
         // null if we don't have a good name).
         private void ResolveCurrent(out string code, out string source)
         {
+            if (PublishScreenUp) { code = _publishVm.LevelCode; source = "level"; return; }
             if (!string.IsNullOrEmpty(_showListCode)) { code = _showListCode; source = "show"; return; }
             if (!string.IsNullOrEmpty(_showCode)) { code = _showCode; source = string.IsNullOrEmpty(_showName) ? "show" : $"show \"{_showName}\""; return; }
             if (_levelTile != null && _levelTile.gameObject.activeInHierarchy && _levelTile.HasLevel)
