@@ -1,10 +1,10 @@
 ﻿{
     "Steam":  true,
     "Plat":  "switch",
-    "Afk":  false,
+    "Afk":  true,
     "Obf":  false,
     "Dl":  true,
-    "Kill":  false,
+    "Kill":  true,
     "Epic":  true,
     "Ea":  true,
     "Comp":  false

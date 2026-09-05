@@ -1,7 +1,11 @@
 using System;
+using System.Collections;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Core;
+using BetterFG.Patches.GameStates;
 using FallGuysLib.UI;
 using FGClient.UI;
+using FGClient.UI.Core;
 using FGClient.UI.PrivateLobby;
 using FGClient;
 using UnityEngine;
@@ -32,9 +36,10 @@ namespace BetterFG.Features.CopyCode
 
         // private lobby's own show list. empty share code = an official show, nothing to copy.
         private string _showListCode;
+        private bool _showListActive;
 
-        private NavPromptHandle _prompt;
-        private string _code;
+        private NavigationPromptData _data;
+        private bool _injected;
 
         void Awake()
         {
@@ -55,17 +60,21 @@ namespace BetterFG.Features.CopyCode
             Instance._lobbyVm = null;
         }
 
+        private string _showName;
+
         // ShowSelectorShowPreviewViewModel.SetIndividualShowData — the highlighted show
         public static void OnShowPreviewed(ShowSelectorShow show)
         {
             if (Instance == null) return;
             Instance._showCode = show != null ? show.ShareCode : null;
+            Instance._showName = show?.ShowData?.ShowName?.Text;
         }
 
         public static void OnShowPreviewCleared()
         {
             if (Instance == null) return;
             Instance._showCode = null;
+            Instance._showName = null;
         }
 
         // FragglePlobbiesManager.ShowHighlighted — private lobby show list nav
@@ -73,12 +82,14 @@ namespace BetterFG.Features.CopyCode
         {
             if (Instance == null) return;
             Instance._showListCode = mgr.ShareCode;
+            Instance._showListActive = true;
         }
 
         public static void OnPrivateLobbyShowListClosed()
         {
             if (Instance == null) return;
             Instance._showListCode = null;
+            Instance._showListActive = false;
         }
 
         // LevelBrowserTileViewModel.OnSelected, off the same postfix that feeds LevelBrowserPortPrompt
@@ -90,60 +101,92 @@ namespace BetterFG.Features.CopyCode
 
         void Update()
         {
-            _code = CurrentCode();
-            if (string.IsNullOrEmpty(_code))
-            {
-                DestroyPrompt();
-                return;
-            }
+            bool screenActive = ScreenActive();
 
-            if (_prompt == null || !_prompt.IsAlive)
+            if (screenActive != _injected)
             {
-                // NavPrompt.Report is just the prefab source; OwnGlyph swaps in our own key/pad
-                // glyphs. C on keyboard, the pad's pause/menu button (Options / Menu / Start).
-                _prompt = NavPromptCore.From(NavPrompt.Report)
-                    .WithLabel("Copy Code", "bfg_copycode_prompt")
-                    .InGameOverlay()
-                    .AllowWhileUnfocused()
-                    .OwnGlyph()
-                    .PollActions(RewiredConsts.Action.Default_OpenInGameMenu)
-                    .JoystickOnly()
-                    .AlsoAcceptKey(KeyCode.C)
-                    .SpawnOn(null);
+                if (screenActive)
+                {
+                    if (_data == null)
+                        _data = NavPromptInjection.BuildData(NavPrompt.Report, "Copy Code", "bfg_copycode_prompt",
+                            RewiredConsts.Action.Default_OpenInGameMenu, RewiredConsts.Category.Default);
+                    NavPromptInjection.Add(NavPromptInjection.CopyCode, Copy, _data,
+                        btn => NavPromptCore.ApplyOwnGlyph(btn, KeyCode.C, RewiredConsts.Action.Default_OpenInGameMenu));
+                }
+                else NavPromptInjection.Remove(NavPromptInjection.CopyCode);
+                _injected = screenActive;
             }
+            if (!screenActive) return;
 
-            if (_prompt != null && _prompt.IsPressed()) Copy();
+            bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            if (!ctrlHeld && (BetterFG.Services.KeybindService.KeyDown(KeyCode.C) ||
+                NavPromptCore.PollActionDirect(RewiredConsts.Action.Default_OpenInGameMenu, null, true)))
+                Copy();
+        }
+
+        private bool ScreenActive()
+        {
+            if (_showListActive) return !string.IsNullOrEmpty(_showListCode);
+            return !string.IsNullOrEmpty(CurrentCode());
         }
 
         private string CurrentCode()
         {
             if (!string.IsNullOrEmpty(_showListCode)) return _showListCode;
-
             if (!string.IsNullOrEmpty(_showCode)) return _showCode;
-
             if (_levelTile != null && _levelTile.gameObject.activeInHierarchy && _levelTile.HasLevel)
                 return _levelTile.TileData?.LevelCode;
-
             if (_lobbyVm != null && _lobbyVm._isInFocus) return _lobbyVm.Code;
-
             return null;
         }
 
         private void Copy()
         {
-            GUIUtility.systemCopyBuffer = _code;
+            string code, source;
+            ResolveCurrent(out code, out source);
+            if (string.IsNullOrEmpty(code)) return;
+            GUIUtility.systemCopyBuffer = code;
+
+            string body = source == "lobby"
+                ? "Copied lobby code to your clipboard."
+                : string.IsNullOrEmpty(source)
+                    ? $"Copied [{code}] to your clipboard."
+                    : $"Copied {source} [{code}] to your clipboard.";
 
             NavPromptCore.RegisterCmsString("bfg_copycode_title", "Copied");
-            NavPromptCore.RegisterCmsString("bfg_copycode_body", "Code copied to your clipboard.");
+            NavPromptCore.SetCmsString("bfg_copycode_body", body);
             PopUp.ShowPopup("bfg_copycode_title", "bfg_copycode_body",
                 PopupInteractionType.Info, UIModalMessage.ModalType.MT_OK,
-                UIModalMessage.OKButtonType.Default, (Action<bool>)(_ => { }));
+                UIModalMessage.OKButtonType.Default,
+                (Action<bool>)(_ => StartCoroutine(RestoreLobbyFocusAfterClose().WrapToIl2Cpp())));
         }
 
-        private void DestroyPrompt()
+        private static IEnumerator RestoreLobbyFocusAfterClose()
         {
-            _prompt?.Destroy();
-            _prompt = null;
+            yield return new WaitForSeconds(1f);
+            RestoreLobbyFocus.Kick();
+            yield return null;
+            var go = GameObject.Find("UICanvas_Client_V2(Clone)/Default/Prefab_UI_PrivateLobbyShowSelect(Clone)");
+            go?.GetComponent<PrivateLobbyShowListViewModel>()?.OnGainFocus();
         }
+
+        // resolve which source is live right now + a friendly label for it. same priority order
+        // as CurrentCode. source is a display string, safe to inline into the popup body (may be
+        // null if we don't have a good name).
+        private void ResolveCurrent(out string code, out string source)
+        {
+            if (!string.IsNullOrEmpty(_showListCode)) { code = _showListCode; source = "show"; return; }
+            if (!string.IsNullOrEmpty(_showCode)) { code = _showCode; source = string.IsNullOrEmpty(_showName) ? "show" : $"show \"{_showName}\""; return; }
+            if (_levelTile != null && _levelTile.gameObject.activeInHierarchy && _levelTile.HasLevel)
+            {
+                var td = _levelTile.TileData;
+                code = td?.LevelCode;
+                source = td != null && !string.IsNullOrEmpty(td.Name) ? $"level \"{td.Name}\"" : "level";
+                return;
+            }
+            if (_lobbyVm != null && _lobbyVm._isInFocus) { code = _lobbyVm.Code; source = "lobby"; return; }
+            code = null; source = null;
+        }
+
     }
 }

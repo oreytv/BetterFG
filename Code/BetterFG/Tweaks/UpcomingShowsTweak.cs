@@ -17,6 +17,8 @@ namespace BetterFG.Tweaks
         public static UpcomingShowsTweak Instance { get; private set; }
         void Awake() => Instance = this;
 
+        public static readonly HashSet<string> Injected = new HashSet<string>();
+
         public static void OnPageBuilt(ShowSelectorPage page)
         {
             var inst = Instance;
@@ -48,6 +50,7 @@ namespace BetterFG.Tweaks
                 data.ShowSelectorEntryPoint = show;
                 data.Index = featured.Shows.Count;
                 featured.Shows.Add(data);
+                Injected.Add(show.Id);
             }
 
             Plugin.Log.LogInfo($"{shows.Count} upcoming shows onto the end of {featured.SectionId} ({page.PageId})");

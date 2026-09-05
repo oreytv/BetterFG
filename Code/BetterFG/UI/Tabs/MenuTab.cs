@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
-using BetterFG.Customization.Menu;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
+using BetterFG.Customization.UI;
 using BetterFG.Services;
+using BetterFG.Tweaks;
 using UnityEngine;
 using UnityEngine.UI;
 using LayoutElement = UnityEngine.UI.LayoutElement;
@@ -47,12 +49,16 @@ namespace BetterFG.UI.Tabs
         private float _botR = 1f, _botG = 1f, _botB = 1f;
         private float _bias, _smooth = 1f;
 
-        // ── State: background carousel (Images / Ambient / Sun) ──────────────
-        private enum BgCarouselPage { Images, Ambient, Sun }
-        private BgCarouselPage _bgPage = BgCarouselPage.Images;
+        // ── State: background carousel (3D Background / Images / Ambient / Sun) ──
+        private enum BgCarouselPage { Background3D, Images, Ambient, Sun }
+        private BgCarouselPage _bgPage = BgCarouselPage.Background3D;
         private Text _bgCarouselLabel;
         private RectTransform _bgCarouselBody;
         private float _bgBodyW, _bgBodyH;
+
+        // ── State: 3D background (native main menu skybox swap) ──────────────
+        private int _bg3dIndex;
+        private Text _bg3dNameLabel;
 
         // ── State: background images list ─────────────────────────────────────
         private List<MenuCustomizationApplication.BgImageEntry> _bgEntries = new List<MenuCustomizationApplication.BgImageEntry>();
@@ -88,9 +94,6 @@ namespace BetterFG.UI.Tabs
         private float _plinthColR = 1f, _plinthColG = 1f, _plinthColB = 1f;
         private Button _plinthColToggleBtn;
         private Image _plinthColSwatch;
-
-        // ── UGUI refs ─────────────────────────────────────────────────────────
-        private RawImage _gradPreview;
 
         // ── Settings keys (bg shared with MenuCustomizationApplication) ───────
         private static string KEY_TOP_R => MenuCustomizationApplication.KEY_BG_TOP_R;
@@ -187,21 +190,12 @@ namespace BetterFG.UI.Tabs
         }
 
         // ── Background panel ──────────────────────────────────────────────────
-        // notice + a carousel ( ‹ Background Images / Ambient Light / Main Sun Rotation › ), same
+        // a carousel ( ‹ 3D Background / Background Images / Ambient Light / Main Sun Rotation › ), same
         // ‹ Style › cycle shape as BatchEditWindow's subtab header. each page rebuilds the body below.
 
         private void BuildBgPanel(RectTransform parent, float x, float y, float w, float h)
         {
             float cy = PAD;
-
-            float noticeH = BTN_H * 1.4f;
-            float beanW = noticeH * 0.6f;
-            var beanTex = BetterFG.Utilities.EmbeddedResourceandUnity.LoadTexture("BetterFG.assets.ui.bean.bean_victorious.png");
-            if (beanTex != null) UGUIShip.CreateImage(parent, new Rect(x, cy, beanW, noticeH), beanTex, "NoticeBean");
-            UGUIShip.CreateLinkText(parent, new Rect(x + beanW + PAD, cy, w - beanW - PAD, noticeH),
-                "ui.background_gradient_and_pattern_moved_to_the_ui",
-                new Action(() => BetterFGUIMan.Instance?.OpenUIScreen()), fontSize: FS_SM);
-            cy += noticeH + PAD;
 
             // ── carousel header: ‹  Background Images  › ──
             float arrow = subTabH;
@@ -229,13 +223,14 @@ namespace BetterFG.UI.Tabs
 
         private void CycleBgPage(int d)
         {
-            _bgPage = (BgCarouselPage)(((int)_bgPage + d + 3) % 3);
+            _bgPage = (BgCarouselPage)(((int)_bgPage + d + 4) % 4);
             if (_bgCarouselLabel != null) UGUIShip.RelabelText(_bgCarouselLabel, BgPageTitle(_bgPage));
             RebuildBgCarouselBody();
         }
 
         private static string BgPageTitle(BgCarouselPage p) => p switch
         {
+            BgCarouselPage.Background3D => "bg3d.title",
             BgCarouselPage.Images => "ui.background_images",
             BgCarouselPage.Ambient => "ui.ambient_light",
             BgCarouselPage.Sun => "ui.main_sun_rotation",
@@ -250,10 +245,113 @@ namespace BetterFG.UI.Tabs
 
             switch (_bgPage)
             {
+                case BgCarouselPage.Background3D: BuildBackground3DPage(_bgCarouselBody, _bgBodyW, _bgBodyH); break;
                 case BgCarouselPage.Images: BuildBgImagesPage(_bgCarouselBody, _bgBodyW, _bgBodyH); break;
                 case BgCarouselPage.Ambient: BuildAmbientPage(_bgCarouselBody, _bgBodyW, _bgBodyH); break;
                 case BgCarouselPage.Sun: BuildSunPage(_bgCarouselBody, _bgBodyW, _bgBodyH); break;
             }
+        }
+
+        // ── 3D background page ────────────────────────────────────────────────
+        // a mode switch (Native game skyboxes / Custom BettrFG bundles — the same ones from the
+        // "2D To 3D Background" tweak) plus a single ‹ Name › cycle within whichever mode is active.
+        // "Normal" leaves the game's own native 3D background system alone entirely (it already has
+        // its own on/off in the game's Options). cycling live-swaps it immediately, so browsing IS
+        // the preview.
+
+        private enum Bg3dMode { Native, Custom }
+        private Bg3dMode _bg3dMode = Bg3dMode.Native;
+        private string _bg3dCustomBundle = "";
+        private Button _bg3dModeBtn;
+
+        private void BuildBackground3DPage(RectTransform parent, float w, float h)
+        {
+            _bg3dMode = SettingsService.Get(MenuCustomizationApplication.KEY_BG3D_MODE, "native") == "custom" ? Bg3dMode.Custom : Bg3dMode.Native;
+            _bg3dIndex = MenuCustomizationApplication.Bg3dIndexOf(SettingsService.Get(MenuCustomizationApplication.KEY_BG3D_SELECTED, ""));
+            _bg3dCustomBundle = SettingsService.Get(MenuCustomizationApplication.KEY_BG3D_CUSTOM_BUNDLE, "");
+
+            var (scrollRect, content) = UGUIShip.CreateScrollView(parent, new Rect(0f, 0f, TabWidth, h));
+            float x = PAD;
+            float cy = PAD;
+
+            StartCoroutine(Background3dTweak.FetchCatalogue(null).WrapToIl2Cpp());
+
+            _bg3dModeBtn = UGUIShip.CreateButton(content, new Rect(x, cy, w, BTN_H),
+                _bg3dMode == Bg3dMode.Native ? "bg3d.mode_native" : "bg3d.mode_custom",
+                BTN_DARK, WHITE, FS_SM,
+                new Action(() =>
+                {
+                    _bg3dMode = _bg3dMode == Bg3dMode.Native ? Bg3dMode.Custom : Bg3dMode.Native;
+                    var lbl = _bg3dModeBtn?.GetComponentInChildren<Text>();
+                    if (lbl != null) UGUIShip.RelabelText(lbl, _bg3dMode == Bg3dMode.Native ? "bg3d.mode_native" : "bg3d.mode_custom");
+                    RefreshBg3dLabel();
+                    ApplyBg3dLive();
+                }));
+            cy += BTN_H + PAD;
+
+            UGUIShip.CreateLabel(content, new Rect(x, cy, w, LH), "bg3d.hint", FS_SM, HINT);
+            cy += LH + SH;
+
+            float arrow = subTabH;
+            UGUIShip.CreateButton(content, new Rect(x, cy, arrow, BTN_H),
+                "<", BTN_DARK, WHITE, FS_SM, new Action(() => CycleBg3d(-1)));
+            _bg3dNameLabel = UGUIShip.CreateLabel(content, new Rect(x + arrow, cy, w - arrow * 2f, BTN_H),
+                Bg3dCurrentLabel(), FS_SM, WHITE, TextAnchor.MiddleCenter);
+            UGUIShip.CreateButton(content, new Rect(x + w - arrow, cy, arrow, BTN_H),
+                ">", BTN_DARK, WHITE, FS_SM, new Action(() => CycleBg3d(1)));
+            cy += BTN_H + PAD;
+
+            content.sizeDelta = new Vector2(0f, cy + PAD);
+        }
+
+        private static int CustomBg3dIndexOf(string bundle)
+        {
+            var cat = Background3dTweak.Catalogue;
+            for (int i = 0; i < cat.Count; i++) if (cat[i].Value == bundle) return i;
+            return 0;
+        }
+
+        private string Bg3dCurrentLabel()
+        {
+            if (_bg3dMode == Bg3dMode.Native) return MenuCustomizationApplication.Bg3dCatalog[_bg3dIndex].Label;
+            var cat = Background3dTweak.Catalogue;
+            return cat.Count > 0 ? cat[CustomBg3dIndexOf(_bg3dCustomBundle)].Key : "...";
+        }
+
+        private void RefreshBg3dLabel()
+        {
+            if (_bg3dNameLabel != null) UGUIShip.RelabelText(_bg3dNameLabel, Bg3dCurrentLabel());
+        }
+
+        private void ApplyBg3dLive()
+        {
+            if (_bg3dMode == Bg3dMode.Native)
+            {
+                MenuCustomizationApplication.Instance?.RequestMenuBackground3D(MenuCustomizationApplication.Bg3dCatalog[_bg3dIndex].Id);
+                return;
+            }
+            var cat = Background3dTweak.Catalogue;
+            if (cat.Count == 0) return;
+            MenuCustomizationApplication.Instance?.RequestMenuBackgroundCustomBundle(cat[CustomBg3dIndexOf(_bg3dCustomBundle)].Value);
+        }
+
+        private void CycleBg3d(int d)
+        {
+            if (_bg3dMode == Bg3dMode.Native)
+            {
+                int count = MenuCustomizationApplication.Bg3dCatalog.Length;
+                _bg3dIndex = ((_bg3dIndex + d) % count + count) % count;
+            }
+            else
+            {
+                var cat = Background3dTweak.Catalogue;
+                if (cat.Count == 0) return;
+                int idx = ((CustomBg3dIndexOf(_bg3dCustomBundle) + d) % cat.Count + cat.Count) % cat.Count;
+                _bg3dCustomBundle = cat[idx].Value;
+            }
+
+            RefreshBg3dLabel();
+            ApplyBg3dLive();
         }
 
         // ── Background images page ──────────────────────────────────────────────
@@ -599,35 +697,6 @@ namespace BetterFG.UI.Tabs
             if (_plinthColOn) MenuCustomizationApplication.Instance?.ApplyPlinthColor(new Color(_plinthColR, _plinthColG, _plinthColB));
         }
 
-        // ── Gradient preview ──────────────────────────────────────────────────
-
-        private void RefreshGradPreview()
-        {
-            if (_gradPreview == null) return;
-
-            const int W = 4, H = 64;
-            var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
-            tex.wrapMode = TextureWrapMode.Clamp;
-            tex.filterMode = FilterMode.Bilinear;
-
-            var top = new Color(_topR, _topG, _topB);
-            var bot = new Color(_botR, _botG, _botB);
-
-            for (int row = 0; row < H; row++)
-            {
-                float t = row / (float)(H - 1);
-                // match shader: bias offset then pow smoothness
-                float s = Mathf.Clamp01(t + _bias * 0.5f);
-                s = Mathf.Pow(s, Mathf.Max(0.1f, _smooth));
-                var c = Color.Lerp(bot, top, s);
-                for (int col = 0; col < W; col++)
-                    tex.SetPixel(col, row, c);
-            }
-
-            tex.Apply();
-            _gradPreview.texture = tex;
-        }
-
         // ── Apply / Remove ────────────────────────────────────────────────────
 
         private void OnApply()
@@ -662,7 +731,6 @@ namespace BetterFG.UI.Tabs
                 _topR = _topG = _topB = 0f;
                 _botR = _botG = _botB = 1f;
                 _bias = 0f; _smooth = 1f;
-                RefreshGradPreview();
 
                 RestorePattern();
                 SettingsService.Remove(KEY_PATTERN_PATH);
@@ -744,6 +812,10 @@ namespace BetterFG.UI.Tabs
             _botR = P(KEY_BOT_R, 1f); _botG = P(KEY_BOT_G, 1f); _botB = P(KEY_BOT_B, 1f);
             _bias = P(KEY_BIAS, 0f);
             _smooth = P(KEY_SMOOTH, 1f);
+
+            _bg3dMode = SettingsService.Get(MenuCustomizationApplication.KEY_BG3D_MODE, "native") == "custom" ? Bg3dMode.Custom : Bg3dMode.Native;
+            _bg3dIndex = MenuCustomizationApplication.Bg3dIndexOf(SettingsService.Get(MenuCustomizationApplication.KEY_BG3D_SELECTED, ""));
+            _bg3dCustomBundle = SettingsService.Get(MenuCustomizationApplication.KEY_BG3D_CUSTOM_BUNDLE, "");
 
             _ambientOn = SettingsService.Get(MenuCustomizationApplication.KEY_AMBIENT_ON, "false") == "true";
             _ambientR = P(MenuCustomizationApplication.KEY_AMBIENT_R, 0.5f);

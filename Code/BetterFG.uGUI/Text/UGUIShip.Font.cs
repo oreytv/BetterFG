@@ -18,7 +18,46 @@ namespace BettrFG.uGUI
         // layout/measure driver and gets a TextMeshProUGUI child that mirrors it, rendered in a
         // TMP_FontAsset built from the embedded ttf. swap the font = drop a ttf in assets/ui/general/
         // and repoint UIFontResource.
-        public static string UIFontResource = "BetterFG.assets.ui.general.CharterBold.ttf";
+        public static string UIFontResource = null;
+
+        public static readonly (string Code, string DisplayName, string Resource)[] AvailableFonts =
+        {
+            ("arial",       "Arial",        "BetterFG.assets.ui.general.arial.ttf"),
+            ("charter",     "Charter Bold", "BetterFG.assets.ui.general.CharterBold.ttf"),
+            ("tmp_default", "TMP Default",  null),
+        };
+
+        public static string SelectedFontCode { get; private set; } = "tmp_default";
+
+        public static void SetFontByCode(string code, bool resolveNow = true)
+        {
+            int idx = 0;
+            for (int i = 0; i < AvailableFonts.Length; i++)
+                if (AvailableFonts[i].Code == code) { idx = i; break; }
+            var (c, _, res) = AvailableFonts[idx];
+            if (c == SelectedFontCode && _uiFontTried) return;
+            SelectedFontCode = c;
+            UIFontResource = res;
+            _uiFont = null;
+            _uiFontTried = false;
+            if (!resolveNow) return;
+
+            var newFont = UIFont;
+            if (newFont == null && c != "arial")
+            {
+                Log.LogWarning("UI font: '" + c + "' didn't resolve, falling back to Arial so the mod stays readable");
+                UIFontResource = "BetterFG.assets.ui.general.arial.ttf";
+                _uiFontTried = false;
+                newFont = UIFont;
+            }
+            if (newFont == null) return;
+            for (int i = _mirrors.Count - 1; i >= 0; i--)
+            {
+                var m = _mirrors[i];
+                if (m.dst == null || m.src == null) { _mirrors.RemoveAt(i); continue; }
+                m.dst.font = newFont;
+            }
+        }
 
         private static Font _arial;
         private static Font Arial => _arial != null ? _arial : (_arial = Resources.GetBuiltinResource<Font>("Arial.ttf"));
@@ -33,14 +72,21 @@ namespace BettrFG.uGUI
                 _uiFontTried = true;
                 try
                 {
+                    if (string.IsNullOrEmpty(UIFontResource))
+                    {
+                        _uiFont = TMPro.TMP_Settings.defaultFontAsset;
+                        if (_uiFont == null) _uiFontTried = false;
+                        else Log.LogInfo("UI font ready: TMP default (" + _uiFont.name + ")");
+                        return _uiFont;
+                    }
                     using var s = ResourceAssembly.GetManifestResourceStream(UIFontResource);
-                    if (s == null) { Log.LogWarning("UI font: no embedded resource " + UIFontResource + ", mod UI stays on Arial"); return null; }
+                    if (s == null) { Log.LogWarning("UI font: no embedded resource " + UIFontResource); return null; }
                     var bytes = new byte[s.Length];
                     s.Read(bytes, 0, bytes.Length);
-                    var path = Path.Combine(Application.temporaryCachePath, "bfg_" + Path.GetFileName(UIFontResource));
-                    File.WriteAllBytes(path, bytes);
-
-                    var fa = TMPro.TMP_FontAsset.CreateFontAsset(path, 0, 90, 9,
+                    var ttfPath = Path.Combine(Application.temporaryCachePath, "bfg_" + Path.GetFileName(UIFontResource));
+                    File.WriteAllBytes(ttfPath, bytes);
+                    var source = Path.GetFileName(UIFontResource);
+                    var fa = TMPro.TMP_FontAsset.CreateFontAsset(ttfPath, 0, 90, 9,
                         UnityEngine.TextCore.LowLevel.GlyphRenderMode.SDFAA, 1024, 1024,
                         TMPro.AtlasPopulationMode.Dynamic, false);
                     if (fa == null) { Log.LogWarning("UI font: CreateFontAsset came back null"); return null; }
@@ -50,9 +96,9 @@ namespace BettrFG.uGUI
                     for (int c = 0x20; c <= 0x7E; c++) warm.Append((char)c);
                     try { fa.TryAddCharacters(warm.ToString(), false); } catch { }
                     _uiFont = fa;
-                    Log.LogInfo("UI font ready: BFG_UIFont from " + Path.GetFileName(UIFontResource));
+                    Log.LogInfo("UI font ready: BFG_UIFont from " + source);
                 }
-                catch (Exception ex) { Log.LogWarning("UI font build failed, mod UI stays on Arial: " + ex.Message); }
+                catch (Exception ex) { Log.LogWarning("UI font build failed: " + ex.Message); }
                 return _uiFont;
             }
         }
@@ -71,16 +117,18 @@ namespace BettrFG.uGUI
         }
         private static readonly System.Collections.Generic.List<TmpMirror> _mirrors = new System.Collections.Generic.List<TmpMirror>();
 
+        private static readonly System.Collections.Generic.List<Text> _pendingStylize = new System.Collections.Generic.List<Text>();
+
         // give a freshly built legacy Text the mod font: keep it as the (invisible) measure/layout
         // driver, overlay a TMP child that tracks its text/colour/size/alignment every frame.
         public static void Stylize(Text t)
         {
             if (t == null) return;
+            t.font = Arial;
             var font = UIFont;
-            if (font == null) return; // no ttf -> leave it as plain Arial
+            if (font == null) { _pendingStylize.Add(t); return; }
             if (t.transform.Find("TmpMirror") != null) return;
 
-            t.font = Arial;
             t.canvasRenderer.SetColor(new Color(1f, 1f, 1f, 0f));
             // a SetActive(false)->true cycle (tab/window open-close, list rebuilds) resets the
             // CanvasRenderer colour back to opaque, so the Arial glyphs reappear offset behind the
@@ -99,9 +147,20 @@ namespace BettrFG.uGUI
             d.richText = t.supportRichText;
             d.enableWordWrapping = t.horizontalOverflow == HorizontalWrapMode.Wrap;
             d.overflowMode = TMPro.TextOverflowModes.Overflow;
+            d.text = t.text;
+            d.color = t.color;
+            d.fontSize = t.fontSize;
+            d.alignment = MapAlign(t.alignment);
+            d.fontStyle = MapStyle(t.fontStyle);
             go.SetActive(true);
 
-            _mirrors.Add(new TmpMirror { src = t, dst = d });
+            _mirrors.Add(new TmpMirror
+            {
+                src = t, dst = d,
+                lastText = t.text, lastColor = t.color, lastSize = t.fontSize,
+                lastAnchor = t.alignment, lastStyle = t.fontStyle,
+                lastRich = t.supportRichText ? 1 : 0, lastEnabled = t.enabled,
+            });
         }
 
         // opt a label back out of the mod font — drop its TMP mirror and let the legacy Arial Text
@@ -115,6 +174,7 @@ namespace BettrFG.uGUI
                 if (_mirrors[i].dst != null) UnityEngine.Object.Destroy(_mirrors[i].dst.gameObject);
                 _mirrors.RemoveAt(i);
             }
+            _pendingStylize.Remove(t);
             var guard = t.gameObject.GetComponent<StylizeGuard>();
             if (guard != null) UnityEngine.Object.Destroy(guard);
             t.canvasRenderer.SetColor(Color.white);
@@ -123,6 +183,14 @@ namespace BettrFG.uGUI
         // pumped once per frame from BetterFGUIMan.Update
         public static void PumpTextMirrors()
         {
+            if (_pendingStylize.Count > 0 && UIFont != null)
+            {
+                var late = _pendingStylize.ToArray();
+                _pendingStylize.Clear();
+                for (int i = 0; i < late.Length; i++)
+                    if (late[i] != null) Stylize(late[i]);
+            }
+
             for (int i = _mirrors.Count - 1; i >= 0; i--)
             {
                 var m = _mirrors[i];

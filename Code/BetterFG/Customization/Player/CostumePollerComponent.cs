@@ -1,19 +1,17 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
-using FGClient;
 
 namespace BetterFG.Customization.Player
 {
     public class CostumePollerComponent : MonoBehaviour
     {
-        // set by GameStatePatches.NotifyLoadingFinishedPatch - the point a round is done loading and
-        // the bean's costume should have settled. out of a round it never moves, so the poll falls
-        // back to a fixed 5s window instead.
-        public static float LastLoadingFinished = -1f;
         public Transform beanGEO;
         public GameObject skinClone;
         public bool isRemote = false;
         public bool keepLocalDonor = false;
+        public int beanId;
+
+        private static readonly List<CostumePollerComponent> Live = new List<CostumePollerComponent>();
 
         private struct RendererState
         {
@@ -24,14 +22,6 @@ namespace BetterFG.Customization.Player
 
         // renderer -> original state, restored on destroy
         private Dictionary<Renderer, RendererState> _savedMats = new Dictionary<Renderer, RendererState>();
-        private float _nextCheck;
-        private const float CHECK_INTERVAL = 1f;
-
-        // the per-second poll only matters while the bean's costume is still settling: until the
-        // round finishes loading, or 5s after this poller was made if no round is loading. after that
-        // the periodic Update check stops running entirely - an explicit Kick/PollNow re-arms it.
-        private float _bornAt;
-        private bool _pollDone;
 
         // one fully-transparent material shared across all invisible renderers
         private static Material _invisibleMat;
@@ -79,67 +69,40 @@ namespace BetterFG.Customization.Player
         // Call this right after configuring the poller so the base bean is hidden on the same
         // frame the skin clone appears, instead of waiting a frame for Start(). Without this the
         // UGC costume + base bean both show for a beat on first menu entry.
-        public void HideNow()
+        public void HideNow() => HideBeans();
+
+        void Awake() => Live.Add(this);
+
+        void Start() => HideBeans();
+
+        // the game re-composites a bean's costume whenever its loadout screen redraws, which
+        // respawns costume meshes under GEO. FallguyCustomisationHandler's visibility pass is the
+        // tail of that, so it's where we get the last word back.
+        public static void RehideForBean(int beanId)
         {
-            _bornAt = Time.time;
-            HideBeans();
-            _nextCheck = Time.time + CHECK_INTERVAL;
+            for (int i = Live.Count - 1; i >= 0; i--)
+            {
+                var p = Live[i];
+                if (p is null || p.m_CachedPtr == System.IntPtr.Zero) { Live.RemoveAt(i); continue; }
+                if (p.beanId == beanId) p.HideBeans();
+            }
         }
 
-        void Start()
+        private void HideBeans()
         {
-            if (_bornAt <= 0f) _bornAt = Time.time;
-            HideBeans();
-            _nextCheck = Time.time + CHECK_INTERVAL;
-        }
-
-        void Update()
-        {
-            if (beanGEO is null || beanGEO.m_CachedPtr == System.IntPtr.Zero) { Destroy(this); return; }
-            if (_pollDone) return;
-
-            // once the settle window has passed, the periodic poll is done - bail before any work.
-            // a round load is bounded by NotifyLoadingFinished; otherwise 5s of existence is plenty.
-            bool loading = GlobalGameStateClient.Instance?.IsShowingLoadingScreen ?? false;
-            if (loading ? LastLoadingFinished > _bornAt : Time.time - _bornAt >= 5f) { _pollDone = true; return; }
-
-            if (Time.time < _nextCheck) return;
-            _nextCheck = Time.time + CHECK_INTERVAL;
-            HideBeans();
-        }
-
-        // returns true if this poll actually had something to hide (i.e. the bean isn't settled yet).
-        // the menu-entry kick uses this to stop hammering once there's nothing left to do; it also
-        // re-arms the periodic poll in case the game re-shows base parts after we went quiet.
-        public bool PollNow()
-        {
-            if (beanGEO == null) return false;
-            _pollDone = false;
-            _bornAt = Time.time;
-            bool did = HideBeans();
-            _nextCheck = Time.time + CHECK_INTERVAL;
-            return did;
-        }
-
-        private bool HideBeans()
-        {
-            if (!NeedsHidePass()) return false;
+            if (beanGEO is null || beanGEO.m_CachedPtr == System.IntPtr.Zero) return;
             if (isRemote) HideRemoteBeans();
             else HideLocalBeans();
-            return true;
         }
 
-        private bool NeedsHidePass()
+        // a child we disable can be switched back on by anything: the game's own LOD pass, a costume
+        // re-composite, our own restore path. rather than guess which, the child carries a guard that
+        // turns itself back off the moment Unity re-enables it, and self-destructs once the costume
+        // clone that wanted it hidden is gone.
+        private void Guard(Transform child)
         {
-            if (beanGEO == null) return false;
-            for (int i = 0; i < beanGEO.childCount; i++)
-            {
-                Transform child = beanGEO.GetChild(i).Cast<Transform>();
-                if (child == null || child.gameObject == skinClone) continue;
-                if (!child.gameObject.activeSelf) continue;
-                if (ShouldHide(child.name)) return true;
-            }
-            return false;
+            if (child.gameObject.GetComponent<BaseBodyGuard>() != null) return;
+            child.gameObject.AddComponent<BaseBodyGuard>().owner = skinClone;
         }
 
         // For remote beans: find all children that should be hidden.
@@ -185,6 +148,7 @@ namespace BetterFG.Customization.Player
                 {
                     if (child.gameObject.activeSelf)
                         child.gameObject.SetActive(false);
+                    Guard(child);
                 }
             }
         }
@@ -227,6 +191,7 @@ namespace BetterFG.Customization.Player
 
                 if (child.gameObject.activeSelf)
                     child.gameObject.SetActive(false);
+                Guard(child);
             }
         }
 
@@ -260,6 +225,7 @@ namespace BetterFG.Customization.Player
 
         void OnDestroy()
         {
+            Live.Remove(this);
             foreach (var kv in _savedMats)
             {
                 if (kv.Key == null) continue;

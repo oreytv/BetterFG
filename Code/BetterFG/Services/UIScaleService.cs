@@ -40,6 +40,10 @@ namespace BetterFG.Services
             canvas.GetComponent<CanvasScaler>().referenceResolution = CurrentRef;
         }
 
+        // every BettrFG canvas, for callers that need to reorder the whole UI as a block (the
+        // onboarding tutorial lifts all of them above the game while it runs)
+        public static IReadOnlyList<Canvas> All => Ours;
+
         public static float Current
         {
             get

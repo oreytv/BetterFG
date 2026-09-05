@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using Rewired;
@@ -81,7 +81,7 @@ namespace BetterFG.Features.QualificationTime
             if (_custUiGo != null) _custUiGo.SetActive(false);
 
             // our tab now owns the screen — drop the custom menu background image too.
-            BetterFG.Customization.Menu.MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
+            BetterFG.Customization.UI.MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
 
             // our OWN screen-space canvas. scaling text crisply means driving the canvas scale, not a
             // transform localScale (which just magnifies the baked glyph atlas -> pixelated). a smaller
@@ -171,7 +171,7 @@ namespace BetterFG.Features.QualificationTime
             BackdropIndex = -1;
 
             // restore the custom menu image to whatever the current view calls for.
-            BetterFG.Customization.Menu.MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
+            BetterFG.Customization.UI.MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
 
             if (TabToggle != null) TabToggle.SetIsOnWithoutNotify(false);
             BetterFG.Services.DiscordPresenceService.Push();

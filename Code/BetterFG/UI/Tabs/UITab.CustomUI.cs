@@ -1,5 +1,5 @@
 using System;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
@@ -7,7 +7,7 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
-    public partial class UIForegroundDetailTab
+    public partial class UITab
     {
         private bool _fgCyanOn;
         private float _fgCyanR = 0f, _fgCyanG = 0.3f, _fgCyanB = 1f;
@@ -26,9 +26,21 @@ namespace BetterFG.UI.Tabs
         private Image _swatchCyan, _swatchBlack, _swatchYellow, _swatchBlue, _swatchPink, _swatchOrange;
         private Image _fgCyanAreaBg, _fgBlackAreaBg, _fgYellowAreaBg, _fgBlueAreaBg, _fgPinkAreaBg, _fgOrangeAreaBg;
 
+        private bool _fgDirty;
+        private float _fgNextApply;
+
+        void Update()
+        {
+            if (!_fgDirty || Time.unscaledTime < _fgNextApply) return;
+            _fgDirty = false;
+            _fgNextApply = Time.unscaledTime + 0.5f;
+            OnApply();
+        }
+
         private void SetAllCustomEnabled(bool on)
         {
             _fgCyanOn = _fgBlackOn = _fgYellowOn = _fgBlueOn = _fgPinkOn = _fgOrangeOn = on;
+            _fgDirty = true;
             SetToggle(_btnCyanOn, on);
             SetToggle(_btnBlackOn, on);
             SetToggle(_btnYellowOn, on);
@@ -71,6 +83,7 @@ namespace BetterFG.UI.Tabs
                     var lbl = _btnCyanOn?.GetComponentInChildren<Text>();
                     if (lbl != null) UGUIShip.RelabelText(lbl, _fgCyanOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnCyanOn, _fgCyanOn, SEL_COLOR);
+                    _fgDirty = true;
                 }));
 
             var swatchCyanGo = new GameObject("SwatchCyan");
@@ -111,6 +124,7 @@ namespace BetterFG.UI.Tabs
                     var lbl = _btnBlackOn?.GetComponentInChildren<Text>();
                     if (lbl != null) UGUIShip.RelabelText(lbl, _fgBlackOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnBlackOn, _fgBlackOn, SEL_COLOR);
+                    _fgDirty = true;
                 }));
 
             var swatchBlackGo = new GameObject("SwatchBlack");
@@ -151,6 +165,7 @@ namespace BetterFG.UI.Tabs
                     var lbl = _btnYellowOn?.GetComponentInChildren<Text>();
                     if (lbl != null) UGUIShip.RelabelText(lbl, _fgYellowOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnYellowOn, _fgYellowOn, SEL_COLOR);
+                    _fgDirty = true;
                 }));
 
             var swatchYellowGo = new GameObject("SwatchYellow");
@@ -191,6 +206,7 @@ namespace BetterFG.UI.Tabs
                     var lbl = _btnBlueOn?.GetComponentInChildren<Text>();
                     if (lbl != null) UGUIShip.RelabelText(lbl, _fgBlueOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnBlueOn, _fgBlueOn, SEL_COLOR);
+                    _fgDirty = true;
                 }));
 
             var swatchBlueGo = new GameObject("SwatchBlue");
@@ -231,6 +247,7 @@ namespace BetterFG.UI.Tabs
                     var lbl = _btnPinkOn?.GetComponentInChildren<Text>();
                     if (lbl != null) UGUIShip.RelabelText(lbl, _fgPinkOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnPinkOn, _fgPinkOn, SEL_COLOR);
+                    _fgDirty = true;
                 }));
 
             var swatchPinkGo = new GameObject("SwatchPink");
@@ -271,6 +288,7 @@ namespace BetterFG.UI.Tabs
                     var lbl = _btnOrangeOn?.GetComponentInChildren<Text>();
                     if (lbl != null) UGUIShip.RelabelText(lbl, _fgOrangeOn ? "ui.on" : "ui.off");
                     UGUIShip.SetButtonSelected(_btnOrangeOn, _fgOrangeOn, SEL_COLOR);
+                    _fgDirty = true;
                 }));
 
             var swatchOrangeGo = new GameObject("SwatchOrange");
@@ -293,36 +311,42 @@ namespace BetterFG.UI.Tabs
         {
             if (_swatchOrange != null) _swatchOrange.color = new Color(_fgOrangeR, _fgOrangeG, _fgOrangeB);
             if (_fgOrangeAreaBg != null) _fgOrangeAreaBg.color = new Color(_fgOrangeR, _fgOrangeG, _fgOrangeB, 0.18f);
+            _fgDirty = true;
         }
 
         private void SyncPink()
         {
             if (_swatchPink != null) _swatchPink.color = new Color(_fgPinkR, _fgPinkG, _fgPinkB);
             if (_fgPinkAreaBg != null) _fgPinkAreaBg.color = new Color(_fgPinkR, _fgPinkG, _fgPinkB, 0.18f);
+            _fgDirty = true;
         }
 
         private void SyncCyan()
         {
             if (_swatchCyan != null) _swatchCyan.color = new Color(_fgCyanR, _fgCyanG, _fgCyanB);
             if (_fgCyanAreaBg != null) _fgCyanAreaBg.color = new Color(_fgCyanR, _fgCyanG, _fgCyanB, 0.18f);
+            _fgDirty = true;
         }
 
         private void SyncBlack()
         {
             if (_swatchBlack != null) _swatchBlack.color = new Color(_fgBlackR, _fgBlackG, _fgBlackB);
             if (_fgBlackAreaBg != null) _fgBlackAreaBg.color = new Color(_fgBlackR, _fgBlackG, _fgBlackB, 0.18f);
+            _fgDirty = true;
         }
 
         private void SyncYellow()
         {
             if (_swatchYellow != null) _swatchYellow.color = new Color(_fgYellowR, _fgYellowG, _fgYellowB);
             if (_fgYellowAreaBg != null) _fgYellowAreaBg.color = new Color(_fgYellowR, _fgYellowG, _fgYellowB, 0.18f);
+            _fgDirty = true;
         }
 
         private void SyncBlue()
         {
             if (_swatchBlue != null) _swatchBlue.color = new Color(_fgBlueR, _fgBlueG, _fgBlueB);
             if (_fgBlueAreaBg != null) _fgBlueAreaBg.color = new Color(_fgBlueR, _fgBlueG, _fgBlueB, 0.18f);
+            _fgDirty = true;
         }
 
         private void OnApply()

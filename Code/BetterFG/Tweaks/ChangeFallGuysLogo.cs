@@ -163,7 +163,7 @@ namespace BetterFG.Tweaks
                 catch (Exception ex) { Plugin.Log?.LogWarning("ChangeFallGuysLogo: reapply failed " + ex.Message); }
             }
 
-            try { Customization.Menu.MenuCustomizationApplication.Instance?.ReapplyTitleScreenBg(); }
+            try { Customization.UI.MenuCustomizationApplication.Instance?.ReapplyTitleScreenBg(); }
             catch (Exception ex) { Plugin.Log?.LogWarning("ChangeFallGuysLogo: title bg reapply failed " + ex.Message); }
         }
     }

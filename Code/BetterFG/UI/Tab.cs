@@ -107,6 +107,8 @@ namespace BetterFG.UI
 
     public class Tab : MonoBehaviour
     {
+        public const string KEY_TAB_SWITCH_TOOLTIP = "ui.tab_switch_tooltip";
+
         public Tab(IntPtr ptr) : base(ptr) { }
 
         // the tab-title hover overlay, found under BG after BuildBackground runs
@@ -140,6 +142,8 @@ namespace BetterFG.UI
         // dropdown lists every registered tab's display name without instantiating a live tab).
         public string TitleLocId => TitleId;
 
+        public string BgResourceName => BgResource;
+
         public virtual Tab MakeFallbackTab() => null;
 
         protected virtual string TitleDisplay => TabTitle;
@@ -157,6 +161,7 @@ namespace BetterFG.UI
         public static float TITLE_H => UIScale.TITLE_H;
 
         public RectTransform Root { get; private set; }
+        public RectTransform TitleRt => _titleRt;
 
         // the ContentArea GameObject (everything under the title). disabled while the tab is closed so
         // uGUI stops laying out / repainting it off-screen for nothing; the title peek stays active
@@ -253,12 +258,14 @@ namespace BetterFG.UI
             hoverRt.anchorMin = Vector2.zero;
             hoverRt.anchorMax = Vector2.one;
             hoverRt.offsetMin = hoverRt.offsetMax = Vector2.zero;
-            hoverGo.AddComponent<Image>().color = Color.clear;
+            var hoverImg = hoverGo.AddComponent<Image>();
+            hoverImg.color = Color.clear;
+            hoverImg.raycastTarget = false;
             var hoverTint = hoverGo.AddComponent<TabHoverTint>();
             hoverTint.Tab = this;
 
             int others = Mathf.Max(0, BetterFGTabRegistry.All.Count - BetterFGUIMan.MAX_SLOTS);
-            BetterFGUIMan.MakeLocalizedObjectTooltip(titleRt, "ui.right_click_switch_tab_fmt", new object[] { others }, 0.12f);
+            BetterFGUIMan.MakeLocalizedObjectTooltip(titleRt, "ui.right_click_switch_tab_fmt", new object[] { others }, 0.12f, tabSwitch: true);
 
             titleGo.AddComponent<Image>().color = Color.clear;
             var btn = titleGo.AddComponent<Button>();
@@ -272,6 +279,7 @@ namespace BetterFG.UI
             btn.navigation = nav;
             btn.onClick.AddListener(new Action(() =>
             {
+                if (BetterFGUIMan.Instance != null && BetterFGUIMan.Instance.ConsumeTitleDragSuppression(this)) return;
                 OnTitleClicked();
                 if (UnityEngine.EventSystems.EventSystem.current != null)
                     UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(null);

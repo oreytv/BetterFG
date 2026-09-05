@@ -125,7 +125,7 @@ namespace BetterFG.Features.CreativeGroups
             centre /= schemas.Count;
 
             var flat = new List<UGCObjectDataSchema>();
-            foreach (var s in schemas) Walk(s, flat.Add);
+            foreach (var s in schemas) BetterFG.Utilities.UGCSchemaGuids.Walk(s, flat.Add);
             foreach (var node in flat)
             {
                 Offset(node.Position, -centre);
@@ -213,9 +213,9 @@ namespace BetterFG.Features.CreativeGroups
             var origin = reticle != null ? reticle.transform.position : Vector3.zero;
 
             var flat = new List<UGCObjectDataSchema>();
-            for (int i = 0; i < schemas.Length; i++) Walk(schemas[i], flat.Add);
+            for (int i = 0; i < schemas.Length; i++) BetterFG.Utilities.UGCSchemaGuids.Walk(schemas[i], flat.Add);
 
-            Remap(flat);
+            BetterFG.Utilities.UGCSchemaGuids.Remap(flat);
             foreach (var node in flat)
             {
                 Offset(node.Position, origin);
@@ -314,27 +314,6 @@ namespace BetterFG.Features.CreativeGroups
             return relinked;
         }
 
-        private static void Walk(UGCObjectDataSchema schema, Action<UGCObjectDataSchema> fn)
-        {
-            if (schema == null) return;
-            fn(schema);
-            WalkAll(schema.Children, fn);
-            WalkAll(schema.Receivers, fn);
-            WalkAll(schema.Triggers, fn);
-            WalkAll(schema.WallsObjs, fn);
-            WalkAll(schema.WaypointObjects, fn);
-
-            var comps = schema.Components;
-            if (comps == null) return;
-            for (int i = 0; i < comps.Count; i++) Walk(comps[i], fn);
-        }
-
-        private static void WalkAll(Il2CppReferenceArray<UGCObjectDataSchema> arr, Action<UGCObjectDataSchema> fn)
-        {
-            if (arr == null) return;
-            for (int i = 0; i < arr.Length; i++) Walk(arr[i], fn);
-        }
-
         private static void Offset(Il2CppStructArray<float> pos, Vector3 by)
         {
             if (pos == null || pos.Length < 3 || pos.Length % 3 != 0) return;
@@ -344,54 +323,6 @@ namespace BetterFG.Features.CreativeGroups
                 pos[i + 1] += by.y;
                 pos[i + 2] += by.z;
             }
-        }
-
-        private static void Remap(List<UGCObjectDataSchema> flat)
-        {
-            var map = new Dictionary<string, Il2CppSystem.Guid>();
-            foreach (var node in flat)
-            {
-                if (!Read(() => node.GUID, out var had)) continue;
-                string key = had.ToString();
-                if (!map.ContainsKey(key)) map[key] = Il2CppSystem.Guid.NewGuid();
-            }
-
-            int dangling = 0;
-            foreach (var node in flat)
-            {
-                node.GUID = Swap(() => node.GUID, map, ref dangling);
-                node.SnapTargetGuid = Swap(() => node.SnapTargetGuid, map, ref dangling);
-                node.OtherGuid = Swap(() => node.OtherGuid, map, ref dangling);
-                node.PillarAGuid = Swap(() => node.PillarAGuid, map, ref dangling);
-                node.PillarBGuid = Swap(() => node.PillarBGuid, map, ref dangling);
-            }
-
-            Plugin.Log.LogInfo($"{map.Count} guid(s) reissued across {flat.Count} node(s) for this drop"
-                + (dangling > 0 ? $", {dangling} reference(s) pointed outside the group and got cleared" : ""));
-        }
-
-        private static bool Read(Func<Il2CppSystem.Nullable<Il2CppSystem.Guid>> get, out Il2CppSystem.Guid guid)
-        {
-            guid = default;
-            try
-            {
-                var n = get();
-                if (n == null || !n.HasValue) return false;
-                guid = n.Value;
-                return true;
-            }
-            catch { return false; }
-        }
-
-        private static Il2CppSystem.Nullable<Il2CppSystem.Guid> Swap(
-            Func<Il2CppSystem.Nullable<Il2CppSystem.Guid>> get, Dictionary<string, Il2CppSystem.Guid> map, ref int dangling)
-        {
-            var none = new Il2CppSystem.Nullable<Il2CppSystem.Guid>();
-            if (!Read(get, out var had)) return none;
-            if (map.TryGetValue(had.ToString(), out var fresh))
-                return new Il2CppSystem.Nullable<Il2CppSystem.Guid>(fresh);
-            dangling++;
-            return none;
         }
 
         private static string Sanitise(string name)

@@ -86,10 +86,8 @@ namespace BetterFG.Tweaks
                 "Junkyard", new BackgroundSwap
                 {
                     Bundle = "terrain_sc",
-                    Sun = "LIGHTING/SUN_RT",
                     FogColor = new Color(0.9132f, 0.6164f, 0.347f, 1),
-                    FogDensity = 0.001f,
-                    SunIntensity = 0.7f
+                    FogDensity = 0.001f
                 }
             },
             {
@@ -108,11 +106,17 @@ namespace BetterFG.Tweaks
                     FogDensity = 0.0009f,
                 }
             },
+            {
+                "Volcano", new BackgroundSwap
+                {
+                    Bundle = "terrain_sv",
+                    FogColor = new Color(0.969f, 0.309f, 0.769f, 1),
+                    FogDensity = 0.0001f
+                }
+            },
         };
 
         private static readonly string[] HideOnApply = { "CutoutSphere", "LIGHTING/Reflection_Probe" };
-
-        private static readonly Dictionary<string, AssetBundle> _bundles = new Dictionary<string, AssetBundle>();
 
         public static Background3dTweak Instance { get; private set; }
 
@@ -176,7 +180,7 @@ namespace BetterFG.Tweaks
         {
             var wheel = BetterFG.UI.SideWheel.SideWheelManager.Instance;
             if (wheel == null) return;
-            wheel.OpenWindow<BetterFG.UI.Windows.TweaksWindow>("Tweaks",
+            wheel.OpenWindow<BetterFG.UI.Windows.TweaksWindow>("sidewheel.tweaks",
                 _ => wheel.SwapWindow(BetterFG.UI.Windows.BetterFGWindow.Spawn<BetterFG.UI.Windows.Background3dWindow>()));
         }
 
@@ -204,11 +208,7 @@ namespace BetterFG.Tweaks
         {
             if (_spawned != null && _spawned.name == bundle) Instance?.DisableTweak();
 
-            if (_bundles.TryGetValue(bundle, out var loaded))
-            {
-                if (loaded != null) loaded.Unload(true);
-                _bundles.Remove(bundle);
-            }
+            Utilities.Bundles.Unload(bundle, true);
 
             try { File.Delete(Path.Combine(BundleDir, bundle)); Plugin.Log.LogInfo($"binned {bundle}"); }
             catch (Exception ex) { Plugin.Log.LogWarning($"{bundle} wouldn't delete: {ex.Message}"); }
@@ -359,12 +359,47 @@ namespace BetterFG.Tweaks
 
         private static readonly HashSet<string> _seenBgNames = new HashSet<string>();
 
+        private static string _cachedBgName;
+
+        internal static void ApplyFarClip(string bgName)
+        {
+            _cachedBgName = bgName;
+            float far = (bgName != null && bgName.IndexOf("Volcano", StringComparison.Ordinal) >= 0) ? 25000f : 5000f;
+            Instance?.StartCoroutine(ApplyFarClipRoutine(far, bgName).WrapToIl2Cpp());
+        }
+
+        internal static void ReapplyFarClip() { if (_cachedBgName != null) ApplyFarClip(_cachedBgName); }
+
+        private static IEnumerator ApplyFarClipRoutine(float far, string bgName)
+        {
+            yield return null;
+
+            var node = GameObject.Find("LevelEditorCameraNode");
+            if (node != null) node.GetComponentInChildren<Camera>().farClipPlane = far;
+
+            var director = FallGuysLib.Camera.CameraLocator.GetCameraDirector();
+            var freelook = director != null ? director._closeCamera : null;
+            if (freelook == null) { Plugin.Log.LogWarning($"far clip: no close camera freelook for {bgName}"); yield break; }
+
+            var lens = freelook.m_Lens;
+            lens.FarClipPlane = far;
+            freelook.m_Lens = lens;
+
+            Plugin.Log.LogInfo($"far clip -> {far} for {bgName} (readback={freelook.m_Lens.FarClipPlane})");
+        }
+
         internal static void OnThemeLighting(LevelEditorThemeLighting settings)
         {
+            if (GameObjectHelper.IsMainMenuUp()) return;
+            if (BetterFG.Features.CustomBackgrounds.Definers.HasDefiner()) return;
+            if (BetterFG.Features.CustomBackgrounds.DisableBackgroundRulebook.IsDisabled()) return;
+
             var root = settings.transform.root.gameObject;
             string raw = root != null ? root.name.Replace("(Clone)", "") : "";
             if (raw.Length > 0 && _seenBgNames.Add(raw))
                 Plugin.Log.LogInfo($"theme background seen: {raw}");
+
+            ApplyFarClip(raw);
 
             if (!Resolve(root)) return;
 
@@ -374,10 +409,17 @@ namespace BetterFG.Tweaks
             ApplyIfWanted();
         }
 
+        internal static void Cancel()
+        {
+            _background = null;
+            Instance?.DisableTweak();
+        }
+
         internal static void ApplyIfWanted()
         {
             var inst = Instance;
             if (inst == null || !inst.IsEnabled || _busy || _spawned != null) return;
+            if (GameObjectHelper.IsMainMenuUp()) return;
             if (_background == null && !Resolve(ThemeManager._sceneBackgroundAndLighting)) return;
 
             inst.StartCoroutine(inst.Apply().WrapToIl2Cpp());
@@ -390,7 +432,8 @@ namespace BetterFG.Tweaks
             var background = _background;
             var swap = _swap;
 
-            if (!_bundles.TryGetValue(swap.Bundle, out var bundle) || bundle == null)
+            AssetBundle bundle = Utilities.Bundles.Get(swap.Bundle);
+            if (bundle == null)
             {
                 string path = Path.Combine(BundleDir, swap.Bundle);
                 if (!File.Exists(path)) yield return Fetch(swap.Bundle).WrapToIl2Cpp();
@@ -401,17 +444,15 @@ namespace BetterFG.Tweaks
                     yield break;
                 }
 
-                var bundleReq = AssetBundle.LoadFromFileAsync(path);
-                yield return bundleReq;
-
-                bundle = bundleReq.assetBundle;
+                AssetBundle loaded = null;
+                yield return Utilities.Bundles.LoadFile(swap.Bundle, path, ab => loaded = ab).WrapToIl2Cpp();
+                bundle = loaded;
                 if (bundle == null)
                 {
                     Plugin.Log.LogWarning($"Background3dTweak: '{swap.Bundle}' didn't load as a bundle");
                     _busy = false;
                     yield break;
                 }
-                _bundles[swap.Bundle] = bundle;
             }
 
             string prefabPath = null;
@@ -499,10 +540,14 @@ namespace BetterFG.Tweaks
                 }
             }
 
+            bool inRound = !GameObjectHelper.IsMainMenuUp();
+
+            var spawnPos = new Vector3(0f, swap.Bundle == "terrain_s5" ? -200f : -30f, 0f);
+
             _spawned = Instantiate(prefab);
             _spawned.name = swap.Bundle;
-            _spawned.transform.SetParent(background.transform, false);
-            _spawned.transform.localPosition = Vector3.zero;
+            if (inRound) _spawned.transform.position = spawnPos;
+            else { _spawned.transform.SetParent(background.transform, false); _spawned.transform.localPosition = spawnPos; }
             _spawned.SetActive(true);
 
             if (swap.ProbeSize.HasValue)
@@ -522,7 +567,7 @@ namespace BetterFG.Tweaks
                 Plugin.Log.LogInfo($"baked a {swap.ProbeSize.Value} probe off the new skybox, texture {(probe.texture != null ? probe.texture.name : "null")}");
             }
 
-            Plugin.Log.LogInfo($"Background3dTweak: {swap.Bundle} in for {background.name}");
+            Plugin.Log.LogInfo($"Background3dTweak: {swap.Bundle} in for {background.name}{(inRound ? ", loose in the scene since we're in a round" : "")}");
             _busy = false;
         }
     }
@@ -533,5 +578,12 @@ namespace BetterFG.Tweaks
     {
         [HarmonyPostfix]
         public static void Postfix(LevelEditorThemeLighting __instance) => Background3dTweak.OnThemeLighting(__instance);
+    }
+
+    [HarmonyPatch(typeof(FG.Common.CameraDirector), nameof(FG.Common.CameraDirector.UseCloseShot))]
+    public class Background3dCloseShotPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => Background3dTweak.ReapplyFarClip();
     }
 }

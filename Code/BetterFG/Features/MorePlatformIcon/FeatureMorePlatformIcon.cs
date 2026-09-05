@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Core;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Nametag;
 using BetterFG.Utilities;
 using FGClient;
@@ -113,12 +113,22 @@ namespace BetterFG.Features.MorePlatformIcon
 
         static TMP_SpriteAsset BuildAsset(string res, string assetName, string texName, ref Sprite[] spriteStore)
         {
-            var tex = EmbeddedResourceandUnity.LoadTexture(res);
-            if (tex == null) return null;
+            byte[] bytes;
+            using (var stream = typeof(FeatureMorePlatformIcon).Assembly.GetManifestResourceStream(res))
+            {
+                if (stream == null) return null;
+                bytes = new byte[stream.Length];
+                stream.Read(bytes, 0, bytes.Length);
+            }
 
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, true);
+            tex.LoadImage(bytes);
+            tex.Apply(true, false);
             tex.name = texName;
             tex.wrapMode = TextureWrapMode.Clamp;
-            tex.filterMode = FilterMode.Bilinear;
+            tex.filterMode = FilterMode.Trilinear;
+            tex.anisoLevel = 8;
+            tex.hideFlags = HideFlags.HideAndDontSave;
 
             var asset = ScriptableObject.CreateInstance<TMP_SpriteAsset>();
             asset.name = assetName;

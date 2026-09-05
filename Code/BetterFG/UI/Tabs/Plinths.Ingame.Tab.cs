@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Utilities;
 using UnityEngine;
 using BettrFG.uGUI;

@@ -30,21 +30,30 @@ namespace BetterFG.Tweaks
 
         private static Transform _showSelect, _playerList;
 
-        public static bool PopupOpen
+        private static bool _showListUp;
+
+        // the show list owns the screen while it's up. anything we leave behind — the forced-active
+        // customiser view, the hidden topbar, the re-anchored row, SetRow's handler/selection writes —
+        // fights it, so we tear the whole thing down and rebuild it when the list closes.
+        public static void OnPopupOpened()
         {
-            get
-            {
-                if (_showSelect == null || _playerList == null)
-                {
-                    var rootGo = GameObject.Find(UiRootPath);
-                    if (rootGo == null) return false;
-                    _showSelect = rootGo.transform.Find(ShowSelectSub);
-                    _playerList = rootGo.transform.Find(PlayerListSub);
-                }
-                return (_showSelect != null && _showSelect.gameObject.activeSelf) ||
-                       (_playerList != null && _playerList.gameObject.activeSelf);
-            }
+            _showListUp = true;
+            var inst = Instance;
+            if (inst != null && inst._open) inst.Close();
         }
+
+        public static void OnPopupClosed()
+        {
+            _showListUp = false;
+            var inst = Instance;
+            if (inst != null && inst.IsEnabled && inst._inLobby && !inst._open)
+                inst.StartCoroutine(inst.Open().WrapToIl2Cpp());
+        }
+
+        public static bool PopupOpen =>
+            _showListUp ||
+            GameObject.Find(UiRootPath + "/" + ShowSelectSub) != null ||
+            GameObject.Find(UiRootPath + "/" + PlayerListSub) != null;
 
         const string UiRootPath = "UICanvas_Client_V2(Clone)/Default";
         const string LobbyCanvasSub = "Prime_UI_PrivateLobby_Canvas(Clone)";
@@ -80,6 +89,7 @@ namespace BetterFG.Tweaks
         private bool _onTabs;
         private bool _heldVert;
         private bool _selectorUp;
+        private bool _stoodDown;
         private GameObject _customiserViewGo;
         private bool _open;
         private bool _inLobby;
@@ -149,7 +159,7 @@ namespace BetterFG.Tweaks
         {
             if (!hasFocus) return;
             _heldVert = true;
-            if (!_open || _navSuspended) return;
+            if (!_open || _navSuspended || _stoodDown) return;
             if (_selectorUp) { StartCoroutine(RegainSelectorFocusDelayed().WrapToIl2Cpp()); return; }
             if (_tabsInput != null) _tabsInput.enabled = _onTabs;
         }
@@ -177,6 +187,22 @@ namespace BetterFG.Tweaks
             if (rootGo == null) { Close(); return; }
             var root = rootGo.transform;
 
+            if (PopupOpen)
+            {
+                _stoodDown = true;
+                if (_tabsInput != null && _tabsInput.enabled) _tabsInput.enabled = false;
+                if (_lobbyInput != null && _lobbyInput.enabled) _lobbyInput.enabled = false;
+                if (_customiserViewGo != null && _customiserViewGo.activeSelf) _customiserViewGo.SetActive(false);
+                return;
+            }
+            if (_stoodDown)
+            {
+                _stoodDown = false;
+                if (_customiserViewGo != null) _customiserViewGo.SetActive(true);
+                if (_tabsInput != null) _tabsInput.enabled = _onTabs;
+                if (_lobbyInput != null) _lobbyInput.enabled = !_onTabs;
+            }
+
             var bar = root.Find(TopBarSub);
             if (bar != null && bar.gameObject.activeSelf) bar.gameObject.SetActive(false);
 
@@ -196,8 +222,6 @@ namespace BetterFG.Tweaks
                 }
             }
             if (selectorUp) return;
-
-            if (PopupOpen) return;
 
             int dy = _navPlayer.GetButton(_vertAction) ? 1 : _navPlayer.GetNegativeButton(_vertAction) ? -1 : 0;
             if (dy != 0 && !_heldVert)
@@ -415,6 +439,7 @@ namespace BetterFG.Tweaks
             }
             if (_lobbyInput != null) _lobbyInput.enabled = true;
             _onTabs = false;
+            _stoodDown = false;
             _heldVert = false;
             _prevSel = null;
             EventSystem.current.sendNavigationEvents = true;

@@ -13,6 +13,9 @@ namespace BetterFG.Utilities
             if (bean == null) return false;
             return bean.name == "PB_UI_Character";
         }
+        public static bool IsMainMenuUp() =>
+            GameObject.Find("MainMenuManager")?.GetComponent<FGClient.MainMenuManager>() != null;
+
         public static string GetGameObjectPath(GameObject obj)
         {
             if (obj == null) return "";

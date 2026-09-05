@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using BetterFG.Customization.Profiles;
@@ -12,7 +12,7 @@ namespace BetterFG.UI.Windows
     // shows up in-round (clean name, you or remote) the bean gets that look. Rows show the player
     // name + an enabled toggle + delete. Save row makes one from your current setup. Import (button
     // or drop a .bfgprofile onto the drop bar) pulls a shared profile in.
-    public class ProfilesWindow : BetterFGWindow
+    public class ProfilesWindow : SideWindow
     {
         public ProfilesWindow(IntPtr ptr) : base(ptr) { }
 
@@ -22,10 +22,13 @@ namespace BetterFG.UI.Windows
         void OnDisable() { if (_instance == this) _instance = null; }
         public static void RefreshOpen() => _instance?.RebuildContent();
 
+        // the first-open help prompt points its pulse at these
+        public static RectTransform ExportRect { get; private set; }
+        public static RectTransform ImportRect { get; private set; }
+
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
         protected override string WindowTitle => "ui.profiles";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private const float ROW_H = 22f;
         private const float BTN_H = 16f;
@@ -35,8 +38,8 @@ namespace BetterFG.UI.Windows
         private static readonly Color BTN_DEL = new Color(0.7f, 0.3f, 0.3f, 1f);
         private static readonly Color BTN_SAVE = new Color(0.25f, 0.45f, 0.75f, 1f);
         private static readonly Color BTN_IMPORT = new Color(0.3f, 0.55f, 0.4f, 1f);
-        private static readonly Color ON_COL = new Color(0.3f, 0.6f, 0.35f, 1f);
-        private static readonly Color OFF_COL = new Color(0.4f, 0.4f, 0.4f, 1f);
+        private static readonly Color ON_COL = UGUIShip.TOGGLE_ON;
+        private static readonly Color OFF_COL = UGUIShip.TOGGLE_OFF;
 
         private ScrollRect _scroll;
         private float _scrollPos = 1f;
@@ -101,7 +104,7 @@ namespace BetterFG.UI.Windows
             rowGo.AddComponent<Image>().color = new Color(0.2f, 0.3f, 0.45f, 0.18f);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(ROW_PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(SideWindow.RowLabelX, 0f, 150f, ROW_H),
                 "ui.export_my_setup_to_a_file", 12, new Color(1f, 1f, 1f, 0.7f), TextAnchor.MiddleLeft);
 
             var btnGo = new GameObject("ExportBtn");
@@ -111,6 +114,7 @@ namespace BetterFG.UI.Windows
             btnRt.pivot = new Vector2(1f, 0.5f);
             btnRt.anchoredPosition = new Vector2(-ROW_PAD, 0f);
             btnRt.sizeDelta = new Vector2(54f, BTN_H);
+            ExportRect = btnRt;
 
             UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 54f, BTN_H), "ui.export_2", BTN_SAVE, Color.white, 9)
                 .onClick.AddListener(new Action(() =>
@@ -132,7 +136,7 @@ namespace BetterFG.UI.Windows
             rowGo.AddComponent<Image>().color = new Color(0.2f, 0.4f, 0.3f, 0.14f);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(ROW_PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(SideWindow.RowLabelX, 0f, 150f, ROW_H),
                 "ui.drop_profile_here", 12, new Color(1f, 1f, 1f, 0.6f), TextAnchor.MiddleLeft);
 
             var btnGo = new GameObject("ImportBtn");
@@ -142,6 +146,7 @@ namespace BetterFG.UI.Windows
             btnRt.pivot = new Vector2(1f, 0.5f);
             btnRt.anchoredPosition = new Vector2(-ROW_PAD, 0f);
             btnRt.sizeDelta = new Vector2(60f, BTN_H);
+            ImportRect = btnRt;
 
             UGUIShip.CreateButton(btnGo.transform, new Rect(0f, 0f, 60f, BTN_H), "ui.import_2", BTN_IMPORT, Color.white, 9)
                 .onClick.AddListener(new Action(() =>
@@ -164,7 +169,7 @@ namespace BetterFG.UI.Windows
 
             // name label positioned the same as PresetsWindow rows
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(ROW_PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(SideWindow.RowLabelX, 0f, 150f, ROW_H),
                 name, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             float right = ROW_PAD;

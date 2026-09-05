@@ -30,6 +30,12 @@ namespace BetterFG.Network
         public string platformHide;
         public string platformCustom;
         public string nameStyle;
+        public string gradientColors;
+        public float gradientAngle;
+        public bool outlineEnabled;
+        public float outlineR, outlineG, outlineB;
+        public float outlineWidth;
+        public string outlineMode;
         public bool backingEnabled;
         public string backingPath;
         public float backingOffX, backingOffY;

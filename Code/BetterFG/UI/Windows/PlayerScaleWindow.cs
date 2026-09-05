@@ -13,7 +13,7 @@ namespace BetterFG.UI.Windows
         protected override float WindowWidth => 340f;
         protected override float WindowHeight => 118f;
         protected override string WindowTitle => "ui.player_scale";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
+        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg_sidewheel.png";
 
         private static readonly Color HINT_COL = new Color(1f, 1f, 1f, 0.35f);
         private static readonly Color BTN_APPLY = new Color(0.45f, 0.35f, 0.25f, 1f);

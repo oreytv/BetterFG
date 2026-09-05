@@ -508,11 +508,13 @@ namespace BetterFG.Features.UnityRound
 
             AssetBundle bundle = null;
             Exception loadEx = null;
-            try { bundle = AssetBundle.LoadFromMemory(bytes); }
+            try { bundle = BetterFG.Utilities.Bundles.LoadMemorySync(info.prefab, bytes); }
             catch (Exception ex)
             {
                 loadEx = ex;
             }
+
+            if (bundle == null && loadEx == null) loadEx = new Exception("LoadFromMemory returned null");
 
             if (loadEx != null)
             {

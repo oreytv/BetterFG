@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Customization.Player;
 using BetterFG.Nametag;
 using BetterFG.Patches;

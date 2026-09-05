@@ -15,7 +15,8 @@ namespace BetterFG.UI.Tabs
     {
         public static NametagPreview Active { get; private set; }
 
-        private static readonly Color PANEL_BG = new Color(0f, 0f, 0f, 0.35f);
+        public PlayerInfoDisplayCanvas Canvas => _previewCanvas;
+
         private const string SAMPLE_NAME = "Example";
 
         private RectTransform _previewPanelRt;
@@ -30,7 +31,7 @@ namespace BetterFG.UI.Tabs
             var panelGo = new GameObject("Preview");
             panelGo.transform.SetParent(parent, false);
             UGUIShip.SetPixelRect(panelGo.AddComponent<RectTransform>(), area);
-            panelGo.AddComponent<Image>().color = PANEL_BG;
+            UGUIShip.ApplyDeluxPanelDark(panelGo.AddComponent<Image>());
 
             var holderGo = new GameObject("PreviewHolder");
             holderGo.transform.SetParent(panelGo.transform, false);
@@ -77,11 +78,7 @@ namespace BetterFG.UI.Tabs
             return true;
         }
 
-        private static string PreviewName()
-        {
-            string n = LocalPlayerInfo.DisplayName;
-            return string.IsNullOrEmpty(n) ? SAMPLE_NAME : n;
-        }
+        private static string PreviewName() => SAMPLE_NAME;
 
         public void Apply(NametagIconApplicator.NametagCfg nameCfg, CrownRankService.CrownCfg crownCfg,
             bool platformHide, string platformCustom)
@@ -97,6 +94,7 @@ namespace BetterFG.UI.Tabs
             NametagIconApplicator.ApplyNametagTo(_previewCanvas, nameCfg);
             CrownRankService.ApplyCrownTo(_previewCanvas, crownCfg);
             NametagIconApplicator.ApplyPlatformIcon(_previewClone, platformHide, platformCustom ?? "");
+            tmp.text = SAMPLE_NAME;
         }
     }
 }

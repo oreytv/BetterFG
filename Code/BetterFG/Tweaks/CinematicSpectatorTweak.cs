@@ -27,6 +27,12 @@ namespace BetterFG.Tweaks
         public static CinematicSpectatorTweak Instance { get; private set; }
         void Awake() => Instance = this;
 
+        public static bool IsFreeCamActive =>
+            Instance != null && Instance._customOn && Instance.Mode == SpectateCamMode.FreeCam;
+
+        public static Transform ActiveFreeCamTransform =>
+            IsFreeCamActive && Instance._cam != null ? Instance._cam.transform : null;
+
         const float FarDistance = 45f;
         const float MinShotDuration = 7f;
         const float FrameHeight = 15f;
@@ -323,7 +329,8 @@ namespace BetterFG.Tweaks
             if (_director == null) return null;
             var selected = _director._selectedPlayerSpectatorCameraTarget;
             if (selected != null && selected.Transform != null) return selected.Transform;
-            return _director.SpectatedPlayerController?.transform;
+            var pc = _director.SpectatedPlayerController;
+            return pc != null ? pc.transform : null;
         }
 
         void SetActive(bool on)
@@ -370,15 +377,31 @@ namespace BetterFG.Tweaks
         void Disengage()
         {
             if (!_customOn) return;
+            bool wasFree = Mode == SpectateCamMode.FreeCam;
             _customOn = false;
             if (_cam != null) _cam.fieldOfView = _originalFov;
             if (_brain != null) _brain.enabled = true;
             RestoreGameUi();
-            if (Mode == SpectateCamMode.FreeCam) Cursor.visible = true;
+            if (wasFree)
+            {
+                Cursor.visible = true;
+                RestoreNametagFadeTarget();
+            }
             _lastTarget = null;
             _cam = null;
             _brain = null;
             Plugin.Log.LogInfo("custom spectate cam off, cinemachine has the camera back");
+        }
+
+        void RestoreNametagFadeTarget()
+        {
+            var pc = _director != null ? _director.SpectatedPlayerController : null;
+            if (pc == null) return;
+            var t = pc.transform;
+            var huds = UnityEngine.Object.FindObjectsOfType<PlayerInfoHUDBase>(true);
+            if (huds == null) return;
+            for (int i = 0; i < huds.Length; i++)
+                if (huds[i] != null) huds[i]._currentTargetTransform = t;
         }
 
         void Reposition(Transform target)

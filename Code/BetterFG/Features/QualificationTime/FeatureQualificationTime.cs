@@ -23,7 +23,7 @@ using FG.Common.CMS;
 using BetterFG.Services;
 using BetterFG.Core;
 using BetterFG.UI;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Customization.Player;
 using BetterFG.Utilities;
 using FallGuysLib.NPC;
@@ -744,6 +744,22 @@ namespace BetterFG.Features.QualificationTime
             return false;
         }
 
+        // subtracted from the round clock so ImmediateRespawnTweak's "respawn at start" can zero the
+        // live timer / ghost recorder without touching the native round clock itself.
+        static float _elapsedBaseline;
+
+        internal static float RaceElapsed()
+            => Mathf.Max(0f, (GlobalGameStateClient.Instance?.GameStateView?.GameplayTimeElapsed ?? 0f) - _elapsedBaseline);
+
+        // GhostRecordCoroutine already treats a backwards time jump as a fresh attempt (clears
+        // _ghostFrames, re-arms) — that's built for time attack lap resets, but the same check fires
+        // here once RaceElapsed() drops, so nothing else needs to touch the ghost state.
+        internal static void ResetElapsedBaseline()
+        {
+            _elapsedBaseline = GlobalGameStateClient.Instance?.GameStateView?.GameplayTimeElapsed ?? 0f;
+            Plugin.Log.LogInfo("QualTime: elapsed baseline reset, respawned at start");
+        }
+
         // the ghost's timebase. a normal round is measured off the round clock, which only ever goes
         // up. a time attack run is measured off the CURRENT LAP, which resets to zero every attempt —
         // and that reset is exactly what re-arms the recorder and replays the ghost, no event needed.
@@ -751,7 +767,7 @@ namespace BetterFG.Features.QualificationTime
         internal static float GhostClock()
         {
             if (!IsTimeAttackRound())
-                return GlobalGameStateClient.Instance?.GameStateView?.GameplayTimeElapsed ?? 0f;
+                return RaceElapsed();
 
             // cached for the round and dropped by ResetRaceRoundCache, so it can't outlive its round
             if (_taLocalStats == null)
@@ -1199,7 +1215,7 @@ namespace BetterFG.Features.QualificationTime
             var gsv = GlobalGameStateClient.Instance?.GameStateView;
             if (gsv == null) return;
 
-            TimeSpan t = TimeSpan.FromSeconds(gsv.GameplayTimeElapsed);
+            TimeSpan t = TimeSpan.FromSeconds(RaceElapsed());
             string formatted = string.Format("{0:D2}:{1:D2}:{2:D3}", t.Minutes, t.Seconds, t.Milliseconds);
             if (formatted == _liveTimerLast) return;
             _liveTimerLast = formatted;
@@ -1475,6 +1491,7 @@ namespace BetterFG.Features.QualificationTime
         {
             yield return new WaitForSeconds(2f);
             if (_ghostGen != gen) yield break;
+            if (SettingsService.Get("debug.disable_ghost", "false") == "true") yield break;
 
             if (!TryGetLiveRoundIds(out string cacheId, out _, out _)) { Plugin.Log.LogInfo("Ghost: no round id, skipping"); yield break; }
 
@@ -1752,9 +1769,7 @@ namespace BetterFG.Features.QualificationTime
             // with the whole round's elapsed. the real per-run time comes through RegisterTime.
             if (!IsRaceRound() || IsTimeAttackRound()) return;
 
-            float elapsed = GlobalGameStateClient.Instance?.GameStateView != null
-                ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed
-                : 0f;
+            float elapsed = RaceElapsed();
 
             if (elapsed <= 0f && msg.qualifyTime > 0)
                 elapsed = msg.qualifyTime > 1000f ? msg.qualifyTime / 1000f : msg.qualifyTime;
@@ -2117,6 +2132,7 @@ namespace BetterFG.Features.QualificationTime
         public static void OnCleanupLoadingScreens()
         {
             ResetRaceRoundCache();
+            _elapsedBaseline = 0f;
             _qualHandled = false;
             _ghostRecording = false;
             _ghostFrames = null;

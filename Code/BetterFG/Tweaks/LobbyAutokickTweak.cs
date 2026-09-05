@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Catapult.Protocol;
 using FallGuys.Lobby.Protocol.Client.Lobbies;
+using FG.Common;
+using FGClient;
 using Il2CppInterop.Runtime;
 using BetterFG.Services;
 using BetterFG.UI.Windows;
@@ -14,6 +16,7 @@ namespace BetterFG.Tweaks
     public class LobbyAutokickTweak : BfgTweak
     {
         private float _nextCheck;
+        private bool _inLobby;
         private readonly Dictionary<string, float> _lastKick = new Dictionary<string, float>();
         public static readonly string[] DefaultChecks = { "size", "scale", "<", ">", "\\u003" };
 
@@ -33,6 +36,13 @@ namespace BetterFG.Tweaks
         public override void EnableTweak()
         {
             _nextCheck = 0f;
+            _inLobby = GlobalGameStateClient.Instance?._gameStateMachine?.CurrentState?.TryCast<StatePrivateLobby>() != null;
+        }
+
+        public override void OnStateChanged(GameStateMachine.IGameState newState)
+        {
+            _inLobby = newState != null && newState.TryCast<StatePrivateLobby>() != null;
+            if (!_inLobby) _lastKick.Clear();
         }
 
         private void OpenConfig()
@@ -51,7 +61,7 @@ namespace BetterFG.Tweaks
 
         private void Update()
         {
-            if (!IsEnabled) return;
+            if (!IsEnabled || !_inLobby) return;
             if (Time.unscaledTime < _nextCheck) return;
             _nextCheck = Time.unscaledTime + 1f;
             CheckLobby();

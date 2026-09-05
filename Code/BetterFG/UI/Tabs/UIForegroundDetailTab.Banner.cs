@@ -22,7 +22,7 @@ namespace BetterFG.UI.Tabs
 
         private class BannerSlotUI
         {
-            public Customization.Menu.MenuCustomizationApplication.BannerBucket bucket;
+            public Customization.UI.MenuCustomizationApplication.BannerBucket bucket;
             public string label;
             public string keyPrefix;
             public float dr, dg, db;
@@ -49,7 +49,7 @@ namespace BetterFG.UI.Tabs
             UGUIShip.SetButtonSelected(ch.toggleBtn, on, SEL_COLOR);
         }
 
-        private BannerSlotUI MkSlot(Customization.Menu.MenuCustomizationApplication.BannerBucket bucket,
+        private BannerSlotUI MkSlot(Customization.UI.MenuCustomizationApplication.BannerBucket bucket,
             string label, string keyPrefix, float dr, float dg, float db)
         {
             var s = new BannerSlotUI { bucket = bucket, label = label, keyPrefix = keyPrefix, dr = dr, dg = dg, db = db };
@@ -65,14 +65,14 @@ namespace BetterFG.UI.Tabs
 
         private void BuildBannerDefs()
         {
-            var B = Customization.Menu.MenuCustomizationApplication.BannerBucket.Black;
-            var W = Customization.Menu.MenuCustomizationApplication.BannerBucket.White;
-            var C = Customization.Menu.MenuCustomizationApplication.BannerBucket.Cyan;
-            var P = Customization.Menu.MenuCustomizationApplication.BannerBucket.Pink;
-            var Y = Customization.Menu.MenuCustomizationApplication.BannerBucket.Yellow;
-            var O = Customization.Menu.MenuCustomizationApplication.BannerBucket.Orange;
-            var Bl = Customization.Menu.MenuCustomizationApplication.BannerBucket.Blue;
-            var BG = Customization.Menu.MenuCustomizationApplication.BannerBucket.BlackGrey;
+            var B = Customization.UI.MenuCustomizationApplication.BannerBucket.Black;
+            var W = Customization.UI.MenuCustomizationApplication.BannerBucket.White;
+            var C = Customization.UI.MenuCustomizationApplication.BannerBucket.Cyan;
+            var P = Customization.UI.MenuCustomizationApplication.BannerBucket.Pink;
+            var Y = Customization.UI.MenuCustomizationApplication.BannerBucket.Yellow;
+            var O = Customization.UI.MenuCustomizationApplication.BannerBucket.Orange;
+            var Bl = Customization.UI.MenuCustomizationApplication.BannerBucket.Blue;
+            var BG = Customization.UI.MenuCustomizationApplication.BannerBucket.BlackGrey;
 
             _bannerDefs = new System.Collections.Generic.Dictionary<UIForegroundKind, BannerDef>
             {
@@ -86,7 +86,7 @@ namespace BetterFG.UI.Tabs
                         MkSlot(W, "ui.white_replacement", "menu.banner.qual.white", 1f,    1f,    1f),
                     },
                     highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.qual.highlight", 1f, 1f, 1f),
-                    enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_QUAL_ENABLED,
+                    enabledKey = Customization.UI.MenuCustomizationApplication.KEY_BANNER_QUAL_ENABLED,
                 },
                 [UIForegroundKind.Eliminated] = new BannerDef
                 {
@@ -98,7 +98,7 @@ namespace BetterFG.UI.Tabs
                         MkSlot(W, "ui.white_replacement", "menu.banner.elim.white", 1f,    1f,    1f),
                     },
                     highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.elim.highlight", 1f, 1f, 1f),
-                    enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_ELIM_ENABLED,
+                    enabledKey = Customization.UI.MenuCustomizationApplication.KEY_BANNER_ELIM_ENABLED,
                 },
                 [UIForegroundKind.Winner] = new BannerDef
                 {
@@ -110,7 +110,7 @@ namespace BetterFG.UI.Tabs
                         MkSlot(BG, "ui.black_replacement", "menu.banner.win.black",  0.08f, 0.08f, 0.08f),
                     },
                     highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.win.highlight", 1f, 1f, 1f),
-                    enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_WIN_ENABLED,
+                    enabledKey = Customization.UI.MenuCustomizationApplication.KEY_BANNER_WIN_ENABLED,
                 },
                 [UIForegroundKind.RoundOver] = new BannerDef
                 {
@@ -122,7 +122,7 @@ namespace BetterFG.UI.Tabs
                         MkSlot(W,  "ui.white_replacement", "menu.banner.round.white", 1f,    1f,    1f),
                     },
                     highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.round.highlight", 1f, 1f, 1f),
-                    enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_ROUND_ENABLED,
+                    enabledKey = Customization.UI.MenuCustomizationApplication.KEY_BANNER_ROUND_ENABLED,
                 },
                 [UIForegroundKind.EliminatedSquad] = new BannerDef
                 {
@@ -136,7 +136,7 @@ namespace BetterFG.UI.Tabs
                         MkSlot(W,  "ui.white_replacement",  "menu.banner.squad.white",  1f,    1f,    1f),
                     },
                     highlight = MkSlot(W, "ui.highlight_replacement", "menu.banner.squad.highlight", 1f, 1f, 1f),
-                    enabledKey = Customization.Menu.MenuCustomizationApplication.KEY_BANNER_SQUAD_ENABLED,
+                    enabledKey = Customization.UI.MenuCustomizationApplication.KEY_BANNER_SQUAD_ENABLED,
                 },
             };
         }
@@ -289,20 +289,20 @@ namespace BetterFG.UI.Tabs
 
         private void UpdateBannerPreviewColours() => _previewClone.UpdateColours();
 
-        private Customization.Menu.MenuCustomizationApplication.BannerColours PreviewBannerColours(UIForegroundKind what)
+        private Customization.UI.MenuCustomizationApplication.BannerColours PreviewBannerColours(UIForegroundKind what)
         {
             var def = GetBannerDef(what);
-            var slots = new System.Collections.Generic.List<Customization.Menu.MenuCustomizationApplication.BannerSlot>();
+            var slots = new System.Collections.Generic.List<Customization.UI.MenuCustomizationApplication.BannerSlot>();
             if (def == null || !def.enabled)
-                return new Customization.Menu.MenuCustomizationApplication.BannerColours { slots = slots, highlightOn = false, highlight = Color.white };
+                return new Customization.UI.MenuCustomizationApplication.BannerColours { slots = slots, highlightOn = false, highlight = Color.white };
 
             foreach (var s in def.slots)
                 if (s.ui.on)
-                    slots.Add(new Customization.Menu.MenuCustomizationApplication.BannerSlot
+                    slots.Add(new Customization.UI.MenuCustomizationApplication.BannerSlot
                     { bucket = s.bucket, target = new Color(s.ui.r, s.ui.g, s.ui.b) });
 
             var hl = def.highlight.ui;
-            return new Customization.Menu.MenuCustomizationApplication.BannerColours
+            return new Customization.UI.MenuCustomizationApplication.BannerColours
             {
                 slots = slots,
                 highlightOn = hl != null && hl.on,

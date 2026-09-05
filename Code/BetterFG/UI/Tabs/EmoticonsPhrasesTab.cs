@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -88,8 +88,8 @@ namespace BetterFG.UI.Tabs
         private static readonly Color BTN_ADD = new Color(0.22f, 0.42f, 0.22f, 1f);
         private static readonly Color BTN_APPLY = new Color(0.45f, 0.35f, 0.25f, 1f);
         private static readonly Color BTN_RM = new Color(0.45f, 0.1f, 0.1f, 1f);
-        private static readonly Color TOGGLE_ON = new Color(0.25f, 0.5f, 0.25f, 1f);
-        private static readonly Color TOGGLE_OFF = new Color(0.28f, 0.28f, 0.28f, 1f);
+        private static readonly Color TOGGLE_ON = UGUIShip.TOGGLE_ON;
+        private static readonly Color TOGGLE_OFF = UGUIShip.TOGGLE_OFF;
         private static readonly Color STATUS_C = new Color(0.6f, 1f, 0.6f, 0.85f);
         private static readonly Color WARN_C = new Color(1f, 0.35f, 0.35f, 1f);
 

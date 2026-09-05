@@ -52,7 +52,7 @@ namespace BetterFG.Features.TimePlacement
                 var tex = Snap(cam, p.fgcc.gameObject);
                 if (tex != null) { _byKey[p.playerKey] = tex; done++; }
 
-                if ((i % 3) == 2) yield return null;
+                yield return null;
             }
 
             UnityEngine.Object.Destroy(camGo);

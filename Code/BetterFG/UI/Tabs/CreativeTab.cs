@@ -1,4 +1,5 @@
 using System;
+using BetterFG.Customization.UI;
 using BetterFG.Features.CreativeIncrements;
 using BetterFG.Features.UnityRound.Editor;
 using BetterFG.Services;
@@ -61,6 +62,7 @@ namespace BetterFG.UI.Tabs
 
         // args panel
         private Button _incToggle, _batchToggle;
+        private Text _gizmoValue;
 
         // config step
         private Button _keepToggle;
@@ -423,6 +425,22 @@ namespace BetterFG.UI.Tabs
                     if (lbl != null) UGUIShip.RelabelText(lbl, next ? "ui.on" : "ui.off");
                 }));
             cy += BTN_H + SH * 2f;
+
+            UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "creative.gizmo_scale", FS_SM, new Color(1f, 1f, 1f, 0.72f));
+            _gizmoValue = UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh),
+                CreativeGizmoScale.Scale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), FS_SM, HINT, TextAnchor.MiddleRight);
+            cy += rh + SH;
+
+            UGUIShip.CreateSlider(root.transform, PAD, cy, w, "",
+                Mathf.InverseLerp(CreativeGizmoScale.Min, CreativeGizmoScale.Max, CreativeGizmoScale.Scale), rh, PAD, FS_SM,
+                new Action<float>(t =>
+                {
+                    float f = Mathf.Lerp(CreativeGizmoScale.Min, CreativeGizmoScale.Max, t);
+                    CreativeGizmoScale.Scale = f;
+                    if (_gizmoValue != null) _gizmoValue.text = f.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                    CreativeGizmoScale.Apply();
+                }), null, null, false, Mathf.InverseLerp(CreativeGizmoScale.Min, CreativeGizmoScale.Max, 1f));
+            cy += rh + SH * 2f;
 
             UGUIShip.CreateLabel(root.transform, new Rect(PAD, cy, w, rh), "ui.parameter_increments", FS_SM, new Color(1f, 1f, 1f, 0.72f));
             cy += rh + SH;

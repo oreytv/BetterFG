@@ -27,8 +27,8 @@ namespace BettrFG.uGUI
         // localization: text-creating widgets pass their "text" as an id, not literal display text.
         // LocalizeGet resolves id -> current-language string (falls back to id itself if unset/missing
         // so an un-wired call or an un-keyed dynamic string still renders something). BindLocalized
-        // attaches (or updates) the binding component that keeps that Text in sync on language switch.
+        // registers that Text to keep it in sync on language switch.
         public static Func<string, string> LocalizeGet;
-        public static Action<GameObject, string> BindLocalized;
+        public static Action<Text, string> BindLocalized;
     }
 }

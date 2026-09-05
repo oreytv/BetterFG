@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UI;
@@ -7,19 +7,21 @@ using BetterFG.Services;
 
 namespace BetterFG.UI.Windows
 {
-    public class CreditsWindow : BetterFGWindow
+    public class CreditsWindow : SideWindow
     {
         public CreditsWindow(IntPtr ptr) : base(ptr) { }
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 220f;
         protected override string WindowTitle => "ui.bettrfg_credits";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
-        private const float ROW_H = 20f;
-        private const float HEADER_H = 18f;
-        private const float HEADER_LEFT = 22f;
+        private const float ROW_H = 22f;
+        private const float HEADER_GAP = 10f;
+        private const float HEADER_H = 18f + HEADER_GAP;
+        private const float HEADER_LEFT = SideWindow.RowLabelX;
         private const float HEADER_SCALE = 1.3f;
+        private const float ROW_W = 280f - 2f * UGUIShip.SCROLLBAR_INSET + SideWindow.RowsLeftShift;
+        private const float LABEL_W = ROW_W - SideWindow.RowLabelX - SideWindow.RowRightPad;
         private static readonly Color ROW_EVEN = new Color(1f, 1f, 1f, 0.03f);
         private static readonly Color ROW_ODD = new Color(0f, 0f, 0f, 0f);
 
@@ -57,8 +59,8 @@ namespace BetterFG.UI.Windows
 
         protected override void BuildContent(RectTransform contentRoot)
         {
-            BgPosition = new Vector3(139.3993f, 55.0135f, 0f);
-            BgScale = new Vector3(1.3415f, 5.3623f, 1f);
+            BgPosition = new Vector3(139.3993f, 74.9552f, 0f);
+            BgScale = new Vector3(1.3415f, 4.5877f, 1f);
             ContentPosition = new Vector3(-1.6132f, -17.32f, 0f);
             ContentScale = new Vector3(1.0473f, 1.04f, 1f);
             ContentOffsetMin = new Vector2(-1.6132f, -25.92f);
@@ -97,10 +99,11 @@ namespace BetterFG.UI.Windows
 
         private static void BuildHeader(RectTransform parent, string title)
         {
+            float gap = parent.childCount == 0 ? 0f : HEADER_GAP;
             var rowGo = new GameObject("Header_" + title);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
-            le.preferredHeight = HEADER_H;
+            le.preferredHeight = HEADER_H - HEADER_GAP + gap;
             le.flexibleWidth = 1f;
 
             var lbl = UGUIShip.CreateLabel(rowGo.transform,
@@ -111,7 +114,7 @@ namespace BetterFG.UI.Windows
             rt.anchorMin = new Vector2(0f, 0.5f);
             rt.anchorMax = new Vector2(0f, 0.5f);
             rt.pivot = new Vector2(0f, 0.5f);
-            rt.anchoredPosition = new Vector2(HEADER_LEFT, 0f);
+            rt.anchoredPosition = new Vector2(HEADER_LEFT, -gap * 0.5f);
             rt.localScale = new Vector3(HEADER_SCALE, HEADER_SCALE, 1f);
         }
 
@@ -125,13 +128,19 @@ namespace BetterFG.UI.Windows
             var rowGo = new GameObject("Row_" + name);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
-            le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
-            UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 240f, ROW_H),
-                ResolveLocTokens(name), 12, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
+            var lbl = UGUIShip.CreateLabel(rowGo.transform,
+                new Rect(SideWindow.RowLabelX, 0f, LABEL_W, ROW_H),
+                ResolveLocTokens(name).Replace(" - ", "\n"), 12,
+                new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
+            lbl.horizontalOverflow = HorizontalWrapMode.Wrap;
+            lbl.verticalOverflow = VerticalWrapMode.Overflow;
+
+            float h = Mathf.Max(ROW_H, lbl.preferredHeight + 6f);
+            le.preferredHeight = h;
+            lbl.rectTransform.sizeDelta = new Vector2(LABEL_W, h);
         }
     }
 }

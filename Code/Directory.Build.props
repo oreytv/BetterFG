@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <BettrFGVersion>1.3.0</BettrFGVersion>
+    <BettrFGVersion>2.0.0</BettrFGVersion>
     <BettrFGDisplayName>BettrFG</BettrFGDisplayName>
     <BettrFGInstallerName>BettrFG Installer</BettrFGInstallerName>
     <BettrFGRepoOwner>oreyre9000</BettrFGRepoOwner>

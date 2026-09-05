@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BetterFG.Customization.Presets;
 using UnityEngine;
 using UnityEngine.UI;
@@ -6,14 +6,13 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
-    public class PresetsWindow : BetterFGWindow
+    public class PresetsWindow : SideWindow
     {
         public PresetsWindow(IntPtr ptr) : base(ptr) { }
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
         protected override string WindowTitle => "ui.presets";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private const float ROW_H = 22f;
         private const float BTN_H = 16f;
@@ -68,7 +67,7 @@ namespace BetterFG.UI.Windows
             rowGo.AddComponent<Image>().color = new Color(0.2f, 0.3f, 0.45f, 0.18f);
 
             _nameField = UGUIShip.CreateInputField(rowGo.transform,
-                new Rect(ROW_PAD, (ROW_H - BTN_H) * 0.5f, 150f, BTN_H), "ui.preset_name");
+                new Rect(SideWindow.RowLabelX, (ROW_H - BTN_H) * 0.5f, 150f, BTN_H), "ui.preset_name");
 
             var btnGo = new GameObject("SaveBtn");
             btnGo.transform.SetParent(rowGo.transform, false);
@@ -100,7 +99,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(ROW_PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(SideWindow.RowLabelX, 0f, 150f, ROW_H),
                 name, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             // right-anchored: Del then Load, walking in from the edge.

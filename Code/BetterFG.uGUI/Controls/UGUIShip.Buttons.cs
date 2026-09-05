@@ -20,6 +20,13 @@ namespace BettrFG.uGUI
         // paints the button background. classic = tinted button.png + shine; delux = untinted black
         // slice with a tinted colorfill slice on top. returns true if the caller should still add the
         // shine overlay (classic only).
+        public static readonly Color TOGGLE_ON = new Color(0.3f, 0.75f, 0.3f, 1f);
+        public static readonly Color TOGGLE_OFF = new Color(0.55f, 0.55f, 0.55f, 1f);
+
+        private const float DeluxNormal = 0.65f;
+        private const float DeluxHover = 0.95f;
+        private const float DeluxPressed = 0.5f;
+
         private static bool SkinButton(GameObject go, Image img, Button btn, Color bgColor,
             bool customSprite, ButtonStyle style)
         {
@@ -33,9 +40,9 @@ namespace BettrFG.uGUI
                 var fimg = ApplyDeluxSkin(go, img, Color.white, withShine: true);
                 if (fimg != null)
                 {
-                    cols.normalColor = bgColor * 0.4f;
-                    cols.highlightedColor = bgColor * 0.9f;
-                    cols.pressedColor = bgColor * 0.3f;
+                    cols.normalColor = bgColor * DeluxNormal;
+                    cols.highlightedColor = bgColor * DeluxHover;
+                    cols.pressedColor = bgColor * DeluxPressed;
                     btn.colors = cols;
                     btn.targetGraphic = fimg;
                     return false;
@@ -294,7 +301,7 @@ namespace BettrFG.uGUI
         public static Button CreateButton(Transform parent, string label,
             Color bgColor, Color textColor, int fontSize = 13, Action onClick = null,
             bool skipHoverSound = false, bool customSprite = true, bool shine = true,
-            ButtonStyle? style = null)
+            ButtonStyle? style = null, bool passThroughDrag = false)
         {
             var go = new GameObject("Button_" + label);
             go.transform.SetParent(parent, false);
@@ -316,8 +323,11 @@ namespace BettrFG.uGUI
                 if (shineGo != null) WireShineHover(go, shineGo);
             }
 
-            WireButtonAudio(go, skipHoverSound);
-            ForwardScrollToParent(go);
+            if (!passThroughDrag)
+            {
+                WireButtonAudio(go, skipHoverSound);
+                ForwardScrollToParent(go);
+            }
 
             var lblGo = new GameObject("Label");
             lblGo.transform.SetParent(go.transform, false);
@@ -332,7 +342,7 @@ namespace BettrFG.uGUI
             t.color = textColor;
             t.alignment = TextAnchor.MiddleCenter;
             t.raycastTarget = false;
-            LocBind(lblGo, label);
+            LocBind(t, label);
 
             return btn;
         }
@@ -392,7 +402,7 @@ namespace BettrFG.uGUI
         }
 
         // delux buttons drive their visible color through targetGraphic (the ColorFill child, at
-        // SkinButton's 0.4x/0.9x/0.3x) — mirror that here so re-coloring after creation (selection
+        // SkinButton's Delux* multipliers) — mirror that here so re-coloring after creation (selection
         // state, etc.) doesn't jump brighter than the button looked when it was first built, and
         // don't touch the root Image, which is the untinted black base, not the button's color.
         public static void SetButtonColor(Button btn, Color color)
@@ -402,9 +412,9 @@ namespace BettrFG.uGUI
             bool delux = btn.targetGraphic != null && btn.targetGraphic.gameObject != btn.gameObject;
             if (delux)
             {
-                cols.normalColor = color * 0.4f;
-                cols.highlightedColor = color * 0.9f;
-                cols.pressedColor = color * 0.3f;
+                cols.normalColor = color * DeluxNormal;
+                cols.highlightedColor = color * DeluxHover;
+                cols.pressedColor = color * DeluxPressed;
                 btn.colors = cols;
                 return;
             }

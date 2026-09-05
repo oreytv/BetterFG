@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BetterFG.Services;
+using BetterFG.Utilities;
 using FGClient;
 using HarmonyLib;
 using UnityEngine;
@@ -83,6 +84,9 @@ namespace BetterFG.Tweaks
                 // don't gate on CanEnablePlayAgainButton — that flag only says whether the button UI is
                 // enabled yet (it's false mid-animation, which is exactly when we skip). PlayAgain() itself
                 // just fires OnContinueAction(playAgain: true), so call it regardless in requeue mode.
+                int hushed = FmodUtil.StopLoopingEvents();
+                if (hushed > 0) Plugin.Log?.LogInfo($"skipped the rewards screen, killed {hushed} loop(s) it left running");
+
                 if (tweak.RequeueMode) __instance.PlayAgain();
                 else __instance.Continue();
             }

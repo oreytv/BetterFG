@@ -8,59 +8,61 @@ namespace BetterFG.UI.SideWheel
     {
         public static void RegisterAll(SideWheelManager wheel)
         {
-            Register<OptionsWindow>(wheel,
-                "BettrFG Options",
-                "BetterFG.assets.ui.side.keybindset.png",
-                "BetterFG_OptionsWindow");
-
             Register<AudioSettingsWindow>(wheel,
-                "Audio Settings",
+                "sidewheel.audio_settings",
                 "BetterFG.assets.ui.side.audioset.png",
                 "BetterFG_AudioSettingsWindow");
 
             Register<MenuMusicWindow>(wheel,
-                "Menu Music",
+                "sidewheel.menu_music",
                 "BetterFG.assets.ui.side.menumusicset.png",
                 "BetterFG_MenuMusicWindow");
 
             Register<PlayerdetailsWindow>(wheel,
-                "Player Details",
+                "sidewheel.player_details",
                 "BetterFG.assets.ui.side.nameset.png",
                 "BetterFG_PlayerdetailsWindow");
 
             Register<PlayerScaleWindow>(wheel,
-                "Player Scale",
+                "sidewheel.player_scale",
                 "BetterFG.assets.ui.side.scaleset.png",
                 "BetterFG_PlayerScaleWindow");
 
             Register<TweaksWindow>(wheel,
-                "Tweaks",
+                "sidewheel.tweaks",
                 "BetterFG.assets.ui.side.tweakset.png",
                 "BetterFG_TweaksWindow");
 
+            Register<OptionsWindow>(wheel,
+                "sidewheel.options",
+                "BetterFG.assets.ui.side.keybindset.png",
+                "BetterFG_OptionsWindow");
+
             Register<PresetsWindow>(wheel,
-                "Presets",
+                "sidewheel.presets",
                 "BetterFG.assets.ui.side.presetset.png",
                 "BetterFG_PresetsWindow");
 
 #if PROFILES
             Register<ProfilesWindow>(wheel,
-                "Profiles",
+                "sidewheel.profiles",
                 "BetterFG.assets.ui.side.profileset.png",
                 "BetterFG_ProfilesWindow");
 #endif
 
             Register<CreditsWindow>(wheel,
-                "Credits",
+                "sidewheel.credits",
                 "BetterFG.assets.ui.feature.star.featurestar_star.png",
                 "BetterFG_CreditsWindow");
+
+            wheel.CenterOn("sidewheel.options");
         }
 
-        private static void Register<T>(SideWheelManager wheel, string label, string iconResource, string goName)
+        private static void Register<T>(SideWheelManager wheel, string locId, string iconResource, string goName)
             where T : BetterFGWindow
         {
             var icon = SideWheelManager.LoadEmbedded(iconResource);
-            wheel.RegisterEntry(label, icon, () =>
+            wheel.RegisterEntry(locId, icon, () =>
             {
                 var go = new GameObject(goName);
                 Object.DontDestroyOnLoad(go);

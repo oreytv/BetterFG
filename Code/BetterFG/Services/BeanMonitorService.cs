@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using BetterFG.Customization.Player;
 using System.Collections;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using FG.Common;
 
 namespace BetterFG.Services

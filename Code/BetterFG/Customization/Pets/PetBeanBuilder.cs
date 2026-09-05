@@ -4,7 +4,6 @@ using BetterFG.Customization.Player;
 using BetterFG.Services;
 using BetterFG.Utilities;
 using FallGuysIK;
-using FallGuysLib.NPC;
 using FGClient;
 using FG.Common;
 using FG.Common.Character;
@@ -17,58 +16,37 @@ namespace BetterFG.Customization.Pets
     // follow pet and the wizard's render-texture preview so the two never drift apart
     internal static class PetBeanBuilder
     {
-        // forPreview: build a purely client-side bean for the tab's render-texture preview. It must
-        // never take the networked SpawnBean path (that spawns a real bean into the live round every
-        // time the preview rebuilds, and each one re-registers as PetService.LiveFgcc - stomping the
-        // real follow pet, which is what made its walk anim/sounds die and threw the
-        // CalculateFloorRaycastOrigin NRE). Always clone the resident bot instead.
         public static IEnumerator Build(PetData data, Action<GameObject> onBean, bool forPreview = false, GameObject ownerOverride = null)
         {
-            FallGuysCharacterController fgcc = null;
-            bool usedFallback = true;
-
-            if (!forPreview)
-            {
-                // NPCCustomization's 5th arg is crownsEarned, not teamId - the teamId (-1, no team)
-                // rides SpawnBean's own third parameter into the spawn packet
-                var cust = new NPCCustomization(data.costumeTop ?? "", data.costumeBottom ?? "", data.pattern, data.faceplate, 0);
-                fgcc = SpawnBeanUtils.SpawnBean(data.name, cust, -1);
-                usedFallback = fgcc == null;
-            }
-
-            // SpawnBeanUtils.SpawnBean comes back null outside a live round (menu, wizard preview) -
-            // same failure ReplayViewer's own MakeBean already hit and worked around by cloning a
-            // resident bean instead. PB_FallGuyBot is a real bot prefab kept loaded (inactive) the
-            // whole session, so it's always there to clone even with no round running.
+            var fgcc = SpawnFallbackBean();
             if (fgcc == null)
             {
-                if (!forPreview)
-                    Plugin.Log.LogWarning($"pet '{data.name}': SpawnBeanUtils.SpawnBean returned null (no live round?), falling back to a cloned bot bean");
-                fgcc = SpawnFallbackBean();
-                if (fgcc == null)
-                {
-                    Plugin.Log.LogWarning($"pet '{data.name}': no PB_FallGuyBot around either, giving up - preview/pet will stay empty");
-                    onBean(null);
-                    yield break;
-                }
+                Plugin.Log.LogWarning($"pet '{data.name}': no PB_FallGuyBot around, giving up - preview/pet will stay empty");
+                onBean(null);
+                yield break;
             }
             // pets are never on anyone's team, in team rounds or otherwise
             fgcc.SetTeamID(-1);
-            Plugin.Log.LogInfo($"pet '{data.name}': bean spawned ({fgcc.gameObject.name}, fallback={usedFallback}, preview={forPreview}, team={fgcc.TeamID})");
+            Plugin.Log.LogInfo($"pet '{data.name}': bean spawned ({fgcc.gameObject.name}, preview={forPreview}, team={fgcc.TeamID})");
             if (!forPreview) PetService.Instance?.RegisterLiveFgcc(fgcc);
 
             var bean = fgcc.gameObject;
             bean.name = "BettrFG_Pet_" + data.name;
 
-            if (usedFallback) ApplyLookManually(data, fgcc);
+            if (forPreview)
+            {
+                fgcc.enabled = false;
+                foreach (var rb in bean.GetComponentsInChildren<Rigidbody>(true)) { rb.isKinematic = true; rb.useGravity = false; }
+                foreach (var col in bean.GetComponentsInChildren<Collider>(true)) UnityEngine.Object.Destroy(col);
+            }
+
+            ApplyLookManually(data, fgcc);
             ForceNonTeamLook(data, fgcc);
 
-            // SpawnBeanUtils.SpawnBean doesn't place the bean anywhere near you - left alone it
-            // lands wherever the game's default spawn point is (or nowhere at all). snap it near the
-            // owner right away, same as chaosmod's own NPC spawn does explicitly (Position =
-            // localPlayer.transform.position) - offset to PetFollowComponent's own resting spot
-            // rather than dead-center on the owner, so its collider never starts out overlapping
-            // yours (that overlap is what was shoving you on spawn/respawn before this).
+            // the cloned bean lands wherever it was instantiated, not near you - snap it to
+            // PetFollowComponent's own resting spot rather than dead-center on the owner, so its
+            // collider never starts out overlapping yours (that overlap is what was shoving you on
+            // spawn/respawn before this).
             var owner = ownerOverride != null ? ownerOverride : BeanMonitorService.LocalPlayerBean;
             if (owner != null)
             {
@@ -150,8 +128,8 @@ namespace BetterFG.Customization.Pets
             onBean(bean);
         }
 
-        // PB_FallGuyBot is a real AI bot prefab (has its own BehaviorTree, GrabController, etc), not
-        // the bare placeholder shape SpawnBeanUtils builds - find it by name among every loaded
+        // PB_FallGuyBot is a real AI bot prefab (has its own BehaviorTree, GrabController, etc), kept
+        // loaded (inactive) the whole session - find it by name among every loaded
         // FallGuysCharacterController (same Resources.FindObjectsOfTypeAll approach ReplayViewer's
         // LoadBeanPrefab already uses to find a character prefab outside a round) and clone it.
         static FallGuysCharacterController SpawnFallbackBean()
@@ -177,8 +155,8 @@ namespace BetterFG.Customization.Pets
             return clone.GetComponent<FallGuysCharacterController>();
         }
 
-        // SpawnBeanUtils bakes the NPCCustomization straight into the spawn; the fallback clone
-        // never got one, so push the same top/bottom/pattern/faceplate through the handler by hand
+        // the cloned bot bean comes with its own look, not the pet's - push the pet's
+        // top/bottom/pattern/faceplate through the handler by hand
         static void ApplyLookManually(PetData data, FallGuysCharacterController fgcc)
         {
             var fch = fgcc.GetComponent<FallguyCustomisationHandler>();

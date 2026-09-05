@@ -38,7 +38,9 @@ namespace BetterFG.Utilities
                 var entries = new List<(uint playerId, GameObject go)>();
                 foreach (var kvp in cpm._playerIdIndex)
                 {
-                    var go = kvp.Value?.fgcc?.gameObject;
+                    GameObject go;
+                    try { go = kvp.Value?.fgcc?.gameObject; }
+                    catch { continue; }
                     if (go == null || go == localPlayerBean) continue;
                     entries.Add((kvp.Key, go));
                 }
@@ -65,11 +67,15 @@ namespace BetterFG.Utilities
 
                 foreach (var kvp in cpm._playerIdIndex)
                 {
-                    var data = kvp.Value;
-                    if (data == null) continue;
-                    var go = data.fgcc != null ? data.fgcc.gameObject : null;
-                    if (go != bean) continue;
-                    return data.playerKey ?? "";
+                    try
+                    {
+                        var data = kvp.Value;
+                        if (data == null) continue;
+                        var go = data.fgcc != null ? data.fgcc.gameObject : null;
+                        if (go != bean) continue;
+                        return data.playerKey ?? "";
+                    }
+                    catch { continue; }
                 }
             }
             catch (System.Exception ex)

@@ -58,7 +58,7 @@ namespace BetterFG.Features.TimePlacement
                 label = "ui.show_eliminated_players",
                 optionIds = new List<string> { "always", "survival", "never" },
                 optionLabels = new List<string> { "ui.always", "ui.only_in_survival", "ui.never" },
-                defaultId = "always",
+                defaultId = "survival",
             },
             new FeatureChoice
             {
@@ -501,7 +501,7 @@ namespace BetterFG.Features.TimePlacement
                 // the cache holds the original font; runtime clones then pick up the current master
                 // state correctly via OnEnable.
                 foreach (var tmp in _cachedTemplate.GetComponentsInChildren<TMPro.TMP_Text>(true))
-                    Customization.Menu.FontReplacementService.RevertIfTouched(tmp);
+                    Customization.UI.FontReplacementService.RevertIfTouched(tmp);
                 Plugin.Log.LogInfo("TimePlacement: cached entry template");
             }
 
@@ -783,14 +783,13 @@ namespace BetterFG.Features.TimePlacement
                 ? GlobalGameStateClient.Instance.GameStateView.GameplayTimeElapsed : 0f;
             if (progressMessage.isSkipping)
             {
-                // Explore: they hit the skip button rather than dying or dropping — worth calling
-                // out separately from OUT/DISCONNECTED on the roster.
                 if (!string.IsNullOrEmpty(pkey))
                 {
                     _skippedKeys.Add(pkey);
                     if (!_deathTimes.ContainsKey(pkey)) _deathTimes[pkey] = clock;
                     Nametag.NametagIconApplicator.SeedKeyForName(PlayerUtils.CleanPlayerName(pkey), pkey);
                 }
+                BetterFG.Tweaks.SkipNotificationTweak.Instance?.Notify(pkey, progressMessage);
                 OnPlayerEliminated(progressMessage.playerId);
                 return;
             }
@@ -805,6 +804,7 @@ namespace BetterFG.Features.TimePlacement
                     if (!_qualTimes.ContainsKey(pkey)) _qualTimes[pkey] = clock;
                     Nametag.NametagIconApplicator.SeedKeyForName(PlayerUtils.CleanPlayerName(pkey), pkey);
                 }
+                Plugin.Log.LogInfo($"ff  qt-store: id={progressMessage.playerId} pkey='{pkey}' clock={clock} localFull='{GlobalGameStateClient.Instance?.GetLocalPlayerKey()}' localBare='{BetterFG.Utilities.PlayerInformation.GetLocalBarePlayerKey()}'");
                 OnPlayerFinished(progressMessage.playerId);
             }
             else
@@ -834,6 +834,8 @@ namespace BetterFG.Features.TimePlacement
             seconds = 0f;
             return !string.IsNullOrEmpty(playerKey) && _qualTimes.TryGetValue(playerKey, out seconds);
         }
+
+        public static string DumpQualTimeKeys() => string.Join(",", _qualTimes.Keys);
 
         public static void OnPlayerFinished(uint remotePlayerId)
         {
@@ -1657,6 +1659,7 @@ namespace BetterFG.Features.TimePlacement
             // hash the leaderboard order+scores BEFORE painting. if nothing changed since last
             // repaint, skip the whole label/mesh update — this is what makes 30-events-per-frame in
             // a hunt round cheap (30 hash walks, 0 or 1 real paint).
+            bool hideOut = !ShowEliminatedNow();
             int sig = 17;
             int rowsToShow = 0;
             for (int i = 0; i < list.Count && rowsToShow < MaxRows; i++)
@@ -1665,6 +1668,8 @@ namespace BetterFG.Features.TimePlacement
                 var pp = pe._player;
                 if (pp != null && IsGhost(pp.remotePlayerID)) continue;
                 string kk = pp != null ? pp.playerKey : "";
+                if (hideOut && kk != null && statusByKey != null
+                    && statusByKey.TryGetValue(kk, out int _sst) && _sst == 2) continue;
                 sig = (sig * 31) ^ pe.Score;
                 sig = (sig * 31) ^ (kk != null ? kk.GetHashCode() : 0);
                 rowsToShow++;
@@ -1681,8 +1686,8 @@ namespace BetterFG.Features.TimePlacement
                 var p = e._player;
                 // ghost beans (PB ghosts) get added to the score manager too — skip their giant id.
                 if (p != null && IsGhost(p.remotePlayerID)) continue;
-                // place follows our stable score-then-key order — using the game's Ranking here
-                // would make the number flip on ties even though the row didn't move.
+                if (hideOut && p != null && p.playerKey != null && statusByKey != null
+                    && statusByKey.TryGetValue(p.playerKey, out int _st) && _st == 2) continue;
                 int place = row + 1;
                 string posText = $"<b><color=#FFFF00>{place}{Suffix(place)}</color></b>";
                 string ptsText = $"<size=120%>{Services.LocalizationService.Format("leaderboard.pts_fmt", e.Score)}</size>";
@@ -1776,7 +1781,7 @@ namespace BetterFG.Features.TimePlacement
                 var p = players[i];
                 if (p == null || string.IsNullOrEmpty(p.playerKey)) continue;
                 if (IsGhost(p.remotePlayerID)) continue;
-                map[p.playerKey] = p.completedLevel ? 0 : (p.fgcc == null ? 2 : 1);
+                map[p.playerKey] = p.completedLevel || _qualTimes.ContainsKey(p.playerKey) ? 0 : (p.fgcc == null ? 2 : 1);
             }
             return map;
         }
@@ -1890,10 +1895,10 @@ namespace BetterFG.Features.TimePlacement
                 if (p == null || string.IsNullOrEmpty(p.playerKey)) continue;
                 if (IsGhost(p.remotePlayerID)) continue;             // PB ghost bean (unless kept)
                 bool mine = IsHighlighted(p.playerKey, highlight);
-                if (p.completedLevel)
+                bool qualified = _qualTimes.TryGetValue(p.playerKey, out float qt);
+                if (p.completedLevel || qualified)
                 {
-                    bool timed = _qualTimes.TryGetValue(p.playerKey, out float t);
-                    entries.Add((ResolveDisplayName(p.playerKey, highlight), t, timed, true, p.remotePlayerID, mine, p.playerKey));
+                    entries.Add((ResolveDisplayName(p.playerKey, highlight), qt, qualified, true, p.remotePlayerID, mine, p.playerKey));
                 }
                 else
                 {

@@ -16,12 +16,17 @@ namespace BetterFG.Services
 
         public static bool IsVisible => _canvas != null && _canvas.gameObject.activeSelf;
 
+        // the shared cover's canvas, for callers that have temporarily reordered the UI around it
+        // (the onboarding tutorial lifts everything, so it has to put this back on top itself)
+        public static Canvas Canvas => _canvas;
+        public const int DefaultOrder = 1002;
+
         public static void Show()
         {
             if (_canvas == null)
             {
                 _canvas = UGUIShip.CreateCanvas("BettrFG_LoadingCanvas");
-                _canvas.sortingOrder = 1002;
+                _canvas.sortingOrder = DefaultOrder;
 
                 var go = AssetManager.SpawnPersistent("bettrfg_ui_canvas_loadingscreen");
                 if (go != null)

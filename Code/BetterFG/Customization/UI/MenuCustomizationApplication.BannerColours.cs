@@ -1,7 +1,7 @@
 using UnityEngine;
 using BetterFG.Services;
 
-namespace BetterFG.Customization.Menu
+namespace BetterFG.Customization.UI
 {
     public partial class MenuCustomizationApplication
     {

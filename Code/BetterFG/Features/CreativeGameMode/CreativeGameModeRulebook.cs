@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using BetterFG.Core;
 using BetterFG.Features.UnityRound.Editor;
 using BetterFG.Services;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using BetterFG.Utilities;
 using FallGuysLib.UI;
 using FGClient;
 using FGClient.UI;
@@ -174,82 +174,19 @@ namespace BetterFG.Features.CreativeGameMode
                 var modes = Modes();
                 if (modes.Count < 2) return;
 
-                Transform parent = null;
-                try { parent = binding._itemsParent; } catch { }
-                if (parent == null) { Plugin.Log.LogWarning("rulebook item parent not found, no game mode row"); return; }
+                var r = RulebookRowClone.Inject(binding, BfgGameModeRow.RowName);
+                if (r.Clone == null) { Plugin.Log.LogWarning("game mode row inject found no parent/source row"); return; }
 
-                var src = parent.GetComponentInChildren<LevelEditorRulebookEntryHorizontalListViewModel>(true);
-                if (src == null) { Plugin.Log.LogWarning("no horizontal-list row to clone for the game mode row"); return; }
-                var srcGo = src.transform.parent != null && binding._selectables.Contains(src.transform.parent.gameObject)
-                    ? src.transform.parent.gameObject : src.gameObject;
-
-                GameObject clone = null;
-                for (int i = 0; i < parent.childCount; i++)
-                    if (parent.GetChild(i).name == BfgGameModeRow.RowName) { clone = parent.GetChild(i).gameObject; break; }
-
-                if (clone == null)
+                if (r.Created)
                 {
-                    string srcLabel = null, srcValue = null;
-                    try { srcLabel = src.EntryName; } catch { }
-                    try { srcValue = src.CurrentValue; } catch { }
-
-                    clone = UnityEngine.Object.Instantiate(srcGo, parent);
-                    clone.name = BfgGameModeRow.RowName;
-                    clone.transform.SetSiblingIndex(srcGo.transform.GetSiblingIndex() + 1);
-
-                    var cloneVm = clone.GetComponentInChildren<LevelEditorRulebookEntryHorizontalListViewModel>(true);
-                    if (cloneVm != null) { _ourVmIds.Clear(); _ourVmIds.Add(cloneVm.GetInstanceID()); }
-
-                    // label + value text objects, matched off the source row's current strings
-                    TMP_Text labelTmp = null, valueTmp = null;
-                    var all = clone.GetComponentsInChildren<TMP_Text>(true);
-                    var texts = new List<string>();
-                    foreach (var t in all)
-                    {
-                        texts.Add($"'{t.text}'@{t.transform.name}");
-                        if (valueTmp == null && !string.IsNullOrEmpty(srcValue) && t.text == srcValue) { valueTmp = t; continue; }
-                        if (labelTmp == null && !string.IsNullOrEmpty(srcLabel) && t.text == srcLabel) { labelTmp = t; }
-                    }
-                    if (labelTmp == null || valueTmp == null)
-                    {
-                        var vis = new List<TMP_Text>();
-                        foreach (var t in all) if (!string.IsNullOrEmpty(t.text)) vis.Add(t);
-                        if (vis.Count >= 2) { labelTmp = labelTmp ?? vis[0]; valueTmp = valueTmp ?? vis[vis.Count - 1]; }
-                    }
-                    Plugin.Log.LogInfo($"game mode row cloned from '{srcGo.name}'; texts: {string.Join(", ", texts)}; label={(labelTmp != null ? labelTmp.transform.name : "?")} value={(valueTmp != null ? valueTmp.transform.name : "?")}");
-
+                    if (r.CloneVmId != 0) { _ourVmIds.Clear(); _ourVmIds.Add(r.CloneVmId); }
                     NoteBaseline();
-                    var row = clone.AddComponent<BfgGameModeRow>();
-                    row.Bind(labelTmp, valueTmp);
+                    var row = r.Clone.AddComponent<BfgGameModeRow>();
+                    row.Bind(r.LabelTmp, r.ValueTmp);
                     _live = row;
-                }
-
-                // (re)register in the binding's lists...
-                RegisterInList(binding._instances, srcGo, clone);
-                RegisterInList(binding._selectables, srcGo, clone);
-
-                // ...then hand the updated list to the carousel input handler - it navigates its own
-                // _menuOptions array (set once via SetOptions), not _selectables, so without this the
-                // row is on screen but up/down skips straight past it.
-                var ih = binding._inputHandler;
-                if (ih != null)
-                {
-                    var sel = binding._selectables;
-                    var arr = new Il2CppReferenceArray<GameObject>(sel.Count);
-                    for (int k = 0; k < sel.Count; k++) arr[k] = sel[k];
-                    int keep = Mathf.Clamp(ih.CurrentIndex, 0, Mathf.Max(0, sel.Count - 1));
-                    ih.SetOptions(arr, keep, false);
                 }
             }
             catch (Exception ex) { Plugin.Log.LogWarning($"game mode row inject blew up: {ex}"); }
-        }
-
-        private static void RegisterInList(Il2CppSystem.Collections.Generic.List<GameObject> list, GameObject after, GameObject go)
-        {
-            if (list == null || go == null) return;
-            if (list.Contains(go)) return;
-            int at = list.IndexOf(after);
-            if (at >= 0) list.Insert(at + 1, go); else list.Add(go);
         }
 
         // fired when the rulebook screen closes. if the row's mode was moved off the level's real

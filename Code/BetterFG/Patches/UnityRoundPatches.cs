@@ -27,20 +27,26 @@ namespace BetterFG.Patches.BettrFGRounds
     [HarmonyPatch(typeof(ClientGameManager), "Shutdown")]
     public class RoundMusicShutdownPatch
     {
+        static void Safe(Action step, string what)
+        {
+            try { step(); }
+            catch (Exception ex) { Plugin.Log.LogError($"round teardown: {what} threw, letting the rest of Shutdown run anyway: {ex}"); }
+        }
+
         [HarmonyPrefix]
         public static void Prefix()
         {
-            BetterFG.Features.UnityRound.RoundMusicService.Stop();
-            UnityRoundAbortHooks.Remove();
-            BetterFG.Features.Replay.FeatureReplay.OnClientGameManagerShutdown();
-            BetterFG.Tweaks.CinematicSpectatorTweak.OnClientGameManagerShutdown();
-            BetterFG.Tweaks.CreativeIntroCameraTweak.OnClientGameManagerShutdown();
+            Safe(BetterFG.Features.UnityRound.RoundMusicService.Stop, "round music stop");
+            Safe(UnityRoundAbortHooks.Remove, "abort hooks");
+            Safe(BetterFG.Features.Replay.FeatureReplay.OnClientGameManagerShutdown, "replay");
+            Safe(BetterFG.Tweaks.CinematicSpectatorTweak.OnClientGameManagerShutdown, "spectator cam");
+            Safe(BetterFG.Tweaks.CreativeIntroCameraTweak.OnClientGameManagerShutdown, "creative intro cam");
         }
 
         [HarmonyPostfix]
         public static void Postfix()
         {
-            BetterFG.Features.QualificationTime.FeatureQualificationTime.OnClientGameManagerShutdown();
+            Safe(BetterFG.Features.QualificationTime.FeatureQualificationTime.OnClientGameManagerShutdown, "qual time");
         }
     }
 
@@ -138,7 +144,8 @@ namespace BetterFG.Patches.BettrFGRounds
 
         public static void Remove()
         {
-            _harmony?.UnpatchSelf();
+            try { _harmony?.UnpatchSelf(); }
+            catch (Exception ex) { Plugin.Log.LogWarning($"unity round: abort-hooks unpatch threw, moving on: {ex.Message}"); }
             _harmony = null;
         }
     }

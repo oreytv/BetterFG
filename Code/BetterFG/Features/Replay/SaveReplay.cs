@@ -460,6 +460,14 @@ namespace BetterFG.Features.Replay
                     Str(sb, "ntPlatformHide", nt.platformHide);
                     Str(sb, "ntPlatformCustom", nt.platformCustom);
                     Str(sb, "ntNameStyle", nt.nameStyle);
+                    Str(sb, "ntGradientColors", nt.gradientColors);
+                    Float(sb, "ntGradientAngle", nt.gradientAngle);
+                    Bool(sb, "ntOutlineEnabled", nt.outlineEnabled);
+                    Float(sb, "ntOutlineR", nt.outlineR);
+                    Float(sb, "ntOutlineG", nt.outlineG);
+                    Float(sb, "ntOutlineB", nt.outlineB);
+                    Float(sb, "ntOutlineWidth", nt.outlineWidth);
+                    Str(sb, "ntOutlineMode", nt.outlineMode);
                     Bool(sb, "ntBackingEnabled", nt.backingEnabled);
                     Str(sb, "ntBackingPath", nt.backingPath);
                     Float(sb, "ntBackingOffX", nt.backingOffX);

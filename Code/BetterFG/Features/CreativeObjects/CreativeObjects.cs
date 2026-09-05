@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using BetterFG.Services;
 using BetterFG.UI.Windows.Creative;
 using BetterFG.Utilities;
 using FG.Common.CMS;
@@ -29,8 +30,12 @@ namespace BetterFG.Features.CreativeObjects
 
         static CreativeObjects()
         {
-            Register("Groups", "Drop in a selection you saved earlier, from this level or any other",
+            Register("Groups", "creativeobjects.groups_desc",
                 "BetterFG.assets.creativeobjects.groups.png", BatchEditWindow.OpenGroupsTool);
+            Register("Light", "creativeobjects.light_desc",
+                null, BetterFG.Features.CustomLights.CustomLights.PlaceAtReticle);
+            Register("IntroCam", "creativeobjects.introcam_desc",
+                null, BetterFG.Features.CustomIntroCams.CustomIntroCams.PlaceAtReticle);
         }
 
         public static void Register(string name, string description, string iconResource, Action picked) =>
@@ -51,8 +56,8 @@ namespace BetterFG.Features.CreativeObjects
             var strings = CMSLoader.Instance._localisedStrings._localisedStrings;
             foreach (var entry in _entries)
             {
-                strings[Key(entry, 'n')] = entry.Name;
-                strings[Key(entry, 'd')] = entry.Description;
+                strings[Key(entry, 'n')] = LocalizationService.Get($"creativeobjects.{entry.Name.ToLowerInvariant()}");
+                strings[Key(entry, 'd')] = LocalizationService.Get(entry.Description);
             }
 
             var seen = new HashSet<IntPtr>();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -31,6 +31,14 @@ namespace BetterFG.Nametag
         private const string KEY_ITALIC = "nametag.italic";
         private const string KEY_ENABLED = "nametag.enabled";
         private const string KEY_NAME_STYLE = "nametag.namestyle";
+        private const string KEY_GRADIENT_COLORS = "nametag.gradient.colors";
+        private const string KEY_GRADIENT_ANGLE = "nametag.gradient.angle";
+        private const string KEY_OUTLINE_ENABLED = "nametag.outline.enabled";
+        private const string KEY_OUTLINE_R = "nametag.outline.r";
+        private const string KEY_OUTLINE_G = "nametag.outline.g";
+        private const string KEY_OUTLINE_B = "nametag.outline.b";
+        private const string KEY_OUTLINE_WIDTH = "nametag.outline.width";
+        private const string KEY_OUTLINE_MODE = "nametag.outline.mode";
         private const string KEY_CUSTOM_NAME = "nametag.customname";
         private const string KEY_PLATFORM_HIDE = "nametag.platform.hide";
         private const string KEY_PLATFORM_CUSTOM = "nametag.platform.custom";
@@ -65,6 +73,12 @@ namespace BetterFG.Nametag
             public float r, g, b;
             public bool bold, italic;
             public string style;      // "none" | "default" | "gold" | "goldcolored"
+            public string gradientColors;
+            public float gradientAngle;
+            public bool outlineEnabled;
+            public float outlineR, outlineG, outlineB;
+            public float outlineWidth;
+            public string outlineMode;
             public string iconMode;   // "none" | "flag" | "custom"
             public string iconCountry, iconPath;
         }
@@ -80,6 +94,14 @@ namespace BetterFG.Nametag
                 bold = SettingsService.Get(KEY_BOLD, "false") == "true",
                 italic = SettingsService.Get(KEY_ITALIC, "false") == "true",
                 style = SettingsService.Get(KEY_NAME_STYLE, "default"),
+                gradientColors = SettingsService.Get(KEY_GRADIENT_COLORS, ""),
+                gradientAngle = float.TryParse(SettingsService.Get(KEY_GRADIENT_ANGLE, "0"), System.Globalization.NumberStyles.Float, ci, out float ga) ? ga : 0f,
+                outlineEnabled = SettingsService.Get(KEY_OUTLINE_ENABLED, "false") == "true",
+                outlineR = float.TryParse(SettingsService.Get(KEY_OUTLINE_R, "0"), System.Globalization.NumberStyles.Float, ci, out float orv) ? orv : 0f,
+                outlineG = float.TryParse(SettingsService.Get(KEY_OUTLINE_G, "0"), System.Globalization.NumberStyles.Float, ci, out float ogv) ? ogv : 0f,
+                outlineB = float.TryParse(SettingsService.Get(KEY_OUTLINE_B, "0"), System.Globalization.NumberStyles.Float, ci, out float obv) ? obv : 0f,
+                outlineWidth = float.TryParse(SettingsService.Get(KEY_OUTLINE_WIDTH, "0.2"), System.Globalization.NumberStyles.Float, ci, out float owv) ? owv : 0.2f,
+                outlineMode = SettingsService.Get(KEY_OUTLINE_MODE, "outset"),
                 iconMode = SettingsService.Get(KEY_ICON_MODE, "none"),
                 iconCountry = SettingsService.Get(KEY_ICON_COUNTRY, ""),
                 iconPath = SettingsService.Get(KEY_ICON_PATH, ""),
@@ -92,6 +114,15 @@ namespace BetterFG.Nametag
             return s == "self" || s == "everyone";
         }
 
+        public static bool PlatformHideEveryoneFromSettings() => SettingsService.Get(KEY_PLATFORM_HIDE, "none") == "everyone";
+
+        public static void SetPlatformHideEveryone(bool on)
+        {
+            if (on) SettingsService.Set(KEY_PLATFORM_HIDE, "everyone");
+            else if (SettingsService.Get(KEY_PLATFORM_HIDE, "none") == "everyone") SettingsService.Set(KEY_PLATFORM_HIDE, "none");
+            ApplyKnownPlatformIcons();
+        }
+
         public static string PlatformCustomFromSettings() => SettingsService.Get(KEY_PLATFORM_CUSTOM, "");
 
         private static readonly Dictionary<int, SpriteRenderer> _icon3d = new Dictionary<int, SpriteRenderer>();
@@ -99,7 +130,7 @@ namespace BetterFG.Nametag
         private static readonly Dictionary<int, Sprite> _knownPlatform3dOriginals = new Dictionary<int, Sprite>();
         private static readonly Dictionary<int, Sprite> _knownPlatformUiOriginals = new Dictionary<int, Sprite>();
         private static readonly Dictionary<int, Sprite> _backingOriginals = new Dictionary<int, Sprite>();
-        private static readonly Dictionary<int, string> _nicknameOriginals = new Dictionary<int, string>();
+        private static readonly Dictionary<int, (string text, Vector3 pos)> _nicknameOriginals = new Dictionary<int, (string, Vector3)>();
 
         private static readonly HashSet<IntPtr> _iconPtrs = new HashSet<IntPtr>();
 
@@ -258,6 +289,14 @@ namespace BetterFG.Nametag
                 bold = cfg.enabled && cfg.bold,
                 italic = cfg.enabled && cfg.italic,
                 nameStyle = cfg.enabled ? cfg.style : "",
+                gradientColors = cfg.enabled ? cfg.gradientColors : "",
+                gradientAngle = cfg.enabled ? cfg.gradientAngle : 0f,
+                outlineEnabled = cfg.enabled && cfg.outlineEnabled,
+                outlineR = cfg.outlineR,
+                outlineG = cfg.outlineG,
+                outlineB = cfg.outlineB,
+                outlineWidth = cfg.outlineWidth,
+                outlineMode = cfg.outlineMode,
                 iconMode = cfg.enabled ? cfg.iconMode : "none",
                 iconCountry = cfg.iconCountry,
                 iconPath = cfg.iconPath,
@@ -295,7 +334,7 @@ namespace BetterFG.Nametag
             {
                 // nametag styling off — but font replacement is independent, so still apply the custom
                 // font to the 3D nameplate (keeps whatever material/outline it already has, on our atlas).
-                BetterFG.Customization.Menu.FontReplacementService.ApplyToNametag(tmp);
+                BetterFG.Customization.UI.FontReplacementService.ApplyToNametag(tmp);
                 return;
             }
 
@@ -303,7 +342,7 @@ namespace BetterFG.Nametag
             if (string.IsNullOrEmpty(raw))
                 raw = System.Text.RegularExpressions.Regex.Replace(tmp.text, "<[^>]*>", "").Trim();
 
-            ApplyTextStyle(tmp, raw, cfg.r, cfg.g, cfg.b, cfg.bold, cfg.italic, cfg.style);
+            ApplyTextStyle(tmp, raw, ArgsFromCfg(cfg));
             ApplyIconTo(display, cfg);
         }
 
@@ -916,33 +955,28 @@ namespace BetterFG.Nametag
             if (tmp == null) return false;
 
             int id = tmp.GetInstanceID();
-            string applied;
+            var container = party ? null : t.parent;
 
             if (!enabled)
             {
                 if (_nicknameOriginals.TryGetValue(id, out var orig))
                 {
-                    tmp.text = orig;
+                    tmp.text = orig.text;
+                    if (container != null) container.localPosition = orig.pos;
                     _nicknameOriginals.Remove(id);
                 }
-                applied = tmp.text;
-            }
-            else
-            {
-                if (!_nicknameOriginals.ContainsKey(id))
-                    _nicknameOriginals[id] = tmp.text;
-                applied = text ?? "";
-                tmp.text = applied;
+                return true;
             }
 
-            if (!party)
-            {
-                var container = t.parent; // NameTagTextContainer
-                if (container != null)
-                    container.localPosition = string.IsNullOrEmpty(applied)
-                        ? NICKNAME_CONTAINER_POS_EMPTY
-                        : NICKNAME_CONTAINER_POS_FILLED;
-            }
+            if (!_nicknameOriginals.ContainsKey(id))
+                _nicknameOriginals[id] = (tmp.text, container != null ? container.localPosition : Vector3.zero);
+
+            string applied = text ?? "";
+            tmp.text = applied;
+            if (container != null)
+                container.localPosition = string.IsNullOrEmpty(applied)
+                    ? NICKNAME_CONTAINER_POS_EMPTY
+                    : NICKNAME_CONTAINER_POS_FILLED;
             return true;
         }
 
@@ -1099,7 +1133,7 @@ namespace BetterFG.Nametag
         public static void ApplyToNameplate(TMPro.TextMeshProUGUI tmp, string displayName, NametagCfg cfg, NameplateType type = NameplateType.Regular)
         {
             if (tmp == null) return;
-            BetterFG.Customization.Menu.FontReplacementService.ProtectText(tmp);
+            BetterFG.Customization.UI.FontReplacementService.ProtectText(tmp);
 
             if (!cfg.enabled)
             {
@@ -1109,11 +1143,12 @@ namespace BetterFG.Nametag
                 RemoveUIIcon(tmp.transform);
                 // font replacement is independent of the nametag feature — still apply the custom font
                 // (with the default shadow material's outline) even when nametag styling is off.
-                BetterFG.Customization.Menu.FontReplacementService.ApplyToNametag(tmp);
+                BetterFG.Customization.UI.FontReplacementService.ApplyToNametag(tmp);
                 return;
             }
 
-            ApplyTextStyle(tmp, displayName, cfg.r, cfg.g, cfg.b, cfg.bold, cfg.italic, cfg.style);
+            ApplyTextStyle(tmp, displayName, ArgsFromCfg(cfg));
+            MarkStyled(tmp, cfg.style);
 
             if (cfg.iconMode == "none" || string.IsNullOrEmpty(cfg.iconMode)) { RemoveUIIcon(tmp.transform); return; }
 
@@ -1126,12 +1161,12 @@ namespace BetterFG.Nametag
 
         public static void ApplyRemoteToNameplate(TMPro.TextMeshPro tmp3d, string fallbackName, RemoteNametagInfo info)
         {
-            MarkRemoteStyled(tmp3d);
             if (tmp3d == null || info == null) return;
-            BetterFG.Customization.Menu.FontReplacementService.ProtectText(tmp3d);
+            BetterFG.Customization.UI.FontReplacementService.ProtectText(tmp3d);
 
             string name = string.IsNullOrEmpty(info.customName) ? StripRichText(fallbackName) : info.customName;
-            ApplyTextStyle(tmp3d, name, info.r, info.g, info.b, info.bold, info.italic, info.nameStyle ?? "");
+            ApplyTextStyle(tmp3d, name, ArgsFromRemote(info));
+            MarkStyled(tmp3d, info.nameStyle);
 
             // after the first apply the text lives inside our wrapper, so step up to the real parent
             var nameAndCrown = tmp3d.transform.parent;
@@ -1192,13 +1227,13 @@ namespace BetterFG.Nametag
 
         public static void ApplyRemoteToNameplate(TMPro.TextMeshProUGUI tmp, string fallbackName, RemoteNametagInfo info)
         {
-            MarkRemoteStyled(tmp);
             if (tmp == null || info == null) return;
-            BetterFG.Customization.Menu.FontReplacementService.ProtectText(tmp);
+            BetterFG.Customization.UI.FontReplacementService.ProtectText(tmp);
 
             string name = string.IsNullOrEmpty(info.customName) ? StripRichText(fallbackName) : info.customName;
 
-            ApplyTextStyle(tmp, name, info.r, info.g, info.b, info.bold, info.italic, info.nameStyle ?? "");
+            ApplyTextStyle(tmp, name, ArgsFromRemote(info));
+            MarkStyled(tmp, info.nameStyle);
 
             if (string.IsNullOrEmpty(info.iconMode) || info.iconMode == "none")
             {
@@ -1228,48 +1263,39 @@ namespace BetterFG.Nametag
             ApplyRemoteToNameplate(tmp, fallbackName, info);
         }
 
-        // strips everything we overlay on a remote nametag so a pooled object reused for a
-        // profile-less player goes back to the game's default look. the same TMP gets reused for
-        // the next player, so our style/material WILL bleed if we don't reset the text here too.
-        private static readonly HashSet<IntPtr> _styledRemote = new HashSet<IntPtr>();
+        private static readonly Dictionary<IntPtr, IntPtr> _styled = new Dictionary<IntPtr, IntPtr>();
 
-        internal static void MarkRemoteStyled(TMP_Text tmp)
+        internal static void MarkStyled(TMP_Text tmp, string nameStyle)
         {
-            if (tmp != null) _styledRemote.Add(tmp.m_CachedPtr);
+            if (tmp == null) return;
+            var mat = nameStyle == "none" ? null : tmp.fontSharedMaterial;
+            _styled[tmp.m_CachedPtr] = mat != null ? mat.m_CachedPtr : IntPtr.Zero;
         }
 
         public static void RevertRemote(NameTagViewModel vm)
         {
             if (vm == null) return;
 
-            var probe = vm._playerNameText;
-            if (probe == null || !_styledRemote.Remove(probe.m_CachedPtr)) return;
-
-            // 3D icon wrapper + flag
             var tmp3d = vm._playerNameText;
-            if (tmp3d != null)
+            if (tmp3d == null || !_styled.TryGetValue(tmp3d.m_CachedPtr, out var ourMat)) return;
+            _styled.Remove(tmp3d.m_CachedPtr);
+
+            UnregisterGradient(tmp3d);
+            _icon3d.Remove(tmp3d.GetInstanceID());
+            _iconUI.Remove(tmp3d.GetInstanceID());
+            _iconPtrs.Remove(tmp3d.m_CachedPtr);
+            SyncIconGate();
+
+            var curMat = tmp3d.fontSharedMaterial;
+            if (ourMat != IntPtr.Zero && curMat != null && curMat.m_CachedPtr == ourMat)
             {
-                _icon3d.Remove(tmp3d.GetInstanceID());
-                _iconUI.Remove(tmp3d.GetInstanceID());
-                _iconPtrs.Remove(tmp3d.m_CachedPtr);
-                SyncIconGate();
-
-                // don't stomp gold famepass names — a profile-less remote who finished the pass has
-                // the "asap-bold sdf_EndFamePass" material on their TMP (possibly an "(Instance)" of it).
-                // resetting to DefaultNameMaterial here is what made every gold name look white.
-                var curMat = tmp3d.fontSharedMaterial;
-                bool isGold = curMat != null && curMat.name != null && curMat.name.IndexOf("EndFamePass", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                if (!isGold)
-                {
-                    // reset whatever ApplyTextStyle did: gradient off, default material, white, no tags
-                    tmp3d.enableVertexGradient = false;
-                    if (AssetManager.DefaultNameMaterial != null) tmp3d.fontSharedMaterial = AssetManager.DefaultNameMaterial;
-                    tmp3d.color = UnityEngine.Color.white;
-                    tmp3d.text = System.Text.RegularExpressions.Regex.Replace(tmp3d.text ?? "", "<[^>]*>", "").Trim();
-                }
+                tmp3d.enableVertexGradient = false;
+                if (AssetManager.DefaultNameMaterial != null) tmp3d.fontSharedMaterial = AssetManager.DefaultNameMaterial;
+                tmp3d.color = new UnityEngine.Color(1f, 1f, 1f, tmp3d.color.a);
             }
-            var nameAndCrown = tmp3d != null ? tmp3d.transform.parent : null;
+            tmp3d.text = System.Text.RegularExpressions.Regex.Replace(tmp3d.text ?? "", "<[^>]*>", "").Trim();
+
+            var nameAndCrown = tmp3d.transform.parent;
             if (nameAndCrown != null && nameAndCrown.name == "BetterFG_NameWrapper")
                 nameAndCrown = nameAndCrown.parent;
             if (nameAndCrown != null)
@@ -1279,14 +1305,10 @@ namespace BetterFG.Nametag
                 RescueAndDestroyWrapper(nameAndCrown);
             }
 
-            // UI icon (canvas nameplates)
-            if (tmp3d != null) RemoveUIIcon(tmp3d.transform);
-
-            // backing / nickname restore from their original caches
+            RemoveUIIcon(tmp3d.transform);
             ApplyBacking(vm.transform, false, "", 0f, 0f, 1f);
             ApplyNickname(vm.transform, party: false, enabled: false, "");
 
-            // platform icon back on (undo a hide / custom sprite)
             var huds = UnityEngine.Object.FindObjectsOfType<PlayerInfoHUDBase>(true);
             if (huds == null) return;
             for (int h = 0; h < huds.Length; h++)
@@ -1573,15 +1595,57 @@ namespace BetterFG.Nametag
 
         // ── Helpers ───────────────────────────────────────────────────────────
 
-        private static void ApplyTextStyle(TMPro.TextMeshProUGUI tmp, string name, float r, float g, float b, bool bold, bool italic, string styleStr)
-            => ApplyTextStyle((TMP_Text)tmp, name, r, g, b, bold, italic, styleStr);
+        private struct TextStyleArgs
+        {
+            public float r, g, b;
+            public bool bold, italic;
+            public string style;
+            public string gradientColors;
+            public float gradientAngle;
+            public bool outlineEnabled;
+            public float outlineR, outlineG, outlineB, outlineWidth;
+            public string outlineMode;
+        }
 
-        private static void ApplyTextStyle(TMP_Text tmp, string name, float r, float g, float b, bool bold, bool italic, string styleStr)
+        private static TextStyleArgs ArgsFromCfg(NametagCfg cfg) => new TextStyleArgs
+        {
+            r = cfg.r, g = cfg.g, b = cfg.b,
+            bold = cfg.bold, italic = cfg.italic,
+            style = cfg.style, gradientColors = cfg.gradientColors, gradientAngle = cfg.gradientAngle,
+            outlineEnabled = cfg.outlineEnabled,
+            outlineR = cfg.outlineR, outlineG = cfg.outlineG, outlineB = cfg.outlineB,
+            outlineWidth = cfg.outlineWidth,
+            outlineMode = cfg.outlineMode,
+        };
+
+        private static TextStyleArgs ArgsFromRemote(RemoteNametagInfo info) => new TextStyleArgs
+        {
+            r = info.r, g = info.g, b = info.b,
+            bold = info.bold, italic = info.italic,
+            style = info.nameStyle ?? "",
+            gradientColors = info.gradientColors ?? "",
+            gradientAngle = info.gradientAngle,
+            outlineEnabled = info.outlineEnabled,
+            outlineR = info.outlineR, outlineG = info.outlineG, outlineB = info.outlineB,
+            outlineWidth = info.outlineWidth,
+            outlineMode = info.outlineMode,
+        };
+
+        private static void ApplyTextStyle(TMPro.TextMeshProUGUI tmp, string name, TextStyleArgs args)
+            => ApplyTextStyle((TMP_Text)tmp, name, args);
+
+        private static void ApplyTextStyle(TMP_Text tmp, string name, TextStyleArgs args)
         {
             if (tmp == null) return;
+            float r = args.r, g = args.g, b = args.b;
+            bool bold = args.bold, italic = args.italic;
+            string styleStr = args.style;
+            string gradientColors = args.gradientColors;
+            float gradientAngle = args.gradientAngle;
+            if (styleStr != "gradient") UnregisterGradient(tmp);
             // this TMP is a nameplate — tell the font replacement system to never touch it, so the
             // gold/fame material stays on its original font and never corrupts.
-            BetterFG.Customization.Menu.FontReplacementService.ProtectText(tmp);
+            BetterFG.Customization.UI.FontReplacementService.ProtectText(tmp);
             tmp.richText = true;
             // the game fades this text's alpha to 0 for its hide-names setting (and on respawn/round-start
             // re-shows it via SetTextAlpha). we rewrite text/colour from scratch below, so grab the current
@@ -1603,7 +1667,7 @@ namespace BetterFG.Nametag
                 var cn = tmp.color; cn.a = a; tmp.color = cn;
                 // "none" keeps the game's material untouched, but font replacement is still independent —
                 // hand off so the custom font lands on whatever material the game already set.
-                BetterFG.Customization.Menu.FontReplacementService.ApplyToNametag(tmp);
+                BetterFG.Customization.UI.FontReplacementService.ApplyToNametag(tmp);
                 return;
             }
 
@@ -1630,6 +1694,29 @@ namespace BetterFG.Nametag
                 tmp.colorGradient = new VertexGradient(
                     face, face, UnityEngine.Color.white, UnityEngine.Color.white);
                 tmp.text = $"{style}{name}{close}";
+            }
+            else if (styleStr == "gradient")
+            {
+                tmp.enableVertexGradient = false;
+                var plainMat = AssetManager.NameFontAsset?.material;
+                if (plainMat != null) tmp.fontSharedMaterial = plainMat;
+                tmp.color = new UnityEngine.Color(1f, 1f, 1f, a);
+                var stops = ParseGradientColors(gradientColors);
+                if (stops.Count == 0) stops.Add(new UnityEngine.Color(r, g, b, 1f));
+                var sb = new System.Text.StringBuilder(name.Length + 16);
+                if (bold) sb.Append("<b>");
+                if (italic) sb.Append("<i>");
+                sb.Append(name);
+                if (italic) sb.Append("</i>");
+                if (bold) sb.Append("</b>");
+                tmp.text = sb.ToString();
+                EnsureNametagRenderQueue(tmp);
+                BetterFG.Customization.UI.FontReplacementService.ApplyToNametag(tmp);
+                EnsureNametagRenderQueue(tmp);
+                ApplyOutlineIfEnabled(tmp, args);
+                RegisterGradient(tmp, stops, gradientAngle);
+                ApplyGradientVertexColors(tmp, stops, gradientAngle);
+                return;
             }
             else if (styleStr == "gold")
             {
@@ -1659,8 +1746,230 @@ namespace BetterFG.Nametag
             // font replacement system: if an override targets this nametag's font it swaps to our atlas
             // and rebuilds THIS material onto it, so the custom font lands WITH the outline. no-op when
             // font replacement is off or nothing targets this font.
-            BetterFG.Customization.Menu.FontReplacementService.ApplyToNametag(tmp);
+            BetterFG.Customization.UI.FontReplacementService.ApplyToNametag(tmp);
             EnsureNametagRenderQueue(tmp);
+            ApplyOutlineIfEnabled(tmp, args);
+        }
+
+        public static List<UnityEngine.Color> ParseGradientColors(string s)
+        {
+            var list = new List<UnityEngine.Color>();
+            if (string.IsNullOrEmpty(s)) return list;
+            foreach (var part in s.Split(','))
+            {
+                if (BettrFG.uGUI.UGUIShip.HexToColor(part, out float rr, out float gg, out float bb))
+                    list.Add(new UnityEngine.Color(rr, gg, bb, 1f));
+            }
+            return list;
+        }
+
+        public static string SerializeGradientColors(List<UnityEngine.Color> stops)
+        {
+            if (stops == null || stops.Count == 0) return "";
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < stops.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append(BettrFG.uGUI.UGUIShip.ColorToHex(stops[i].r, stops[i].g, stops[i].b));
+            }
+            return sb.ToString();
+        }
+
+        private static UnityEngine.Color SampleGradient(List<UnityEngine.Color> stops, float t)
+        {
+            if (stops.Count == 1) return stops[0];
+            float pos = Mathf.Clamp01(t) * (stops.Count - 1);
+            int i = (int)pos;
+            if (i >= stops.Count - 1) return stops[stops.Count - 1];
+            return UnityEngine.Color.Lerp(stops[i], stops[i + 1], pos - i);
+        }
+
+        private class GradientBinding
+        {
+            public TMP_Text tmp;
+            public List<UnityEngine.Color> stops;
+            public float angle;
+        }
+        private static readonly Dictionary<IntPtr, GradientBinding> _gradientTmps = new Dictionary<IntPtr, GradientBinding>();
+
+        private static bool _tmpEventHooked;
+
+        private static void EnsureTMPEventHooked()
+        {
+            if (_tmpEventHooked) return;
+            try
+            {
+                TMPro.TMPro_EventManager.TEXT_CHANGED_EVENT.Add(new Action<UnityEngine.Object>(OnTMPTextChanged));
+                _tmpEventHooked = true;
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("NametagIcon: TMP event hook: " + ex.Message); }
+        }
+
+        private static void OnTMPTextChanged(UnityEngine.Object obj)
+        {
+            if (obj == null) return;
+            var tmp = obj.TryCast<TMP_Text>();
+            if (tmp == null || tmp.m_CachedPtr == IntPtr.Zero) return;
+            if (!_gradientTmps.TryGetValue(tmp.Pointer, out var b)) return;
+            WriteGradientVertexColors(tmp, b.stops, b.angle);
+        }
+
+        public static void RegisterGradient(TMP_Text tmp, List<UnityEngine.Color> stops, float angleDeg)
+        {
+            if (tmp == null || tmp.m_CachedPtr == IntPtr.Zero) return;
+            EnsureTMPEventHooked();
+            _gradientTmps[tmp.Pointer] = new GradientBinding { tmp = tmp, stops = new List<UnityEngine.Color>(stops), angle = angleDeg };
+        }
+
+        public static void UnregisterGradient(TMP_Text tmp)
+        {
+            if (tmp == null || tmp.m_CachedPtr == IntPtr.Zero) return;
+            _gradientTmps.Remove(tmp.Pointer);
+        }
+
+        public static void TickGradients()
+        {
+            if (_gradientTmps.Count == 0) return;
+            List<IntPtr> dead = null;
+            foreach (var kvp in _gradientTmps)
+            {
+                var b = kvp.Value;
+                if (b.tmp == null || b.tmp.m_CachedPtr == IntPtr.Zero) { (dead ??= new List<IntPtr>()).Add(kvp.Key); continue; }
+                WriteGradientVertexColors(b.tmp, b.stops, b.angle);
+            }
+            if (dead != null) foreach (var p in dead) _gradientTmps.Remove(p);
+        }
+
+        private static void WriteGradientVertexColors(TMP_Text tmp, List<UnityEngine.Color> stops, float angleDeg)
+        {
+            try
+            {
+                var info = tmp.textInfo;
+                if (info == null || info.characterCount == 0) return;
+                WriteColorsCore(tmp, info, stops, angleDeg);
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("NametagIcon: gradient write: " + ex.Message); }
+        }
+
+        private static void ApplyGradientVertexColors(TMP_Text tmp, List<UnityEngine.Color> stops, float angleDeg)
+        {
+            try
+            {
+                tmp.ForceMeshUpdate(false, false);
+                var info = tmp.textInfo;
+                if (info == null || info.characterCount == 0) return;
+                WriteColorsCore(tmp, info, stops, angleDeg);
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("NametagIcon: gradient apply: " + ex.Message); }
+        }
+
+        private static void WriteColorsCore(TMP_Text tmp, TMPro.TMP_TextInfo info, List<UnityEngine.Color> stops, float angleDeg)
+        {
+            try
+            {
+                int count = info.characterCount;
+                if (count == 0) return;
+
+                float rad = angleDeg * Mathf.Deg2Rad;
+                float ux = Mathf.Cos(rad), uy = Mathf.Sin(rad);
+
+                float minP = float.MaxValue, maxP = float.MinValue;
+                for (int i = 0; i < count; i++)
+                {
+                    var ch = info.characterInfo[i];
+                    if (!ch.isVisible) continue;
+                    float p;
+                    p = ch.bottomLeft.x * ux + ch.bottomLeft.y * uy; if (p < minP) minP = p; if (p > maxP) maxP = p;
+                    p = ch.topLeft.x     * ux + ch.topLeft.y     * uy; if (p < minP) minP = p; if (p > maxP) maxP = p;
+                    p = ch.topRight.x    * ux + ch.topRight.y    * uy; if (p < minP) minP = p; if (p > maxP) maxP = p;
+                    p = ch.bottomRight.x * ux + ch.bottomRight.y * uy; if (p < minP) minP = p; if (p > maxP) maxP = p;
+                }
+                float span = maxP - minP;
+                if (span < 1e-4f) span = 1f;
+
+                for (int i = 0; i < count; i++)
+                {
+                    var ch = info.characterInfo[i];
+                    if (!ch.isVisible) continue;
+                    int matIdx = ch.materialReferenceIndex;
+                    int vi = ch.vertexIndex;
+                    var colors = info.meshInfo[matIdx].colors32;
+
+                    var cBL = SampleGradient(stops, ((ch.bottomLeft.x * ux + ch.bottomLeft.y * uy) - minP) / span);
+                    var cTL = SampleGradient(stops, ((ch.topLeft.x     * ux + ch.topLeft.y     * uy) - minP) / span);
+                    var cTR = SampleGradient(stops, ((ch.topRight.x    * ux + ch.topRight.y    * uy) - minP) / span);
+                    var cBR = SampleGradient(stops, ((ch.bottomRight.x * ux + ch.bottomRight.y * uy) - minP) / span);
+                    cBL.a = tmp.color.a; cTL.a = tmp.color.a; cTR.a = tmp.color.a; cBR.a = tmp.color.a;
+                    colors[vi + 0] = cBL;
+                    colors[vi + 1] = cTL;
+                    colors[vi + 2] = cTR;
+                    colors[vi + 3] = cBR;
+                }
+
+                tmp.UpdateVertexData(TMPro.TMP_VertexDataUpdateFlags.Colors32);
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("NametagIcon: gradient vertex: " + ex.Message); }
+        }
+
+        private static string BuildGradientText(string name, List<UnityEngine.Color> stops, bool bold, bool italic)
+        {
+            int n = name?.Length ?? 0;
+            if (n == 0) return name ?? "";
+            var sb = new System.Text.StringBuilder(n * 24);
+            if (bold) sb.Append("<b>");
+            if (italic) sb.Append("<i>");
+            for (int i = 0; i < n; i++)
+            {
+                float t = n == 1 ? 0f : (float)i / (n - 1);
+                var c = SampleGradient(stops, t);
+                int ri = Mathf.Clamp(Mathf.RoundToInt(c.r * 255f), 0, 255);
+                int gi = Mathf.Clamp(Mathf.RoundToInt(c.g * 255f), 0, 255);
+                int bi = Mathf.Clamp(Mathf.RoundToInt(c.b * 255f), 0, 255);
+                sb.Append("<color=#").Append(ri.ToString("X2")).Append(gi.ToString("X2")).Append(bi.ToString("X2")).Append('>');
+                sb.Append(name[i]);
+                sb.Append("</color>");
+            }
+            if (italic) sb.Append("</i>");
+            if (bold) sb.Append("</b>");
+            return sb.ToString();
+        }
+
+        private static void ApplyOutlineIfEnabled(TMP_Text tmp, TextStyleArgs args)
+        {
+            if (!args.outlineEnabled) return;
+            if (args.style != "default" && args.style != "gradient" && args.style != "") return;
+            try
+            {
+                var mat = tmp.fontMaterial;
+                if (mat == null) return;
+                float w = Mathf.Clamp01(args.outlineWidth);
+                var col = new UnityEngine.Color(args.outlineR, args.outlineG, args.outlineB, 1f);
+                bool inset = args.outlineMode == "inset";
+                if (inset)
+                {
+                    mat.SetColor("_OutlineColor", col);
+                    mat.SetFloat("_OutlineWidth", w);
+                    if (w > 0f) mat.EnableKeyword("OUTLINE_ON");
+                    else mat.DisableKeyword("OUTLINE_ON");
+                    mat.SetFloat("_UnderlayDilate", 0f);
+                    mat.DisableKeyword("UNDERLAY_ON");
+                }
+                else
+                {
+                    mat.SetFloat("_OutlineWidth", 0f);
+                    mat.DisableKeyword("OUTLINE_ON");
+                    mat.SetColor("_UnderlayColor", col);
+                    mat.SetFloat("_UnderlayOffsetX", 0f);
+                    mat.SetFloat("_UnderlayOffsetY", 0f);
+                    mat.SetFloat("_UnderlayDilate", w);
+                    mat.SetFloat("_UnderlaySoftness", 0f);
+                    if (w > 0f) mat.EnableKeyword("UNDERLAY_ON");
+                    else mat.DisableKeyword("UNDERLAY_ON");
+                }
+                tmp.havePropertiesChanged = true;
+                TMPro.TMPro_EventManager.ON_MATERIAL_PROPERTY_CHANGED(true, mat);
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("NametagIcon: outline: " + ex.Message); }
         }
 
         // Returns a darker, more saturated version of an RGB color for use as an outline.

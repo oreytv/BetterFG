@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Services;
 using FGClient;
 using FGClient.UI.Core;
@@ -461,7 +461,11 @@ namespace BetterFG.Patches
     internal static class MainMenuBackgroundAssignBgFromCMSPatch
     {
         [HarmonyPostfix]
-        static void Postfix(MainMenuBackgroundViewModel __instance) => MainMenuBackgroundAwakePatch.Force2dBackgroundWhite(__instance);
+        static void Postfix(MainMenuBackgroundViewModel __instance)
+        {
+            MainMenuBackgroundAwakePatch.Force2dBackgroundWhite(__instance);
+            MenuCustomizationApplication.ReassertMenuBackground3D();
+        }
     }
 
     [HarmonyPatch(typeof(MainMenuBackgroundViewModel), nameof(MainMenuBackgroundViewModel.Awake))]

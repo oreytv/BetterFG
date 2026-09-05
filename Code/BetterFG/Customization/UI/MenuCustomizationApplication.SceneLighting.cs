@@ -3,7 +3,7 @@ using UnityEngine.Rendering;
 using BetterFG.Services;
 using Quaternion = UnityEngine.Quaternion;
 
-namespace BetterFG.Customization.Menu
+namespace BetterFG.Customization.UI
 {
     public partial class MenuCustomizationApplication
     {

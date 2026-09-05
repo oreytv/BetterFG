@@ -304,8 +304,16 @@ namespace BetterFG.Services
                 var placed = LevelEditorGameObjectManager.Instance?._levelEditorPlaceableObjects;
                 string objects = placed != null ? LocalizationService.Format("rpc.objects_fmt", placed.Count) : null;
 
-                return Build(mode != null ? LocalizationService.Format("rpc.building_mode_level_fmt", mode) : LocalizationService.Get("rpc.in_creative_editor"),
-                    Join(budget, objects));
+                string levelName = LevelEditorManagerProxy.CurrentLevelName;
+                string details;
+                if (!string.IsNullOrEmpty(levelName))
+                    details = mode != null
+                        ? LocalizationService.Format("rpc.building_named_level_fmt", levelName, mode)
+                        : LocalizationService.Format("rpc.building_named_level_nomode_fmt", levelName);
+                else
+                    details = mode != null ? LocalizationService.Format("rpc.building_mode_level_fmt", mode) : LocalizationService.Get("rpc.in_creative_editor");
+
+                return Build(details, Join(budget, objects));
             }
 
             string show = ShowName(ggsc);

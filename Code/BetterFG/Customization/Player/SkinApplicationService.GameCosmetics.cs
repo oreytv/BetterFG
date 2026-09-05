@@ -10,7 +10,7 @@ using BetterFG.Core;
 using FGClient;
 using FG.Common;
 using FG.Common.CMS;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Network;
 using BetterFG.UI.Tabs;
 using Il2CppInterop.Runtime;

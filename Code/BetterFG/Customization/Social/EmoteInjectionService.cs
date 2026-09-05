@@ -29,8 +29,6 @@ namespace BetterFG.Customization.Social
         internal static readonly Dictionary<int, AnimationClip> CustomClips = new Dictionary<int, AnimationClip>();
         internal static readonly Dictionary<int, string> SoundPaths = new Dictionary<int, string>();
 
-        // cache loaded bundles by path (LoadFromMemory twice on the same bundle throws)
-        private static readonly Dictionary<string, AssetBundle> _bundles = new Dictionary<string, AssetBundle>();
         private static readonly System.Random _cabRng = new System.Random();
 
         // options whose icon sprite we replaced -> their original sprite, so we can put it back
@@ -56,26 +54,15 @@ namespace BetterFG.Customization.Social
 
         // drop a cached bundle (after its file was re-downloaded) so the next LoadClip reads the new
         // file from disk. Unload(false) keeps any clip a currently-playing emote still holds.
-        internal static void EvictBundle(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return;
-            if (_bundles.TryGetValue(path, out var b))
-            {
-                try { b?.Unload(false); } catch { }
-                _bundles.Remove(path);
-            }
-        }
+        internal static void EvictBundle(string path) => BetterFG.Utilities.Bundles.Unload(path, false);
 
         private static AnimationClip LoadClip(EmoteEntry e)
         {
             if (string.IsNullOrEmpty(e.bundlePath) || !File.Exists(e.bundlePath)) return null;
             try
             {
-                if (!_bundles.TryGetValue(e.bundlePath, out var bundle) || bundle == null)
-                {
-                    bundle = AssetBundle.LoadFromMemory(UniquifyCab(File.ReadAllBytes(e.bundlePath)));
-                    _bundles[e.bundlePath] = bundle;
-                }
+                var bundle = BetterFG.Utilities.Bundles.Get(e.bundlePath)
+                    ?? BetterFG.Utilities.Bundles.LoadMemorySync(e.bundlePath, UniquifyCab(File.ReadAllBytes(e.bundlePath)));
                 if (bundle == null) return null;
 
                 // use the NON-generic LoadAsset — the generic LoadAsset<T>/LoadAllAssets<T> hits a
@@ -552,7 +539,7 @@ namespace BetterFG.Customization.Social
             if (fgcc == null) return;
             var ragdoll = fgcc.transform.Find("Ragdoll");
             var rc = ragdoll != null ? ragdoll.GetComponent<RagdollController>() : null;
-            if (rc != null) rc.EnableUpperBody(on);
+            if (rc != null) rc._upperBodyEnabled = on;
         }
 
         // the currently-playing emote sound, so we can cut it when the emote ends

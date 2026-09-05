@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BetterFG.Core;
 using BetterFG.Nametag;
 using BetterFG.Services;
@@ -8,7 +8,7 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
-    public class PlayerdetailsWindow : BetterFGWindow
+    public class PlayerdetailsWindow : SideWindow
     {
         public PlayerdetailsWindow(IntPtr ptr) : base(ptr) { }
 
@@ -18,7 +18,6 @@ namespace BetterFG.UI.Windows
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
         protected override string WindowTitle => "ui.player_details";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private const string KEY_ENABLED = "nametag.enabled";
 
@@ -89,9 +88,9 @@ namespace BetterFG.UI.Windows
         private const float ROW_H = 22f;
         private const float PAD = 6f;
         private const float HEADER_H = 18f;
-        private const float HEADER_LEFT = 22f;
+        private const float HEADER_LEFT = SideWindow.RowLabelX;
         private const float HEADER_SCALE = 1.3f;
-        private const float LABEL_X = PAD + 20f;
+        private const float LABEL_X = SideWindow.RowLabelX;
         private const float FIELD_W = 90f;
         private const float BTN_W = 42f;
         private const float CTRL_H = 16f;

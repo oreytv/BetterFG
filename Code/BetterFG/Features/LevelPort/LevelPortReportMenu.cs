@@ -28,18 +28,12 @@ namespace BetterFG.Features.LevelPort
     // then loads from it on every open until the game restarts (or the user saves it for real).
     internal static class LevelPortReportMenu
     {
-        internal static bool AnyOpen
-        {
-            get
-            {
-                var vm = FindLivePopup();
-                return vm != null && vm.gameObject.activeInHierarchy;
-            }
-        }
+        internal static bool AnyOpen => _popupVm != null && _popupVm.gameObject.activeInHierarchy;
 
         // single-shot latch: ignore the row that auto-selects on open, and stop a second
         // select/press opening a second dialog. armed one frame after the rows are wired.
         private static bool _armed;
+        private static ReportUGCPopupViewModel _popupVm;
 
         private static LevelEditorLevel _exportLevel;
         private static ReportUGCConfigurationElementViewModel _importElem, _exportElem;
@@ -60,6 +54,7 @@ namespace BetterFG.Features.LevelPort
             ReportUGCPopupViewModel vm = null;
             for (int i = 0; i < 12 && vm == null; i++) { yield return null; vm = FindLivePopup(); }
             if (vm == null) yield break;
+            _popupVm = vm;
             yield return null; // let Setup() build the rows
 
             Apply(vm, name, code);

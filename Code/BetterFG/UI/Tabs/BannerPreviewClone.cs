@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using UnityEngine;
 using UnityEngine.UI;
 

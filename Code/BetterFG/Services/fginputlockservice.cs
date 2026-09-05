@@ -106,16 +106,6 @@ namespace BetterFG.Services
         // fresh interop list per player per frame was constant GC churn
         private static Il2CppSystem.Collections.Generic.List<ControllerMap> _mapsBuf;
 
-        // clicks reach Button.onClick through EventSystem/GraphicRaycaster off the raw OS cursor,
-        // a path Rewired's ControllerMaps never touch. Disabling the EventSystem itself was the
-        // first attempt, but EventSystem.current goes null the moment it's disabled (its own
-        // OnDisable clears the singleton) and plenty of game code — including our own
-        // LobbyCustomiserTweak — dereferences EventSystem.current unguarded, so that took down
-        // NavigableMenuInputHandler.OnLoseFocus with cascading NREs the instant a screen opened.
-        // Disabling just the input module stops all event dispatch the same way without EventSystem
-        // itself, or .current, ever going null.
-        private static readonly List<BaseInputModule> _disabledInputModules = new List<BaseInputModule>();
-
         // movement/jump/etc also don't all go through mapped Actions — some read the Keyboard/Mouse
         // Controller directly (GetKey/GetButton), which ControllerMap.enabled=false never touches.
         // Controller itself has an enabled flag that kills raw polling too, so hit that as well.
@@ -156,27 +146,10 @@ namespace BetterFG.Services
 
             bool locked = _realFieldLock || _fakeFieldLock || _editorUiLock || _controllerLock
                           || _paramTypeLock || _loadingScreenLock || outOfForeground;
-            if (!locked && !blockBackground && !_selfWasLocked
-                && !_devicesDisabledByUs && !_mouseDisabledByUs && !_rewiredMouseSuppressed
-                && _disabledInputModules.Count == 0)
-                return;
 
-            if (blockBackground)
-            {
-                var es = EventSystem.current;
-                var module = es != null ? es.currentInputModule : null;
-                if (module != null && module.enabled)
-                {
-                    module.enabled = false;
-                    if (!_disabledInputModules.Contains(module)) _disabledInputModules.Add(module);
-                }
-            }
-            else if (_disabledInputModules.Count > 0)
-            {
-                for (int i = 0; i < _disabledInputModules.Count; i++)
-                    if (_disabledInputModules[i] != null) _disabledInputModules[i].enabled = true;
-                _disabledInputModules.Clear();
-            }
+            if (!locked && !blockBackground && !_selfWasLocked
+                && !_devicesDisabledByUs && !_mouseDisabledByUs && !_rewiredMouseSuppressed)
+                return;
 
             if (ReInput.isReady)
             {

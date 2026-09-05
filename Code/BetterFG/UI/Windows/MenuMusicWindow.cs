@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -10,17 +10,21 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
-    public class MenuMusicWindow : BetterFGWindow
+    public class MenuMusicWindow : SideWindow
     {
         public MenuMusicWindow(IntPtr ptr) : base(ptr) { }
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 160f;
         protected override string WindowTitle => "ui.menu_music";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         private RectTransform _listRt;
         private readonly ProgressBarTracker _bars = new ProgressBarTracker();
+
+        // the first-open help prompt points its pulse at these
+        public static RectTransform EnabledToggleRect { get; internal set; }
+        public static RectTransform RefreshRect { get; internal set; }
+        public static RectTransform FirstTrackRect { get; internal set; }
 
         protected override void BuildContent(RectTransform contentRoot)
         {
@@ -89,17 +93,19 @@ namespace BetterFG.UI.Windows
         private const float TOGGLE_H = 16f;
         private const float PAD = 6f;
         private const float HEADER_H = 18f;
-        private const float HEADER_LEFT = 22f;
+        private const float HEADER_LEFT = SideWindow.RowLabelX;
+        private const float LABEL_X = SideWindow.RowLabelX;
         private const float HEADER_SCALE = 1.3f;
         private static readonly Color ROW_EVEN = new Color(1f, 1f, 1f, 0.03f);
         private static readonly Color ROW_ODD = new Color(0f, 0f, 0f, 0f);
-        private static readonly Color ON_COL = new Color(0.3f, 0.75f, 0.3f, 1f);
-        private static readonly Color OFF_COL = new Color(0.55f, 0.55f, 0.55f, 1f);
+        private static readonly Color ON_COL = UGUIShip.TOGGLE_ON;
+        private static readonly Color OFF_COL = UGUIShip.TOGGLE_OFF;
         private static readonly Color DL_COL = new Color(0.25f, 0.45f, 0.75f, 1f);
         private static readonly Color USED_COL = new Color(0.45f, 0.35f, 0.25f, 1f);
 
         public static void BuildRows(RectTransform parent, MenuMusicWindow window)
         {
+            MenuMusicWindow.FirstTrackRect = null;
             BuildHeader(parent, "ui.custom_music");
             BuildEnabledRow(parent, ROW_EVEN);
 
@@ -144,7 +150,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 200f, ROW_H),
+                new Rect(LABEL_X, 0f,200f, ROW_H),
                 "ui.custom_song", 13,
                 new Color(1f, 1f, 1f, 0.85f),
                 TextAnchor.MiddleLeft);
@@ -157,6 +163,7 @@ namespace BetterFG.UI.Windows
             btnRt.pivot = new Vector2(1f, 0.5f);
             btnRt.anchoredPosition = new Vector2(-PAD, 0f);
             btnRt.sizeDelta = new Vector2(TOGGLE_W, TOGGLE_H);
+            MenuMusicWindow.EnabledToggleRect = btnRt;
 
             bool on = MenuMusicService.Enabled;
             var btn = UGUIShip.CreateButton(btnGo.transform,
@@ -188,7 +195,7 @@ namespace BetterFG.UI.Windows
                 ? $"{MenuMusicCatalog.Tracks.Count} available"
                 : "loading...";
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 200f, ROW_H),
+                new Rect(LABEL_X, 0f,200f, ROW_H),
                 countTxt, 13,
                 new Color(1f, 1f, 1f, 0.55f),
                 TextAnchor.MiddleLeft);
@@ -201,6 +208,7 @@ namespace BetterFG.UI.Windows
             btnRt.pivot = new Vector2(1f, 0.5f);
             btnRt.anchoredPosition = new Vector2(-PAD, 0f);
             btnRt.sizeDelta = new Vector2(BTN_W, TOGGLE_H);
+            MenuMusicWindow.RefreshRect = btnRt;
 
             UGUIShip.CreateButton(btnGo.transform,
                 new Rect(0f, 0f, BTN_W, TOGGLE_H),
@@ -217,9 +225,11 @@ namespace BetterFG.UI.Windows
             le.preferredHeight = ROW_H;
             le.flexibleWidth = 1f;
             UGUIShip.PaintStaticRowFill(rowGo, bg);
+            if (MenuMusicWindow.FirstTrackRect == null)
+                MenuMusicWindow.FirstTrackRect = rowGo.GetComponent<RectTransform>();
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 160f, ROW_H),
+                new Rect(LABEL_X, 0f,160f, ROW_H),
                 StripExt(track.name), 13,
                 new Color(1f, 1f, 1f, 0.85f),
                 TextAnchor.MiddleLeft);
@@ -296,15 +306,6 @@ namespace BetterFG.UI.Windows
             return dot > 0 ? name.Substring(0, dot) : name;
         }
 
-        private static void Paint(Button btn, Color c)
-        {
-            var img = btn.GetComponent<Image>();
-            if (img != null) img.color = c;
-            var cols = btn.colors;
-            cols.normalColor = c;
-            cols.highlightedColor = c * 1.2f;
-            cols.pressedColor = c * 0.7f;
-            btn.colors = cols;
-        }
+        private static void Paint(Button btn, Color c) => UGUIShip.SetButtonColor(btn, c);
     }
 }

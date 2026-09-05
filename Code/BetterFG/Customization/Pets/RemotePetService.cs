@@ -32,6 +32,12 @@ namespace BetterFG.Customization.Pets
             if (_scanTimer > 0f) return;
             _scanTimer = 1f;
 
+            if (RemoteProfileStore.IsEmpty)
+            {
+                if (_livePets.Count > 0) DespawnAll();
+                return;
+            }
+
             var localBean = BeanMonitorService.LocalPlayerBean;
             var remotes = BeanNetworkUtil.GetRemotePlayerBeansSorted(localBean);
             if (remotes.Count == 0) { DespawnAll(); return; }

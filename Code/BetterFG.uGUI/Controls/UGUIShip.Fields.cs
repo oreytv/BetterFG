@@ -85,7 +85,7 @@ namespace BettrFG.uGUI
             phText.supportRichText = false;
             phText.raycastTarget = false;
             Stylize(phText); // safe here: placeholder isn't the live-edited text, so hiding it behind a TMP mirror doesn't break caret/selection
-            LocBind(phGo, placeholder);
+            LocBind(phText, placeholder);
 
             field.textComponent = textComp;
             field.placeholder = phText;

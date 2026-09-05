@@ -256,6 +256,7 @@ namespace BettrFG.uGUI
         public static void PaintStaticRowFill(GameObject go, Color fillColor)
         {
             if (go == null) return;
+            if (go.GetComponent<RowLabelFit>() == null) go.AddComponent<RowLabelFit>();
             if (LoadDeluxSlice("BetterFG.assets.ui.general.uisprite_delux_colorfill.png", ref _deluxFillSprite) == null)
             {
                 var img = go.GetComponent<Image>() ?? go.AddComponent<Image>();

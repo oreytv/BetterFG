@@ -91,6 +91,7 @@ namespace BetterFG.Tweaks
             Add<StripSizeTagsTweak>(TweakCategory.Utility);
             Add<FallFeedQualTimeTweak>(TweakCategory.Utility);
             Add<MaxFallFeedTweak>(TweakCategory.Utility);
+            Add<SkipNotificationTweak>(TweakCategory.Utility);
             Add<ShowServerInfoTweak>(TweakCategory.Utility);
             Add<DisableAgeRatingPopupTweak>(TweakCategory.Utility);
             Add<ShowTilePlaysTweak>(TweakCategory.Utility);
@@ -102,6 +103,7 @@ namespace BetterFG.Tweaks
             Add<BetterStickerSelectionTweak>(TweakCategory.Utility);
             Add<LobbyCustomiserTweak>(TweakCategory.Utility);
             Add<NotifyRoundStartTweak>(TweakCategory.Utility);
+            Add<RandomShowSelectTweak>(TweakCategory.Utility);
             //Add<MultiShowSelectTweak>(TweakCategory.Utility); // WIP — launch confirms the highlighted show, not the pinned set; shelved
 
             // ── Misc ── cosmetic / everything else

@@ -19,7 +19,8 @@ namespace BetterFG.UI.SideWheel
 
         // ── Tweakable at runtime ──────────────────────────────────────────────
         public float RingDiameter = 340f;
-        public float RingThickness = 36f;
+        public Vector2 RingImageSize = new Vector2(300f, 338f);
+        public Vector2 RingImagePivot = new Vector2(117f / 300f, 1f - 164f / 338f);
         public float PeekAmount = 72f;
         public float IconSize = 38f;
         public float IconOrbitR = 137.9549f;
@@ -30,7 +31,6 @@ namespace BetterFG.UI.SideWheel
         public float HitW = 120f;
         public float HitH = 400f;
         public float WindowX = 100f;
-        public Color RingColor = new Color(0f, 0f, 0f, 1f);
         public Color SelTint = new Color(1f, 0.85f, 0.4f, 1f);
 
         // ── Animation curve for window open ───────────────────────────────────
@@ -44,12 +44,17 @@ namespace BetterFG.UI.SideWheel
         // ── Runtime refs ──────────────────────────────────────────────────────
         private Canvas _canvas;
         private RectTransform _wheelRt;
-        private RingGraphic _ring;
+        private RectTransform _ringRt;
         private CanvasGroup _canvasGroup;
 
         private float _currentAngle = 0f;
         private float _targetAngle = 0f;
         private int _hoveredIdx = -1;
+        private bool _pressed = false;
+        private bool _dragged = false;
+        private float _dragStartY = 0f;
+        private float _lastDragY = 0f;
+        private float _dragEndTime = -1f;
         private bool _wheelVisible = false;
         // true only when the wheel is actually on screen — the toggle flag alone isn't enough,
         // because hiding the parent BettrFG UI drops the wheel's canvas alpha to 0 while leaving
@@ -70,7 +75,7 @@ namespace BetterFG.UI.SideWheel
 
         private struct WheelEntry
         {
-            public string label;
+            public string locId;
             public Texture2D icon;
             public Func<BetterFGWindow> createWindow;
         }
@@ -84,10 +89,39 @@ namespace BetterFG.UI.SideWheel
             return go.AddComponent<SideWheelManager>();
         }
 
-        public void RegisterEntry(string label, Texture2D icon, Func<BetterFGWindow> createWindow)
+        public void RegisterEntry(string locId, Texture2D icon, Func<BetterFGWindow> createWindow)
         {
-            _entries.Add(new WheelEntry { label = label, icon = icon, createWindow = createWindow });
+            _entries.Add(new WheelEntry { locId = locId, icon = icon, createWindow = createWindow });
             RebuildIcons();
+        }
+
+        public RectTransform RingRect => _ringRt;
+        public float RingLocalRadius => RingImageSize.y * (327f / 676f);
+
+        // the onboarding tutorial holds this so the wheel keybind only works on the steps that ask
+        // for it. does not affect clicks on the wheel itself once it's open.
+        public static bool InputLocked;
+
+        // pins the wheel's rotation on top of the existing "a window is open" rule. the tutorial
+        // holds this so you can't spin the ring away from the entry it's pointing at.
+        public static bool ScrollLocked;
+
+        private bool CanRotate => _openWindow == null && !ScrollLocked;
+
+        public BetterFGWindow CurrentWindow => _openWindow;
+
+        public RectTransform GetEntryRect(string locId)
+        {
+            int idx = _entries.FindIndex(e => e.locId == locId);
+            return (idx >= 0 && idx < _iconRts.Count) ? _iconRts[idx] : null;
+        }
+
+        public void CenterOn(string locId)
+        {
+            int idx = _entries.FindIndex(e => e.locId == locId);
+            if (idx < 0) return;
+            _currentAngle = _targetAngle = ICON_STEP_DEG * idx;
+            PositionIcons();
         }
 
         public void SetVisible(bool visible)
@@ -109,14 +143,20 @@ namespace BetterFG.UI.SideWheel
         // controller bind entry point — same toggle the keyboard hotkey path uses.
         public void ToggleFromController() => SetWheelVisible(!_wheelVisible);
 
+        // lets a tab open on top of the wheel instead of refusing — closes the wheel out of the way.
+        public void CloseWheel()
+        {
+            if (_wheelVisible) SetWheelVisible(false);
+        }
+
         // general "jump the user to this window" entry: force the wheel visible, open the entry whose window
         // type is T, and once its open animation lands hand the live window to onOpened (used to flash the
-        // controls the user was pointed at). label must match what SidewheelRegistry registered T under.
-        public void OpenWindow<T>(string label, System.Action<BetterFGWindow> onOpened = null)
+        // controls the user was pointed at). locId must match what SidewheelRegistry registered T under.
+        public void OpenWindow<T>(string locId, System.Action<BetterFGWindow> onOpened = null)
             where T : BetterFGWindow
         {
-            int idx = _entries.FindIndex(e => e.label == label);
-            if (idx < 0) { Plugin.Log.LogWarning($"sidewheel: no entry '{label}' to open"); return; }
+            int idx = _entries.FindIndex(e => e.locId == locId);
+            if (idx < 0) { Plugin.Log.LogWarning($"sidewheel: no entry '{locId}' to open"); return; }
 
             if (!_wheelVisible) SetWheelVisible(true);
             // if this window's already the open one, don't re-open (that would toggle it shut) — just re-run
@@ -157,12 +197,25 @@ namespace BetterFG.UI.SideWheel
             Instance = this;
             BuildCanvas();
             SetVisible(false);
+            BetterFG.Services.LocalizationService.LanguageChanged += RefreshLabels;
+        }
+
+        private void RefreshLabels()
+        {
+            for (int i = 0; i < _labelRts.Count && i < _entries.Count; i++)
+            {
+                if (_labelRts[i] == null) continue;
+                var t = _labelRts[i].GetComponent<Text>();
+                if (t != null)
+                    t.text = BetterFG.Services.LocalizationService.Get(_entries[i].locId).ToUpperInvariant();
+            }
         }
 
         void Update()
         {
             var wheelKey = BetterFG.Services.KeybindService.Get(BetterFG.Services.KeybindId.ToggleWheel);
-            if (BetterFG.Services.KeybindService.KeyDown(wheelKey)
+            if (!InputLocked
+                && BetterFG.Services.KeybindService.KeyDown(wheelKey)
                 && !BetterFG.Services.KeybindService.ShiftHeld()
                 && !IsTyping())
                 SetWheelVisible(!_wheelVisible);
@@ -210,8 +263,11 @@ namespace BetterFG.UI.SideWheel
                 _wheelRt.anchoredPosition = new Vector2(-(RingDiameter * 0.5f) + PeekAmount, 0f);
                 _wheelRt.sizeDelta = new Vector2(RingDiameter, RingDiameter);
             }
-            if (_ring != null)
-                _ring.UpdateShape(RingDiameter * 0.5f, RingDiameter * 0.5f - RingThickness, RingColor);
+            if (_ringRt != null && (_ringRt.sizeDelta != RingImageSize || _ringRt.pivot != RingImagePivot))
+            {
+                _ringRt.sizeDelta = RingImageSize;
+                _ringRt.pivot = RingImagePivot;
+            }
         }
 
         // ── Build ─────────────────────────────────────────────────────────────
@@ -251,21 +307,19 @@ namespace BetterFG.UI.SideWheel
 
         private void BuildRingMesh(GameObject parent)
         {
-            const int SEGMENTS = 64;
-            float outerR = RingDiameter * 0.5f;
-            float innerR = outerR - RingThickness;
-
             var ringGo = new GameObject("Ring");
             ringGo.transform.SetParent(parent.transform, false);
-            var ringRt = ringGo.AddComponent<RectTransform>();
-            ringRt.anchorMin = new Vector2(0.5f, 0.5f);
-            ringRt.anchorMax = new Vector2(0.5f, 0.5f);
-            ringRt.pivot = new Vector2(0.5f, 0.5f);
-            ringRt.sizeDelta = new Vector2(RingDiameter, RingDiameter);
-            ringRt.anchoredPosition = Vector2.zero;
+            _ringRt = ringGo.AddComponent<RectTransform>();
+            _ringRt.anchorMin = new Vector2(0.5f, 0.5f);
+            _ringRt.anchorMax = new Vector2(0.5f, 0.5f);
+            _ringRt.pivot = RingImagePivot;
+            _ringRt.sizeDelta = RingImageSize;
+            _ringRt.anchoredPosition = Vector2.zero;
+            _ringRt.localScale = new Vector3(0.94f, 0.94f, 0.94f);
 
-            _ring = ringGo.AddComponent<RingGraphic>();
-            _ring.Init(outerR, innerR, SEGMENTS, RingColor);
+            var img = ringGo.AddComponent<RawImage>();
+            img.texture = LoadEmbedded("BetterFG.assets.ui.side.sidewheel.png");
+            img.raycastTarget = false;
         }
 
         private void RebuildIcons()
@@ -299,7 +353,7 @@ namespace BetterFG.UI.SideWheel
                 // re-anchor to left-middle pivot so it grows outward, and drive position/rotation/
                 // scale per-frame in PositionIcons to keep it on the icon's radial ray.
                 var lbl = UGUIShip.CreateLabel(iconGo.transform, new Rect(0, 0, 880f, IconSize / LabelScale),
-                    entry.label.ToUpperInvariant(), 16);
+                    BetterFG.Services.LocalizationService.Get(entry.locId).ToUpperInvariant(), 16);
                 lbl.fontStyle = FontStyle.Bold;
                 lbl.horizontalOverflow = HorizontalWrapMode.Overflow;
                 lbl.verticalOverflow = VerticalWrapMode.Overflow;
@@ -329,16 +383,42 @@ namespace BetterFG.UI.SideWheel
             if (_canvasGroup != null && _canvasGroup.alpha < 0.01f) return;
 
             var mouse = new Vector2(Input.mousePosition.x, Input.mousePosition.y);
+
+            if (_pressed)
+            {
+                if (Input.GetMouseButton(0))
+                {
+                    if (Mathf.Abs(mouse.y - _dragStartY) > DragDeadzonePx) _dragged = true;
+                    if (_dragged)
+                    {
+                        _dragEndTime = Time.unscaledTime;
+                        if (CanRotate)
+                        {
+                            _targetAngle += (mouse.y - _lastDragY) * DragDegPerPixel;
+                            _currentAngle = _targetAngle;
+                        }
+                    }
+                    _lastDragY = mouse.y;
+                }
+                else
+                {
+                    _pressed = false;
+                    _dragged = false;
+                }
+                return;
+            }
+
             if (!IsInHitRect(mouse)) return;
 
             float scroll = Input.mouseScrollDelta.y;
-            if (_openWindow == null && Mathf.Abs(scroll) > 0.01f)
+            if (CanRotate && Mathf.Abs(scroll) > 0.01f)
                 _targetAngle -= scroll * ICON_STEP_DEG;
 
             if (Input.GetMouseButtonDown(0))
             {
-                int hit = GetIconAtScreen(mouse);
-                if (hit >= 0) OnIconClicked(hit);
+                _pressed = true;
+                _dragged = false;
+                _dragStartY = _lastDragY = mouse.y;
             }
         }
 
@@ -347,31 +427,6 @@ namespace BetterFG.UI.SideWheel
             float cy = Screen.height * 0.5f;
             return screenPos.x >= 0f && screenPos.x <= HitW
                 && screenPos.y >= cy - HitH * 0.5f && screenPos.y <= cy + HitH * 0.5f;
-        }
-
-        private int GetIconAtScreen(Vector2 screenPos)
-        {
-            float closest = float.MaxValue;
-            int bestIdx = -1;
-            for (int i = 0; i < _iconRts.Count; i++)
-            {
-                if (_iconRts[i] == null) continue;
-                if (_iconImgs[i] != null && _iconImgs[i].color.a < 0.5f) continue;
-
-                var corners = new Vector3[4];
-                _iconRts[i].GetWorldCorners(corners);
-                float minX = corners[0].x, maxX = corners[2].x;
-                float minY = corners[0].y, maxY = corners[2].y;
-                float pad = 10f;
-                if (screenPos.x >= minX - pad && screenPos.x <= maxX + pad
-                 && screenPos.y >= minY - pad && screenPos.y <= maxY + pad)
-                {
-                    float d = Vector2.Distance(screenPos,
-                        new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f));
-                    if (d < closest) { closest = d; bestIdx = i; }
-                }
-            }
-            return bestIdx;
         }
 
         // ── Rotation ─────────────────────────────────────────────────────────
@@ -398,6 +453,8 @@ namespace BetterFG.UI.SideWheel
         }
 
         private const float ICON_STEP_DEG = 25f;
+        private const float DragDeadzonePx = 4f;
+        private const float DragDegPerPixel = 0.42f;
         // hover label renders at a big font size then scales down here so text stays crisp
         private const float LabelScale = 0.68f;
         // how far past the icon center the label sits, along the radial ray (icon-local px)
@@ -446,6 +503,7 @@ namespace BetterFG.UI.SideWheel
         private void OnIconClicked(int idx)
         {
             if (_animating) return;
+            if (Time.unscaledTime - _dragEndTime < 0.1f) return;
 
             if (_selectedIdx == idx && _openWindow != null)
             {
@@ -469,6 +527,9 @@ namespace BetterFG.UI.SideWheel
             _openWindow = window;
 
             StartCoroutine(AnimateWindowOpen(window, spawnAngleDeg, Vector2.zero).WrapToIl2Cpp());
+
+            if (!BetterFG.Features.Onboarding.OnboardingController.IsRunning)
+                BetterFG.Features.Onboarding.HelpPrompt.OfferForWheelEntry(_entries[idx].locId);
         }
 
         private IEnumerator AnimateWindowOpen(BetterFGWindow window, float startAngleDeg, Vector2 spawnLocalPos)
@@ -614,56 +675,66 @@ namespace BetterFG.UI.SideWheel
         }
     }
 
-    // ── Ring graphic ──────────────────────────────────────────────────────────
-    public class RingGraphic : Graphic
+    public class RingHoleGraphic : Graphic
     {
-        public RingGraphic(IntPtr ptr) : base(ptr) { }
+        public RingHoleGraphic(IntPtr ptr) : base(ptr) { }
 
-        private float _outerR;
-        private float _innerR;
-        private int _segments;
+        private RectTransform _ring;
+        private float _ringInner;
+        private Vector2 _center;
+        private Vector2 _hole;
+        private Vector2 _outer;
 
-        public void Init(float outerR, float innerR, int segments, Color col)
+        public void Init(RectTransform ring, float ringInnerLocal)
         {
-            _outerR = outerR;
-            _innerR = innerR;
-            _segments = segments;
-            color = col;
-            SetVerticesDirty();
+            _ring = ring;
+            _ringInner = ringInnerLocal;
+            color = Color.white;
+            raycastTarget = true;
+            Sync();
         }
 
-        public void UpdateShape(float outerR, float innerR, Color col)
+        void LateUpdate() => Sync();
+
+        private void Sync()
         {
-            bool dirty = !Mathf.Approximately(_outerR, outerR)
-                      || !Mathf.Approximately(_innerR, innerR)
-                      || color != col;
-            _outerR = outerR;
-            _innerR = innerR;
-            color = col;
-            if (dirty) SetVerticesDirty();
+            if (_ring == null) return;
+            var s = rectTransform.lossyScale;
+            float sx = Mathf.Abs(s.x), sy = Mathf.Abs(s.y);
+            if (sx < 0.2f || sy < 0.01f) return;
+
+            var c = (Vector2)rectTransform.InverseTransformPoint(_ring.position);
+            float world = _ringInner * _ring.lossyScale.y;
+            var hole = new Vector2(world / sx, world / sy);
+            var outer = new Vector2(4000f / sx, 4000f / sy);
+            if ((c - _center).sqrMagnitude < 0.01f && (hole - _hole).sqrMagnitude < 0.01f) return;
+
+            _center = c;
+            _hole = hole;
+            _outer = outer;
+            SetVerticesDirty();
         }
 
         public override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
-            if (_segments == 0) return;
-            float step = 2f * Mathf.PI / _segments;
-            for (int i = 0; i < _segments; i++)
+            if (_hole.x <= 0f || _hole.y <= 0f) return;
+            const int SEGMENTS = 96;
+            float step = 2f * Mathf.PI / SEGMENTS;
+            for (int i = 0; i < SEGMENTS; i++)
             {
                 float a0 = step * i;
                 float a1 = step * (i + 1);
-                Vector2 o0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * _outerR;
-                Vector2 o1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * _outerR;
-                Vector2 i0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * _innerR;
-                Vector2 i1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * _innerR;
+                var d0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0));
+                var d1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1));
                 int b = i * 4;
-                vh.AddVert(o0, color, Vector2.zero);
-                vh.AddVert(o1, color, Vector2.zero);
-                vh.AddVert(i1, color, Vector2.zero);
-                vh.AddVert(i0, color, Vector2.zero);
+                vh.AddVert(_center + Vector2.Scale(d0, _outer), color, Vector2.zero);
+                vh.AddVert(_center + Vector2.Scale(d1, _outer), color, Vector2.zero);
+                vh.AddVert(_center + Vector2.Scale(d1, _hole), color, Vector2.zero);
+                vh.AddVert(_center + Vector2.Scale(d0, _hole), color, Vector2.zero);
                 vh.AddTriangle(b, b + 1, b + 2);
                 vh.AddTriangle(b, b + 2, b + 3);
             }
         }
     }
-}   
+}

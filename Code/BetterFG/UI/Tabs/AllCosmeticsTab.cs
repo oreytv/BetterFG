@@ -160,7 +160,7 @@ namespace BetterFG.UI.Tabs
                 var icon = thumbGo.AddComponent<Image>();
                 icon.raycastTarget = false;
                 icon.preserveAspect = true;
-                if (entry.option == null && Customization.Menu.MenuCustomizationApplication.InMenuScene)
+                if (entry.option == null && Customization.UI.MenuCustomizationApplication.InMenuScene)
                     entry.option = SkinApplicationService.ResolveGameCosmeticOption(entry.kind, entry.id);
                 var sprite = SkinApplicationService.ResolveOptionIconSprite(entry.option);
                 if (sprite != null) icon.sprite = sprite;

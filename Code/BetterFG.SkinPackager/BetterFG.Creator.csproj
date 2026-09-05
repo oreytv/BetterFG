@@ -102,7 +102,7 @@
   </ItemGroup>
   <Target Name="deploycreator" AfterTargets="Build" Condition="'$(SkipCreatorDeploy)' != 'true'">
     <PropertyGroup>
-      <CreatorDeploySilent Condition="'$(NoCreatorPrompt)' == 'true' Or '$(DesignTimeBuild)' == 'true'">-Silent</CreatorDeploySilent>
+      <CreatorDeploySilent Condition="'$(BuildingInsideVisualStudio)' != 'true' Or '$(NoCreatorPrompt)' == 'true' Or '$(DesignTimeBuild)' == 'true'">-Silent</CreatorDeploySilent>
     </PropertyGroup>
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -STA -File &quot;$(MSBuildProjectDirectory)\..\prompt_editor.ps1&quot; $(CreatorDeploySilent)" ConsoleToMSBuild="true" ContinueOnError="true" Condition="'$(CreatorDeployDir)' == ''">
       <Output TaskParameter="ConsoleOutput" ItemName="CreatorDeployRaw" />

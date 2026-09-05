@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
@@ -9,14 +9,13 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
-    public class TweaksWindow : BetterFGWindow
+    public class TweaksWindow : SideWindow
     {
         public TweaksWindow(IntPtr ptr) : base(ptr) { }
 
         protected override float WindowWidth => 280f;
         protected override float WindowHeight => 220f;
         protected override string WindowTitle => "ui.tweaks";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         // survives the window being destroyed, so backing out of a tweak's config window (or just
         // reopening Tweaks) drops you where you left off instead of back at the top
@@ -46,8 +45,8 @@ namespace BetterFG.UI.Windows
             sfRt.anchorMin = new Vector2(0f, 1f);
             sfRt.anchorMax = new Vector2(1f, 1f);
             sfRt.pivot = new Vector2(0.5f, 1f);
-            sfRt.offsetMin = new Vector2(SEARCH_PAD, -(SEARCH_H + SEARCH_PAD));
-            sfRt.offsetMax = new Vector2(-SEARCH_PAD, -SEARCH_PAD);
+            sfRt.offsetMin = new Vector2(RowLabelX, -(SEARCH_H + SEARCH_PAD));
+            sfRt.offsetMax = new Vector2(-RowRightPad, -SEARCH_PAD);
 
             var scroll = UGUIShip.CreateScrollView(contentRoot,
                 new Rect(0f, 0f, WindowWidth, WindowHeight - TITLE_H - SEARCH_H - SEARCH_PAD * 2f));
@@ -98,13 +97,14 @@ namespace BetterFG.UI.Windows
         private const float TOGGLE_W = 36f;
         private const float TOGGLE_H = 16f;
         private const float PAD = 6f;
-        private const float HEADER_H = 18f;       // tall enough that the scaled title isn't clipped
-        private const float HEADER_LEFT = 22f;    // push right so the sidewheel frame doesn't cut it
+        private const float HEADER_GAP = 10f;
+        private const float HEADER_H = 18f + HEADER_GAP;
+        private const float HEADER_LEFT = SideWindow.RowLabelX;
         private const float HEADER_SCALE = 1.3f;  // literal Text gameObject localScale bump
         private static readonly Color ROW_EVEN = new Color(1f, 1f, 1f, 0.03f);
         private static readonly Color ROW_ODD = new Color(0f, 0f, 0f, 0f);
-        private static readonly Color ON_COL = new Color(0.3f, 0.75f, 0.3f, 1f);
-        private static readonly Color OFF_COL = new Color(0.55f, 0.55f, 0.55f, 1f);
+        private static readonly Color ON_COL = UGUIShip.TOGGLE_ON;
+        private static readonly Color OFF_COL = UGUIShip.TOGGLE_OFF;
         private static readonly Color HEADER_COL = Color.white;
 
         // last list root we built into, so a custom button that flips a tweak's own state (e.g.
@@ -192,10 +192,11 @@ namespace BetterFG.UI.Windows
 
         private static GameObject BuildHeader(RectTransform parent, string title)
         {
+            float gap = parent.childCount == 0 ? 0f : HEADER_GAP;
             var rowGo = new GameObject("Header_" + title);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
-            le.preferredHeight = HEADER_H;
+            le.preferredHeight = HEADER_H - HEADER_GAP + gap;
             le.flexibleWidth = 1f;
 
             var lbl = UGUIShip.CreateLabel(rowGo.transform,
@@ -210,7 +211,7 @@ namespace BetterFG.UI.Windows
             rt.anchorMin = new Vector2(0f, 0.5f);
             rt.anchorMax = new Vector2(0f, 0.5f);
             rt.pivot = new Vector2(0f, 0.5f);
-            rt.anchoredPosition = new Vector2(HEADER_LEFT, 0f);
+            rt.anchoredPosition = new Vector2(HEADER_LEFT, -gap * 0.5f);
             rt.localScale = new Vector3(HEADER_SCALE, HEADER_SCALE, 1f);
             return rowGo;
         }
@@ -226,7 +227,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             // label — stretch fill minus toggle area
-            const float LABEL_X = PAD + 20f;
+            const float LABEL_X = SideWindow.RowLabelX;
             var lbl = UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(LABEL_X, 0f, 200f, ROW_H),
                 tweak.TweakLabel, 13,
@@ -330,13 +331,7 @@ namespace BetterFG.UI.Windows
                 // a tweak with a settings panel needs the whole list rebuilt so the panel appears/
                 // disappears under the row. plain tweaks just recolour the toggle in place.
                 if (hasSettings) { Refresh(); return; }
-                var img = btn.GetComponent<UnityEngine.UI.Image>();
-                if (img != null) img.color = capturedTweak.IsEnabled ? ON_COL : OFF_COL;
-                var cols = btn.colors;
-                cols.normalColor = capturedTweak.IsEnabled ? ON_COL : OFF_COL;
-                cols.highlightedColor = (capturedTweak.IsEnabled ? ON_COL : OFF_COL) * 1.2f;
-                cols.pressedColor = (capturedTweak.IsEnabled ? ON_COL : OFF_COL) * 0.7f;
-                btn.colors = cols;
+                UGUIShip.SetButtonColor(btn, capturedTweak.IsEnabled ? ON_COL : OFF_COL);
                 if (capturedLbl != null) UGUIShip.RelabelText(capturedLbl, capturedTweak.IsEnabled ? "ui.on" : "ui.off");
             }));
 
@@ -372,7 +367,7 @@ namespace BetterFG.UI.Windows
             le.flexibleWidth = 1f;
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
-            const float SET_LABEL_X = PAD + 34f;
+            const float SET_LABEL_X = SideWindow.RowSubLabelX;
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(SET_LABEL_X, 0f, 200f, ROW_H),
                 sl.Label, 12,
@@ -423,7 +418,7 @@ namespace BetterFG.UI.Windows
             le.flexibleWidth = 1f;
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
-            const float SET_LABEL_X = PAD + 34f;
+            const float SET_LABEL_X = SideWindow.RowSubLabelX;
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(SET_LABEL_X, 0f, 200f, ROW_H),
                 string.IsNullOrEmpty(inc.Label) ? "Limit" : inc.Label, 12,
@@ -455,7 +450,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             // label, indented past where the toggle icon sits so it reads as a child setting
-            const float SET_LABEL_X = PAD + 34f;
+            const float SET_LABEL_X = SideWindow.RowSubLabelX;
             UGUIShip.CreateLabel(rowGo.transform,
                 new Rect(SET_LABEL_X, 0f, 240f, ROW_H),
                 setting.Label, 12,

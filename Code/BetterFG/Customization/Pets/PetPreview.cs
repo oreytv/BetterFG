@@ -81,17 +81,6 @@ namespace BetterFG.Customization.Pets
             foreach (var t in bean.GetComponentsInChildren<TMPro.TMP_Text>(true))
                 if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
 
-            // PetBeanBuilder wires the live pet to run through the real, live FallGuysCharacterController
-            // motor - the preview is just a parked display model, it doesn't need any of that
-            // ticking away offscreen, so undo it here rather than teach the shared builder about two
-            // different physics modes
-            foreach (var fgcc in bean.GetComponentsInChildren<FallGuysCharacterController>(true))
-                fgcc.enabled = false;
-            foreach (var rb in bean.GetComponentsInChildren<Rigidbody>(true))
-            { rb.isKinematic = true; rb.useGravity = false; }
-            foreach (var col in bean.GetComponentsInChildren<Collider>(true))
-                UnityEngine.Object.Destroy(col);
-
             GameObjectHelper.SetLayerRecursively(bean, LeaderboardMugshotScene.Layer);
             foreach (var t in bean.GetComponentsInChildren<Transform>(true))
                 t.gameObject.hideFlags = HideFlags.HideAndDontSave;

@@ -13,26 +13,43 @@ using UnityEngine;
 
 namespace BetterFG.Patches
 {
-    // FallFeedNotificationViewModel.ShowMessage has exactly one call site (CreateNotification), so
-    // IL2CPP inlines it away — Harmony reports the patch bound, but it never actually fires. Patch
-    // CreateNotification instead (confirmed firing) and reach into the just-shown row's TMP fields
-    // directly instead of touching FallFeedMessageData's PlayerSlot beyond the one top-level string
-    // (MessageBody) that's proven safe to read here — PlayerSlot.StaticDisplayName crashed the whole
-    // game with an AccessViolationException (dangling native pointer by the time this postfix runs;
-    // PlayerKey never threw only because every read short-circuited on it being empty before reaching
-    // StaticDisplayName). vm._playerNameText.text carries the exact same value — it's what the game
-    // used to populate the row in the first place — and it's a plain Unity Component read, not an
-    // IL2CPP struct marshal, so use that instead of touching the slot at all.
-    //
-    // For qualify/eliminate rows the notification appears the instant the game despawns that player's
-    // bean, so the HUD-row scan in ResolveKeyByDisplayName is chasing a row that's usually already
-    // gone. FeatureTimePlacement.OnServerPlayerProgress has the real key at the moment the server
-    // message lands, so it seeds name->key into NametagIconApplicator as each player finishes/dies
-    // and the lookup here just hits that cache. (An earlier version queued keys and dequeued one per
-    // notification, matching by arrival order — a single missing or extra notification, e.g. a
-    // survival round's end-of-round batch, shifted every later row onto the wrong player's profile.)
     internal static class FallFeedNameCore
     {
+        private static readonly Dictionary<IntPtr, string> _lastRestyleKey = new Dictionary<IntPtr, string>();
+
+        private static string KeyOf(FallFeedNotificationViewModel vm)
+            => (vm._playerNameText?.text ?? "") + "" + (vm._playerNameText2?.text ?? "") + "" + (vm._messageBodyText?.text ?? "");
+
+        internal static void RestyleVm(FallFeedNotificationViewModel vm, string src = "?")
+        {
+            if (vm == null || vm._disposed) return;
+            IntPtr id = vm.Pointer;
+            string keyBefore = KeyOf(vm);
+            if (_lastRestyleKey.TryGetValue(id, out string prev) && prev == keyBefore) return;
+
+            string primaryNameBefore = vm._playerNameText?.text ?? "";
+            string secondaryNameBefore = vm._playerNameText2?.text ?? "";
+            string bodyBefore = vm._messageBodyText?.text ?? "";
+            string localKey = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
+            Plugin.Log.LogInfo($"ff[{src}] vm={id.ToInt64():x} n1='{primaryNameBefore}' n2='{secondaryNameBefore}' body='{bodyBefore}' local='{LocalPlayerInfo.FGlocalplayerusername}'/'{LocalPlayerInfo.DisplayName}'");
+
+            RestyleSlot(vm._platformIconText, vm._playerNameText, localKey, "n1");
+            RestyleSlot(vm._platformIconText2, vm._playerNameText2, localKey, "n2");
+
+            bool primaryIsLocal = IsLocalDisplayName(primaryNameBefore);
+            string primaryKey = primaryIsLocal ? localKey : NametagIconApplicator.ResolveKeyByDisplayName(primaryNameBefore);
+            string qualKey = NametagIconApplicator.ResolveKeyByDisplayName(primaryNameBefore);
+            if (string.IsNullOrEmpty(qualKey) && primaryIsLocal)
+                qualKey = BetterFG.Utilities.PlayerInformation.GetLocalBarePlayerKey();
+            Plugin.Log.LogInfo($"ff[{src}] qual: primaryIsLocal={primaryIsLocal} primaryKey='{primaryKey}' qualKey='{qualKey}'");
+            FallFeedQualTimeTweak.Instance?.Apply(vm._messageBodyText, qualKey);
+
+            vm.RefreshStructuredLayout();
+
+            _lastRestyleKey[id] = KeyOf(vm);
+            Plugin.Log.LogInfo($"ff[{src}] post n1='{vm._playerNameText?.text}' n2='{vm._playerNameText2?.text}'");
+        }
+
         // CreateNotification doesn't hand us the ViewModel it just populated, so find it. Body text
         // alone isn't enough — every elimination (or every player sending the same phrase) shares the
         // exact same MessageBody, so a plain text match grabbed whatever row happened to sit at the
@@ -71,6 +88,7 @@ namespace BetterFG.Patches
         private static void RestoreRowFont(TextMeshProUGUI t)
         {
             t.enableVertexGradient = false;
+            NametagIconApplicator.UnregisterGradient(t);
             if (_rowOrigin.TryGetValue(t.m_CachedPtr, out var o))
             {
                 if (o.Item1 != null) t.font = o.Item1;
@@ -81,6 +99,9 @@ namespace BetterFG.Patches
                 t.fontSharedMaterial = AssetManager.DefaultNameMaterial;
             }
             t.color = Color.white;
+            string cur = t.text ?? "";
+            if (cur.IndexOf('<') >= 0)
+                t.text = System.Text.RegularExpressions.Regex.Replace(cur, "<[^>]*>", "").Trim();
             // rows are pooled - whoever occupied this TMP before may have had an icon attached as a
             // sibling under it (AttachUIIcon), and that icon does NOT get cleared just because the
             // font/material got reset above. left alone it rides along onto whoever reuses this row
@@ -88,17 +109,18 @@ namespace BetterFG.Patches
             NametagIconApplicator.RemoveInlineUIIcon(t.transform);
         }
 
-        internal static void RestyleSlot(TextMeshProUGUI iconText, TextMeshProUGUI nameText, string localKey)
+        internal static void RestyleSlot(TextMeshProUGUI iconText, TextMeshProUGUI nameText, string localKey, string tag = "")
         {
             if (nameText == null) return;
             string displayName = nameText.text ?? "";
-            if (string.IsNullOrEmpty(displayName)) return;
+            if (string.IsNullOrEmpty(displayName)) { Plugin.Log.LogInfo($"ff  slot[{tag}] empty, skip"); return; }
 
             if (!_rowOrigin.ContainsKey(nameText.m_CachedPtr))
                 _rowOrigin[nameText.m_CachedPtr] = new ValueTuple<TMPro.TMP_FontAsset, Material>(nameText.font, nameText.fontSharedMaterial);
 
             bool isLocal = IsLocalDisplayName(displayName);
             string fullKey = isLocal ? localKey : NametagIconApplicator.ResolveKeyByDisplayName(displayName);
+            Plugin.Log.LogInfo($"ff  slot[{tag}] ptr={nameText.m_CachedPtr.ToInt64():x} name='{displayName}' isLocal={isLocal} key='{fullKey}' wasStyled={_styledRows.Contains(nameText.m_CachedPtr)}");
 
             string spriteName = FeatureMorePlatformIcon.SpriteNameForPlayerKey(fullKey);
             // outline sheet (not the plain one) — that's what fall feed used pre-update, since its
@@ -106,18 +128,21 @@ namespace BetterFG.Patches
             // for the 1.8x IconScale every glyph in this sprite asset is baked with (BuildAsset),
             // not something tuned for the old inline-string layout specifically.
             if (!string.IsNullOrEmpty(spriteName) && iconText != null && NametagIconApplicator.ApplyInlinePlatformAssetOutline(iconText))
-                NametagIconApplicator.ApplyInlinePlatform(iconText, spriteName, 0.6f);
+            {
+                if (!iconText.gameObject.activeSelf) iconText.gameObject.SetActive(true);
+                if (!iconText.enabled) iconText.enabled = true;
+                NametagIconApplicator.ApplyInlinePlatform(iconText, spriteName, 0.6f, -0.12f);
+            }
 
             var info = isLocal
                 ? FeatureMorePlatformIcon.LocalNametagInfo()
                 : (RemoteProfileStore.TryGet(fullKey)?.nametag ?? RemoteProfileStore.TryGet(displayName)?.nametag);
+            Plugin.Log.LogInfo($"ff  slot[{tag}] info={(info == null ? "null" : (isLocal ? "LOCAL" : "REMOTE"))} customName='{info?.customName}'");
 
             if (info == null)
             {
-                // only undo our own styling if this exact row carried it — an untouched row is left
-                // exactly as the game rendered it, material included.
-                if (_styledRows.Remove(nameText.m_CachedPtr))
-                    RestoreRowFont(nameText);
+                _styledRows.Remove(nameText.m_CachedPtr);
+                RestoreRowFont(nameText);
                 return;
             }
 
@@ -134,8 +159,39 @@ namespace BetterFG.Patches
 
         internal static bool IsLocalDisplayName(string displayName)
         {
-            string localName = LocalPlayerInfo.FGlocalplayerusername;
-            return !string.IsNullOrEmpty(localName) && displayName.Equals(localName, StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(displayName)) return false;
+            string a = LocalPlayerInfo.FGlocalplayerusername;
+            string b = LocalPlayerInfo.DisplayName;
+            return (!string.IsNullOrEmpty(a) && displayName.Equals(a, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(b) && displayName.Equals(b, StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static void ClearStylingOnDispose(FallFeedNotificationViewModel vm)
+        {
+            if (vm == null) return;
+            ClearSlotStyling(vm._playerNameText);
+            ClearSlotStyling(vm._playerNameText2);
+            _lastRestyleKey.Remove(vm.Pointer);
+        }
+
+        private static void ClearSlotStyling(TextMeshProUGUI t)
+        {
+            if (t == null) return;
+            if (!_rowOrigin.ContainsKey(t.m_CachedPtr)) return;
+            _styledRows.Remove(t.m_CachedPtr);
+            RestoreRowFont(t);
+            t.text = "";
+        }
+
+        internal static bool IsLocalPlayerKey(string playerKey)
+        {
+            if (string.IsNullOrEmpty(playerKey)) return false;
+            string localBare = BetterFG.Utilities.PlayerInformation.GetLocalBarePlayerKey();
+            if (string.IsNullOrEmpty(localBare)) return false;
+            if (playerKey.Equals(localBare, StringComparison.OrdinalIgnoreCase)) return true;
+            string cleanA = FallGuysLib.Players.PlayerUtils.CleanPlayerName(playerKey);
+            string cleanB = FallGuysLib.Players.PlayerUtils.CleanPlayerName(localBare);
+            return !string.IsNullOrEmpty(cleanA) && cleanA.Equals(cleanB, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -148,33 +204,79 @@ namespace BetterFG.Patches
             try
             {
                 if (message == null) return;
-                string body = message.MessageBody ?? "";
-                var vm = FallFeedNameCore.FindShownNotification(__instance._notificationContainer, body);
+                var vm = FallFeedNameCore.FindShownNotification(__instance._notificationContainer, message.MessageBody ?? "");
                 if (vm == null) return;
-
-                string localKey = GlobalGameStateClient.Instance?.GetLocalPlayerKey() ?? "";
-
-                FallFeedNameCore.RestyleSlot(vm._platformIconText, vm._playerNameText, localKey);
-                FallFeedNameCore.RestyleSlot(vm._platformIconText2, vm._playerNameText2, localKey);
-
-                string primaryNameBefore = vm._playerNameText != null ? (vm._playerNameText.text ?? "") : "";
-                bool primaryIsLocal = FallFeedNameCore.IsLocalDisplayName(primaryNameBefore);
-                string primaryKey = primaryIsLocal ? localKey : NametagIconApplicator.ResolveKeyByDisplayName(primaryNameBefore);
-                // _qualTimes is keyed by the bare playerKey (PlayerKeyById), not GlobalGameStateClient's
-                // "<platform>_<service>_<bareKey>" format - only matters for the local player, everyone
-                // else already resolves through that same bare-key space via ResolveKeyByDisplayName.
-                string qualKey = primaryIsLocal ? BetterFG.Utilities.PlayerInformation.GetLocalBarePlayerKey() : primaryKey;
-                FallFeedQualTimeTweak.Instance?.Apply(vm._messageBodyText, qualKey);
-
-                // our text swap can change rendered width (custom name, colour tags, the qual-time
-                // stamp) — the background bubble was already sized off the vanilla text, so it needs
-                // the same refresh the old UI got for free from BuildMessageWithPlayerNames().
-                vm.RefreshStructuredLayout();
+                FallFeedNameCore.RestyleVm(vm, "CreateNotification");
             }
             catch (Exception ex)
             {
                 Plugin.Log.LogWarning("Fallfeedpatch.cs " + ex.Message);
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(FallFeedNotificationViewModel), "ShowMessage")]
+    internal static class FallFeedShowMessagePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FallFeedNotificationViewModel __instance)
+        {
+            try
+            {
+                FallFeedNameCore.RestyleVm(__instance, "ShowMessage");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("Fallfeedpatch.cs " + ex.Message);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(FallFeedNotificationViewModel), "Update")]
+    internal static class FallFeedUpdatePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FallFeedNotificationViewModel __instance)
+        {
+            try { FallFeedNameCore.RestyleVm(__instance, "Update"); }
+            catch (Exception ex) { Plugin.Log.LogWarning("Fallfeedpatch.cs " + ex.Message); }
+        }
+    }
+
+    [HarmonyPatch(typeof(FallFeedNotificationViewModel), "ApplyMultiTMPMode")]
+    internal static class FallFeedApplyMultiTMPModePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FallFeedNotificationViewModel __instance)
+        {
+            try { FallFeedNameCore.RestyleVm(__instance, "MultiTMP"); }
+            catch (Exception ex) { Plugin.Log.LogWarning("Fallfeedpatch.cs " + ex.Message); }
+        }
+    }
+
+    [HarmonyPatch(typeof(FallFeedNotificationViewModel), "ApplyDisconnectFullLineMode")]
+    internal static class FallFeedApplyDisconnectFullLineModePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(FallFeedNotificationViewModel __instance)
+        {
+            try { FallFeedNameCore.RestyleVm(__instance, "DiscFullLine"); }
+            catch (Exception ex) { Plugin.Log.LogWarning("Fallfeedpatch.cs " + ex.Message); }
+        }
+    }
+
+    [HarmonyPatch(typeof(FallFeedNotificationViewModel), "DisposeNotification")]
+    internal static class FallFeedDisposeNotificationPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(FallFeedNotificationViewModel __instance)
+        {
+            try
+            {
+                Plugin.Log.LogInfo($"ff[Dispose] vm={__instance.Pointer.ToInt64():x} n1='{__instance._playerNameText?.text}' n2='{__instance._playerNameText2?.text}'");
+                FallFeedNameCore.ClearStylingOnDispose(__instance);
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning("Fallfeedpatch.cs " + ex.Message); }
         }
     }
 }

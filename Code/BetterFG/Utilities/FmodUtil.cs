@@ -9,6 +9,12 @@ namespace BetterFG.Utilities
     internal static class FmodUtil
     {
         public static int StopSnapshots(Func<string, bool> match)
+            => StopInstances((_, path) => path.StartsWith("snapshot:/") && (match == null || match(path)), FMOD.Studio.STOP_MODE.IMMEDIATE);
+
+        public static int StopLoopingEvents()
+            => StopInstances((description, path) => path.StartsWith("event:/") && description.isOneshot(out bool oneshot) == RESULT.OK && !oneshot, FMOD.Studio.STOP_MODE.ALLOWFADEOUT);
+
+        private static int StopInstances(Func<EventDescription, string, bool> match, FMOD.Studio.STOP_MODE mode)
         {
             int stopped = 0;
             try
@@ -26,23 +32,22 @@ namespace BetterFG.Utilities
                     {
                         if (!description.isValid()) continue;
                         if (description.getPath(out string path) != RESULT.OK) continue;
-                        if (!path.StartsWith("snapshot:/")) continue;
+                        if (!match(description, path)) continue;
                         if (description.getInstanceList(out Il2CppStructArray<EventInstance> instances) != RESULT.OK || instances == null) continue;
 
                         foreach (var instance in instances)
                         {
                             if (!instance.isValid()) continue;
                             instance.getPlaybackState(out PLAYBACK_STATE state);
-                            if (state == PLAYBACK_STATE.STOPPED) continue;
-                            if (match != null && !match(path)) continue;
+                            if (state == PLAYBACK_STATE.STOPPED || state == PLAYBACK_STATE.STOPPING) continue;
 
-                            instance.stop(FMOD.Studio.STOP_MODE.IMMEDIATE);
+                            instance.stop(mode);
                             stopped++;
                         }
                     }
                 }
             }
-            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't sweep snapshots: {ex.Message}"); }
+            catch (Exception ex) { Plugin.Log.LogWarning($"couldn't sweep fmod instances: {ex.Message}"); }
             return stopped;
         }
 

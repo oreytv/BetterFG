@@ -39,6 +39,7 @@ namespace BetterFG.Customization.Pets
         const float VerticalDrag = 0.1f;
         const float TargetSmoothSpeed = 6f;
         const float CollisionScanInterval = 0.25f;
+        const float BeanPairInterval = 5f;
         const float DynamicIgnoreRadius = 4f; // loose props within this get paired off before the pet can shove them
         const float TeleportBackDistance = 15f;
         const float TeleportBackCheckInterval = 2f;
@@ -65,6 +66,7 @@ namespace BetterFG.Customization.Pets
         MotorTaskGrab _grabTask;
         RagdollController _ragdoll;
         float _collisionScanTimer;
+        float _beanPairTimer;
         float _teleportBackTimer;
         float _jumpTimer;
         float _idleTimer;
@@ -319,7 +321,12 @@ namespace BetterFG.Customization.Pets
             _collisionScanTimer -= Time.deltaTime;
             if (_collisionScanTimer > 0f) return;
             _collisionScanTimer = CollisionScanInterval;
-            IgnoreCollisions(pairAgainstOtherPets: false);
+
+            _beanPairTimer -= CollisionScanInterval;
+            bool pairBeans = _beanPairTimer <= 0f;
+            if (pairBeans) _beanPairTimer = BeanPairInterval;
+
+            IgnoreCollisions(pairAgainstOtherPets: false, pairAgainstAllBeans: pairBeans);
         }
 
         static readonly Collider[] _overlapScratch = new Collider[32];
@@ -340,7 +347,7 @@ namespace BetterFG.Customization.Pets
         // it), so a pair only needs setting up ONCE, by whichever pet spawns second. Redoing every
         // pet-vs-every-other-pet pairing on every periodic scan was pure O(petCount^2) waste for
         // nothing - the pairs were already permanent.
-        void IgnoreCollisions(bool pairAgainstOtherPets)
+        void IgnoreCollisions(bool pairAgainstOtherPets, bool pairAgainstAllBeans = true)
         {
             if (_ownColliders == null || _ownColliders.Length == 0) return;
 
@@ -356,8 +363,9 @@ namespace BetterFG.Customization.Pets
             }
 
             IgnoreAgainst(OwnerOverride != null ? OwnerOverride : BeanMonitorService.LocalPlayerBean);
-            foreach (var bean in BeanMonitorService.GetTrackedBeans())
-                IgnoreAgainst(bean);
+            if (pairAgainstAllBeans)
+                foreach (var bean in BeanMonitorService.GetTrackedBeans())
+                    IgnoreAgainst(bean);
             // and every other pet - otherwise a pack of them shoves each other around
             if (pairAgainstOtherPets && PetService.Instance != null)
                 foreach (var petGo in PetService.Instance.LivePetObjects)

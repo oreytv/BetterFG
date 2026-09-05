@@ -12,6 +12,7 @@ Code/BetterFG.Installer/payload/
 Code/BetterFG.Installer/payload_stage/
 Code/BetterFG.Installer/plugin_only_stage/
 Code/BetterFG.Installer/publish/
+Code/prompt_mod.state.json
 
 _creator_deploy_test/
 .roundtemplate_pkg/

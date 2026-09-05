@@ -1,5 +1,5 @@
 using System;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Services;
 using UnityEngine;
 using UnityEngine.UI;
@@ -7,7 +7,7 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs
 {
-    public enum UIForegroundKind { CustomUI, Qualified, Eliminated, EliminatedSquad, Winner, RoundOver }
+    public enum UIForegroundKind { CustomUI, Qualified, Eliminated, EliminatedSquad, Winner, RoundOver, Nametag }
 
     public partial class UIForegroundDetailTab : UISubTab
     {
@@ -15,7 +15,7 @@ namespace BetterFG.UI.Tabs
 
         public UIForegroundKind What;
 
-        public override string TabTitle => "UI - " + Label(What) + Label(What);
+        public override string TabTitle => "UI - " + Label(What);
 
         public static string Label(UIForegroundKind k)
         {
@@ -26,6 +26,7 @@ namespace BetterFG.UI.Tabs
                 case UIForegroundKind.EliminatedSquad: return "Squad eliminated banner";
                 case UIForegroundKind.Winner: return "Winner banner";
                 case UIForegroundKind.RoundOver: return "Round over banner";
+                case UIForegroundKind.Nametag: return "Nametag options";
                 default: return "Custom UI colours";
             }
         }
@@ -43,23 +44,15 @@ namespace BetterFG.UI.Tabs
             var bodyRt = bodyGo.AddComponent<RectTransform>();
             UGUIShip.SetPixelRect(bodyRt, new Rect(0f, y, TabWidth, bodyH));
 
-            if (What == UIForegroundKind.CustomUI)
-            {
-                LoadSettings();
-                BuildFgPanel(bodyRt, PAD, 0f, w, bodyH);
-            }
-            else
-            {
-                BuildBannerPanel(bodyRt, PAD, 0f, w, bodyH, What);
-                RefreshBannerPreview();
-            }
+            BuildBannerPanel(bodyRt, PAD, 0f, w, bodyH, What);
+            RefreshBannerPreview();
 
             float by = y + bodyH + PAD;
             UGUIShip.CreatePanel(contentRoot, new Rect(PAD, by, w, 1f), new Color(1f, 1f, 1f, 0.06f));
             by += 1f + PAD;
             float btnw = (w - PAD) / 3f;
             UGUIShip.CreateButton(contentRoot, new Rect(PAD, by, btnw, BTN_H),
-                "ui.apply", BTN_APPLY, WHITE, FS, new Action(OnApplyClicked));
+                "ui.apply", BTN_APPLY, WHITE, FS, new Action(() => OnBannerApply(What)));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + btnw + PAD * 0.5f, by, btnw, BTN_H),
                 "ui.enable_all_2", BTN_ON, WHITE, FS_SM, new Action(() => SetAllEnabled(true)));
             UGUIShip.CreateButton(contentRoot, new Rect(PAD + (btnw + PAD * 0.5f) * 2f, by, btnw, BTN_H),
@@ -68,16 +61,8 @@ namespace BetterFG.UI.Tabs
             PositionSwitchLink();
         }
 
-        private void OnApplyClicked()
-        {
-            if (What == UIForegroundKind.CustomUI) OnApply();
-            else OnBannerApply(What);
-        }
-
         private void SetAllEnabled(bool on)
         {
-            if (What == UIForegroundKind.CustomUI) { SetAllCustomEnabled(on); OnApply(); return; }
-
             var def = GetBannerDef(What);
             if (def == null) return;
             def.enabled = on;
@@ -89,13 +74,6 @@ namespace BetterFG.UI.Tabs
             SetBannerToggle(def.highlight.ui, on);
             UpdateBannerPreviewColours();
             OnBannerApply(What);
-        }
-
-        private static void SetToggle(Button btn, bool on)
-        {
-            var lbl = btn?.GetComponentInChildren<Text>();
-            if (lbl != null) UGUIShip.RelabelText(lbl, on ? "ui.on" : "ui.off");
-            UGUIShip.SetButtonSelected(btn, on, SEL_COLOR);
         }
     }
 }

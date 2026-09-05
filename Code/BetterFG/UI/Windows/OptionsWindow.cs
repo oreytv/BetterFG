@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BetterFG.Services;
 using BetterFG.UI;
 using UnityEngine;
@@ -7,19 +7,18 @@ using BettrFG.uGUI;
 
 namespace BetterFG.UI.Windows
 {
-    public class OptionsWindow : BetterFGWindow
+    public class OptionsWindow : SideWindow
     {
         public OptionsWindow(IntPtr ptr) : base(ptr) { }
 
         protected override float WindowWidth => 280f;
-        protected override float WindowHeight => 160f;
+        protected override float WindowHeight => 220f;
         protected override string WindowTitle => "ui.bettrfg_options";
-        protected override string BgResourceName => "BetterFG.assets.ui.windows.generalbg.png";
 
         protected override void BuildContent(RectTransform contentRoot)
         {
-            BgPosition = new Vector3(139.3993f, 55.0135f, 0f);
-            BgScale = new Vector3(1.3415f, 5.3623f, 1f);
+            BgPosition = new Vector3(139.3993f, 74.9552f, 0f);
+            BgScale = new Vector3(1.3415f, 4.5877f, 1f);
             ContentPosition = new Vector3(-1.6132f, -17.32f, 0f);
             ContentScale = new Vector3(1.0473f, 1.04f, 1f);
             ContentOffsetMin = new Vector2(-1.6132f, -25.92f);
@@ -38,8 +37,8 @@ namespace BetterFG.UI.Windows
             sfRt.anchorMin = new Vector2(0f, 1f);
             sfRt.anchorMax = new Vector2(1f, 1f);
             sfRt.pivot = new Vector2(0.5f, 1f);
-            sfRt.offsetMin = new Vector2(SEARCH_PAD, -(SEARCH_H + SEARCH_PAD));
-            sfRt.offsetMax = new Vector2(-SEARCH_PAD, -SEARCH_PAD);
+            sfRt.offsetMin = new Vector2(RowLabelX, -(SEARCH_H + SEARCH_PAD));
+            sfRt.offsetMax = new Vector2(-RowRightPad, -SEARCH_PAD);
 
             var scroll = UGUIShip.CreateScrollView(contentRoot,
                 new Rect(0f, 0f, WindowWidth, WindowHeight - TITLE_H - SEARCH_H - SEARCH_PAD * 2f));
@@ -74,12 +73,14 @@ namespace BetterFG.UI.Windows
         private const float ROW_H = 22f;
         // row width isn't the full 280 window — CreateScrollView insets its viewport by
         // SCROLLBAR_INSET on both sides for the scrollbar, so the actual row content is narrower.
-        private const float WINDOW_W = 280f - 2f * UGUIShip.SCROLLBAR_INSET;
+        private const float WINDOW_W = 280f - 2f * UGUIShip.SCROLLBAR_INSET + SideWindow.RowsLeftShift;
         private const float BTN_W = 80f;
         private const float BTN_H = 16f;
         private const float PAD = 6f;
-        private const float HEADER_H = 18f;       // tall enough that the scaled title isn't clipped
-        private const float HEADER_LEFT = 22f;    // push right so the sidewheel frame doesn't cut it
+        private const float HEADER_GAP = 10f;
+        private const float HEADER_H = 18f + HEADER_GAP;
+        private const float HEADER_LEFT = SideWindow.RowLabelX;
+        private const float LABEL_X = SideWindow.RowLabelX;
         private const float HEADER_SCALE = 1.3f;  // literal Text gameObject localScale bump
         private static readonly Color ROW_EVEN = new Color(1f, 1f, 1f, 0.03f);
         private static readonly Color ROW_ODD = new Color(0f, 0f, 0f, 0f);
@@ -143,26 +144,31 @@ namespace BetterFG.UI.Windows
 
         public static void BuildRows(RectTransform parent)
         {
-            // ── Scale ─────────────────────────────────────────────────────────
-            BuildHeader(parent, "ui.scale");
+            // ── General ───────────────────────────────────────────────────────
+            BuildHeader(parent, "options.header_general");
             const float uiMin = 0.6f, uiMax = 1.8f;
             BuildSliderRow(parent, "ui.bettrfg_ui", ROW_EVEN, uiMin, uiMax,
                 () => UIScaleService.Current,
                 v => UIScaleService.SetValue(v),
                 v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 () => UIScaleService.SetEnabled(true), 1.2f);
-
-            // ── Language ──────────────────────────────────────────────────────
-            BuildHeader(parent, "ui.language");
-            BuildLanguageRow(parent, ROW_EVEN, ROW_ODD);
-
-            // ── Customization ─────────────────────────────────────────────────
-            BuildHeader(parent, "ui.customization");
-            BuildBackdropRow(parent, ROW_ODD);
-            BuildSliderRow(parent, "ui.bg_opacity", ROW_EVEN, 0f, 1f,
+            BuildLanguageRow(parent, ROW_ODD);
+            BuildFontRow(parent, ROW_EVEN);
+            BuildIncrementerRow(parent, "ui.max_tab_amount", ROW_ODD, 1, 5,
+                () => int.TryParse(SettingsService.Get(KEY_MAX_TABS, "3"), out int v) ? Mathf.Clamp(v, 1, 5) : 3,
+                v =>
+                {
+                    if (BetterFGUIMan.Instance != null) BetterFGUIMan.Instance.SetMaxTabs(v);
+                    else SettingsService.Set(KEY_MAX_TABS, v.ToString());
+                });
+            BuildBackdropRow(parent, ROW_EVEN);
+            BuildSliderRow(parent, "ui.bg_opacity", ROW_ODD, 0f, 1f,
                 () => BetterFGUIMan.BackdropOpacity,
                 v => { if (BetterFGUIMan.Instance != null) BetterFGUIMan.Instance.SetBackdropOpacity(v); },
                 v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), null, 1f);
+            BuildToggleRow(parent, "options.tab_switch_tooltip", ROW_EVEN,
+                () => SettingsService.Get(Tab.KEY_TAB_SWITCH_TOOLTIP, "true") == "true",
+                v => SettingsService.Set(Tab.KEY_TAB_SWITCH_TOOLTIP, v ? "true" : "false"));
 
             // ── Tab hover background ──────────────────────────────────────────
             // the faint pic behind a tab title on hover. optionally keep it visible always at a
@@ -189,20 +195,10 @@ namespace BetterFG.UI.Windows
                 () => TabHoverStyle.IdleAlpha,
                 v => { TabHoverStyle.IdleAlpha = v; TabHoverStyle.Save(); TabHoverStyle.ApplyAll(); },
                 v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), null, 0.25f);
-            BuildColorRow(parent, "ui.tint", ROW_EVEN,
+            BuildColorRow(parent, "options.tint", ROW_EVEN,
                 () => TabHoverStyle.Tint,
                 c => { TabHoverStyle.Tint = c; TabHoverStyle.Save(); TabHoverStyle.ApplyAll(); },
                 c => { if (swImg != null) swImg.color = c; }, Color.white);
-
-            // ── Tabs ──────────────────────────────────────────────────────────
-            BuildHeader(parent, "ui.tabs");
-            BuildIncrementerRow(parent, "ui.max_tab_amount", ROW_ODD, 1, 5,
-                () => int.TryParse(SettingsService.Get(KEY_MAX_TABS, "3"), out int v) ? Mathf.Clamp(v, 1, 5) : 3,
-                v =>
-                {
-                    if (BetterFGUIMan.Instance != null) BetterFGUIMan.Instance.SetMaxTabs(v);
-                    else SettingsService.Set(KEY_MAX_TABS, v.ToString());
-                });
 
             // ── Keybinds ──────────────────────────────────────────────────────
             BuildHeader(parent, "ui.keyboard");
@@ -250,13 +246,12 @@ namespace BetterFG.UI.Windows
                 }
             });
 
-            BuildHeader(parent, "ui.discord");
+            // ── Misc ──────────────────────────────────────────────────────────
+            BuildHeader(parent, "options.header_misc");
             BuildToggleRow(parent, "ui.rich_presence", ROW_ODD,
                 () => DiscordPresenceService.Enabled,
                 v => DiscordPresenceService.SetEnabled(v));
-
-            BuildHeader(parent, "ui.bug_report");
-            BuildActionRow(parent, "ui.make_safe_log_copies", ROW_ODD,
+            BuildActionRow(parent, "ui.make_safe_log_copies", ROW_EVEN,
                 () => BugReportService.Export(true), "ui.make");
         }
 
@@ -272,7 +267,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(LABEL_X, 0f,150f, ROW_H),
                 label, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             var btnGo = new GameObject("ActionBtn");
@@ -301,7 +296,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 200f, ROW_H),
+                new Rect(LABEL_X, 0f,200f, ROW_H),
                 label, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             var toggleW = 44f;
@@ -314,8 +309,8 @@ namespace BetterFG.UI.Windows
             btnRt.sizeDelta = new Vector2(toggleW, BTN_H);
 
             bool state = get();
-            var onColor = new Color(0.25f, 0.5f, 0.25f, 1f);
-            var offColor = new Color(0.28f, 0.28f, 0.28f, 1f);
+            var onColor = UGUIShip.TOGGLE_ON;
+            var offColor = UGUIShip.TOGGLE_OFF;
             var btn = UGUIShip.CreateButton(btnGo.transform,
                 new Rect(0f, 0f, toggleW, BTN_H),
                 state ? "ui.on" : "ui.off",
@@ -338,20 +333,21 @@ namespace BetterFG.UI.Windows
             var innerSet = set;
             set = c => { innerSet(c); onChange?.Invoke(c); };
             Func<float, string> fmt = v => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-            BuildSliderRow(parent, label + " R", bg, 0f, 1f,
+            BuildSliderRow(parent, label + "_r", bg, 0f, 1f,
                 () => get().r, v => { var c = get(); set(new Color(v, c.g, c.b)); }, fmt, null, resetTo?.r);
-            BuildSliderRow(parent, label + " G", bg, 0f, 1f,
+            BuildSliderRow(parent, label + "_g", bg, 0f, 1f,
                 () => get().g, v => { var c = get(); set(new Color(c.r, v, c.b)); }, fmt, null, resetTo?.g);
-            BuildSliderRow(parent, label + " B", bg, 0f, 1f,
+            BuildSliderRow(parent, label + "_b", bg, 0f, 1f,
                 () => get().b, v => { var c = get(); set(new Color(c.r, c.g, v)); }, fmt, null, resetTo?.b);
         }
 
         private static void BuildHeader(RectTransform parent, string title)
         {
+            float gap = parent.childCount == 0 ? 0f : HEADER_GAP;
             var rowGo = new GameObject("Header_" + title);
             rowGo.transform.SetParent(parent, false);
             var le = rowGo.AddComponent<LayoutElement>();
-            le.preferredHeight = HEADER_H;
+            le.preferredHeight = HEADER_H - HEADER_GAP + gap;
             le.flexibleWidth = 1f;
 
             var lbl = UGUIShip.CreateLabel(rowGo.transform,
@@ -364,7 +360,7 @@ namespace BetterFG.UI.Windows
             rt.anchorMin = new Vector2(0f, 0.5f);
             rt.anchorMax = new Vector2(0f, 0.5f);
             rt.pivot = new Vector2(0f, 0.5f);
-            rt.anchoredPosition = new Vector2(HEADER_LEFT, 0f);
+            rt.anchoredPosition = new Vector2(HEADER_LEFT, -gap * 0.5f);
             rt.localScale = new Vector3(HEADER_SCALE, HEADER_SCALE, 1f);
         }
 
@@ -385,7 +381,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 90f, ROW_H),
+                new Rect(LABEL_X, 0f,90f, ROW_H),
                 label, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             // value label hugs the right edge
@@ -401,7 +397,7 @@ namespace BetterFG.UI.Windows
 
             // shared delux slider (same widget nametag/menu tabs use — tints with the rest of the UI).
             // min/max here is an arbitrary range; CreateSlider only knows 0..1, so normalize in/out.
-            float sldX = PAD + 110f;
+            float sldX = SideWindow.RowLabelX + 90f;
             float sldW = WINDOW_W - sldX - (PAD + valW + 6f);
             float t0 = Mathf.InverseLerp(min, max, Mathf.Clamp(get(), min, max));
             var slider = UGUIShip.CreateSlider(rowGo.transform, sldX, 0f, sldW, "", t0, ROW_H, 0f, 13,
@@ -437,7 +433,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(LABEL_X, 0f,150f, ROW_H),
                 label, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             const float btnW = 18f, valW = 26f;
@@ -470,7 +466,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 120f, PREV + 8f),
+                new Rect(LABEL_X, 0f,120f, PREV + 8f),
                 "ui.backdrop", 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             int idx = BetterFGUIMan.BackdropIndex;
@@ -523,56 +519,11 @@ namespace BetterFG.UI.Windows
             Step("+", -PAD, +1);
         }
 
-        // import/export row (sits above the cycle row) + the cycle row itself: label + [-] <code> [+],
-        // cycling LocalizationService.AvailableLanguages. switches live — every BfgLocalizedText in
-        // the whole UI (any window/tab already open) re-resolves on LanguageChanged, no rebuild needed.
-        private static void BuildLanguageRow(RectTransform parent, Color ioBg, Color cycleBg)
+        // label + [-] <code> [+], cycling LocalizationService.AvailableLanguages. switches live —
+        // every bound Text in the whole UI (any window/tab already open) re-resolves on
+        // SetLanguage, no rebuild needed.
+        private static void BuildLanguageRow(RectTransform parent, Color cycleBg)
         {
-            // ── import / export ──
-            var ioRow = new GameObject("LanguageIoRow");
-            ioRow.transform.SetParent(parent, false);
-            var ioLe = ioRow.AddComponent<LayoutElement>();
-            ioLe.preferredHeight = ROW_H;
-            ioLe.flexibleWidth = 1f;
-            UGUIShip.PaintStaticRowFill(ioRow, ioBg);
-
-            UGUIShip.CreateLabel(ioRow.transform,
-                new Rect(PAD + 20f, 0f, 150f, ROW_H),
-                "ui.import_export", 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
-
-            Text codeLbl = null; // filled in below once the cycle row exists
-
-            void IoButton(string key, float anchoredX, Action onClick)
-            {
-                var go = new GameObject("Io_" + key);
-                go.transform.SetParent(ioRow.transform, false);
-                var rt = go.AddComponent<RectTransform>();
-                rt.anchorMin = rt.anchorMax = new Vector2(1f, 0.5f);
-                rt.pivot = new Vector2(1f, 0.5f);
-                rt.anchoredPosition = new Vector2(anchoredX, 0f);
-                rt.sizeDelta = new Vector2(BTN_W, BTN_H);
-                UGUIShip.CreateButton(go.transform, new Rect(0f, 0f, BTN_W, BTN_H), key, BTN_IDLE, Color.white, 11)
-                    .onClick.AddListener(new Action(onClick));
-            }
-
-            IoButton("ui.import", -(PAD + BTN_W + PAD), () =>
-            {
-                WinDialogs.PickFile("Import BettrFG Localization", path =>
-                {
-                    if (string.IsNullOrEmpty(path)) return;
-                    if (LocalizationService.LoadFromFile(path) && codeLbl != null)
-                        codeLbl.text = LocalizationService.CurrentLanguage;
-                }, "BettrFG Localization\0*.bak\0All Files\0*.*\0");
-            });
-            IoButton("ui.export", -PAD, () =>
-            {
-                WinDialogs.SaveFile("Export BettrFG Localization", "bak", "localization", path =>
-                {
-                    if (!string.IsNullOrEmpty(path)) LocalizationService.ExportToFile(path);
-                });
-            });
-
-            // ── cycle row ──
             const float STEP = 18f;
             var rowGo = new GameObject("LanguageRow");
             rowGo.transform.SetParent(parent, false);
@@ -582,15 +533,14 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, cycleBg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(LABEL_X, 0f,150f, ROW_H),
                 "ui.language", 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             // not a translatable string — a raw language code — so the auto-attached localization
             // binding (which would key off whatever code was on screen at creation time and never
             // track the real current language) gets stripped right away in favor of setting it by hand.
-            codeLbl = UGUIShip.CreateStretchLabel(rowGo.transform, LocalizationService.CurrentLanguage, 12, Color.white);
-            var staleBind = codeLbl.GetComponent<BetterFG.UI.Components.BfgLocalizedText>();
-            if (staleBind != null) UnityEngine.Object.Destroy(staleBind);
+            var codeLbl = UGUIShip.CreateStretchLabel(rowGo.transform, LocalizationService.CurrentLanguage, 12, Color.white);
+            LocalizationService.Unbind(codeLbl);
             codeLbl.text = LocalizationService.CurrentLanguage;
             var codeRt = codeLbl.GetComponent<RectTransform>();
             codeRt.anchorMin = codeRt.anchorMax = new Vector2(1f, 0.5f);
@@ -618,6 +568,61 @@ namespace BetterFG.UI.Windows
             Step("+", -(PAD + STEP + 48f), +1);
         }
 
+        private static void BuildFontRow(RectTransform parent, Color bg)
+        {
+            const float STEP = 18f;
+            var rowGo = new GameObject("FontRow");
+            rowGo.transform.SetParent(parent, false);
+            var le = rowGo.AddComponent<LayoutElement>();
+            le.preferredHeight = ROW_H;
+            le.flexibleWidth = 1f;
+            UGUIShip.PaintStaticRowFill(rowGo, bg);
+
+            UGUIShip.CreateLabel(rowGo.transform,
+                new Rect(LABEL_X, 0f,100f, ROW_H),
+                "font.mod_ui_font", 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
+
+            int Idx()
+            {
+                for (int i = 0; i < UGUIShip.AvailableFonts.Length; i++)
+                    if (UGUIShip.AvailableFonts[i].Code == UGUIShip.SelectedFontCode) return i;
+                return 0;
+            }
+
+            var nameLbl = UGUIShip.CreateStretchLabel(rowGo.transform,
+                UGUIShip.AvailableFonts[Idx()].DisplayName, 12, Color.white);
+            LocalizationService.Unbind(nameLbl);
+            nameLbl.text = UGUIShip.AvailableFonts[Idx()].DisplayName;
+            var nameRt = nameLbl.GetComponent<RectTransform>();
+            nameRt.anchorMin = nameRt.anchorMax = new Vector2(1f, 0.5f);
+            nameRt.pivot = new Vector2(1f, 0.5f);
+            nameRt.sizeDelta = new Vector2(90f, ROW_H);
+            nameRt.anchoredPosition = new Vector2(-(PAD + STEP + 4f), 0f);
+
+            void Step(string glyph, float anchoredX, int delta)
+            {
+                var go = new GameObject("Step" + glyph);
+                go.transform.SetParent(rowGo.transform, false);
+                var rt = go.AddComponent<RectTransform>();
+                rt.anchorMin = rt.anchorMax = new Vector2(1f, 0.5f);
+                rt.pivot = new Vector2(1f, 0.5f);
+                rt.anchoredPosition = new Vector2(anchoredX, 0f);
+                rt.sizeDelta = new Vector2(STEP, STEP);
+                UGUIShip.CreateButton(go.transform, new Rect(0f, 0f, STEP, STEP), glyph, BTN_IDLE, Color.white, 12)
+                    .onClick.AddListener(new Action(() =>
+                    {
+                        int n = UGUIShip.AvailableFonts.Length;
+                        int next = ((Idx() + delta) % n + n) % n;
+                        var pick = UGUIShip.AvailableFonts[next];
+                        UGUIShip.SetFontByCode(pick.Code);
+                        SettingsService.Set("font.family", pick.Code);
+                        nameLbl.text = pick.DisplayName;
+                    }));
+            }
+            Step("-", -PAD, -1);
+            Step("+", -(PAD + STEP + 98f), +1);
+        }
+
         // controller button bind row: label + a record button showing the bound button's name
         private static void BuildControllerRow(RectTransform parent, ControllerBindId id, string label, Color bg)
         {
@@ -629,7 +634,7 @@ namespace BetterFG.UI.Windows
             UGUIShip.PaintStaticRowFill(rowGo, bg);
 
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 150f, ROW_H),
+                new Rect(LABEL_X, 0f,150f, ROW_H),
                 label, 13, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleLeft);
 
             var btnGo = new GameObject("RecordBtn");
@@ -666,7 +671,7 @@ namespace BetterFG.UI.Windows
 
             // label — same offset/style as TweaksWindow
             UGUIShip.CreateLabel(rowGo.transform,
-                new Rect(PAD + 20f, 0f, 200f, ROW_H),
+                new Rect(LABEL_X, 0f,200f, ROW_H),
                 entry.Label, 13,
                 new Color(1f, 1f, 1f, 0.85f),
                 TextAnchor.MiddleLeft);
@@ -707,13 +712,7 @@ namespace BetterFG.UI.Windows
         private static void Apply(Button btn, string text, Color color)
         {
             if (btn == null) return;
-            var img = btn.GetComponent<Image>();
-            if (img != null) img.color = color;
-            var cols = btn.colors;
-            cols.normalColor = color;
-            cols.highlightedColor = color * 1.2f;
-            cols.pressedColor = color * 0.7f;
-            btn.colors = cols;
+            UGUIShip.SetButtonColor(btn, color);
             var lbl = btn.GetComponentInChildren<Text>();
             if (lbl != null) UGUIShip.RelabelText(lbl, text);
         }

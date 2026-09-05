@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using UnityEngine;
 using UnityEngine.UI;
 using BettrFG.uGUI;

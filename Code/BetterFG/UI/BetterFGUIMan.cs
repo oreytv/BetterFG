@@ -113,6 +113,7 @@ namespace BetterFG.UI
         {
             public string Title;
             public string TitleId;
+            public string BgResource;
             public Func<Tab> Factory;
         }
 
@@ -125,14 +126,14 @@ namespace BetterFG.UI
         // own title bar uses, without touching that identity.
         public static void Register<T>() where T : Tab
         {
-            string title = ReadTitle<T>(out string titleId);
+            string title = ReadTitle<T>(out string titleId, out string bgRes);
             if (string.IsNullOrEmpty(title)) return;
 
             for (int i = 0; i < _entries.Count; i++)
                 if (_entries[i].Title == title)
                     return;
 
-            _entries.Add(new TabEntry { Title = title, TitleId = titleId, Factory = () => NewTab<T>() });
+            _entries.Add(new TabEntry { Title = title, TitleId = titleId, BgResource = bgRes, Factory = () => NewTab<T>() });
         }
 
         public static Tab CreateTab(string title)
@@ -177,18 +178,20 @@ namespace BetterFG.UI
             return go.AddComponent<T>();
         }
 
-        private static string ReadTitle<T>() where T : Tab => ReadTitle<T>(out _);
+        private static string ReadTitle<T>() where T : Tab => ReadTitle<T>(out _, out _);
+        private static string ReadTitle<T>(out string titleId) where T : Tab => ReadTitle<T>(out titleId, out _);
 
         // read TabTitle (+ its optional TitleId) off an inactive throwaway: keeping it inactive defers
         // Awake so its bindings never fire, and both are plain constant getters that don't need the
         // instance built
-        private static string ReadTitle<T>(out string titleId) where T : Tab
+        private static string ReadTitle<T>(out string titleId, out string bgResource) where T : Tab
         {
             var go = new GameObject("_tmpTab");
             go.SetActive(false);
             var tab = go.AddComponent<T>();
             string title = tab.TabTitle;
             titleId = tab.TitleLocId;
+            bgResource = tab.BgResourceName;
             UnityEngine.Object.Destroy(go);
             return title;
         }
@@ -258,6 +261,7 @@ namespace BetterFG.UI
         public bool instant = false;
         // per-instance delay override. negative = fall back to the shared Tooltip.HoverDelay.
         public float delay = -1f;
+        public bool tabSwitch = false;
         // optional: a UI image (usually a faint background behind the trigger's label) shown only
         // while hovered, so the user can see something is hoverable before the tooltip pops.
         public GameObject hoverImage;
@@ -269,10 +273,21 @@ namespace BetterFG.UI
 
         void Awake() => _rt = GetComponent<RectTransform>();
 
+        private bool _locSubscribed;
+
         void OnEnable()
         {
-            if (locId == null) return;
+            if (locId == null || _locSubscribed) return;
             LocalizationService.LanguageChanged += RefreshLoc;
+            _locSubscribed = true;
+            RefreshLoc();
+        }
+
+        internal void InstallLoc()
+        {
+            if (locId == null || _locSubscribed) return;
+            LocalizationService.LanguageChanged += RefreshLoc;
+            _locSubscribed = true;
             RefreshLoc();
         }
 
@@ -285,6 +300,13 @@ namespace BetterFG.UI
             // hid whatever was up), and there's one of these on every tweak row — so take the managed
             // bool check before any of the il2cpp work below.
             if (!instant && BetterFGUIMan.Instance != null && !BetterFGUIMan.Instance.IsVisible) { _t = 0f; return; }
+
+            if (tabSwitch && SettingsService.Get(Tab.KEY_TAB_SWITCH_TOOLTIP, "true") != "true")
+            {
+                if (_shown) { BetterFGUIMan.Instance?.HideTooltip(); _shown = false; }
+                _t = 0f;
+                return;
+            }
 
             if (!BetterFGUIMan.UnityMouseReady())
             {
@@ -321,7 +343,7 @@ namespace BetterFG.UI
         {
             if (_shown) { BetterFGUIMan.Instance?.HideTooltip(); _shown = false; _t = 0f; }
             if (hoverImage != null) hoverImage.SetActive(false);
-            if (locId != null) LocalizationService.LanguageChanged -= RefreshLoc;
+            if (_locSubscribed) { LocalizationService.LanguageChanged -= RefreshLoc; _locSubscribed = false; }
         }
     }
 
@@ -560,14 +582,16 @@ namespace BetterFG.UI
                     }
                 }
 
-                // deselect any focused input field when clicking outside it
+                // deselect one of OUR OWN focused input fields when clicking outside it. must not
+                // touch a Fall Guys field (chat, name entry, "Enter Code") - deselecting one of
+                // those out from under the game fires ITS OnDeselect at a time the game never
+                // expected, which is exactly what an alt-tab refocus click can do (the click that
+                // brings the window back lands through to us, wherever the mouse happens to be).
                 var es = UnityEngine.EventSystems.EventSystem.current;
-                if (es != null && es.currentSelectedGameObject != null)
+                if (es != null && _navSelIsField && (_navSelUnderMain || _navSelIsOurs) && es.currentSelectedGameObject != null)
                 {
                     var sel = es.currentSelectedGameObject;
-                    if (sel.activeInHierarchy
-                        && (sel.GetComponent<UnityEngine.UI.InputField>() != null
-                            || sel.GetComponent<TMPro.TMP_InputField>() != null))
+                    if (sel.activeInHierarchy)
                     {
                         var selRt = sel.GetComponent<RectTransform>();
                         if (selRt != null && !RectTransformUtility.RectangleContainsScreenPoint(
@@ -583,6 +607,123 @@ namespace BetterFG.UI
                 _tooltip.FollowMouse(_overlayCanvas);
 
             _dropdown.Tick();
+
+            TickTabDrag();
+        }
+
+        // ── Drag-to-reorder tabs ──────────────────────────────────────────────
+        private int _dragSlot = -1;
+        private bool _dragStarted;
+        private float _dragGrabOffsetX;
+        private float _dragStartMouseX;
+        private float _dragLastMouseX;
+        private float _dragVelX;
+        private Tab _dragSuppressClickTab;
+        private readonly float[] _springVelX = new float[MAX_SLOTS_CAP + 1];
+        private const float DRAG_THRESHOLD = 8f;
+        private const float SPRING_K = 260f;
+        private const float SPRING_DAMP = 14f;
+
+        public bool ConsumeTitleDragSuppression(Tab t)
+        {
+            if (_dragSuppressClickTab == t) { _dragSuppressClickTab = null; return true; }
+            return false;
+        }
+
+        private float SlotTargetX(int idx) => _startX + idx * (TAB_W + TAB_GAP);
+
+        private void TickTabDrag()
+        {
+            if (!_visible)
+            {
+                if (_dragSlot >= 0) { _dragSlot = -1; _dragStarted = false; }
+                return;
+            }
+
+            if (_dragSlot < 0 && !_dropdown.IsOpen && Input.GetMouseButtonDown(0) && UnityMouseReady())
+            {
+                var mp = new Vector2(Input.mousePosition.x, Input.mousePosition.y);
+                for (int i = 0; i < _tabs.Count; i++)
+                {
+                    var trt = _tabs[i]?.TitleRt;
+                    if (trt == null) continue;
+                    if (!RectTransformUtility.RectangleContainsScreenPoint(trt, mp, null)) continue;
+                    _dragSlot = i;
+                    _dragStartMouseX = mp.x;
+                    _dragLastMouseX = mp.x;
+                    _dragGrabOffsetX = mp.x - _tabRoots[i].anchoredPosition.x;
+                    _dragStarted = false;
+                    _dragVelX = 0f;
+                    _springVelX[i] = 0f;
+                    break;
+                }
+            }
+
+            if (_dragSlot >= 0)
+            {
+                float mpx = Input.mousePosition.x;
+                if (!_dragStarted && Mathf.Abs(mpx - _dragStartMouseX) > DRAG_THRESHOLD)
+                {
+                    _dragStarted = true;
+                    _dragSuppressClickTab = _tabs[_dragSlot];
+                }
+
+                if (_dragStarted)
+                {
+                    var rt = _tabRoots[_dragSlot];
+                    float x = mpx - _dragGrabOffsetX;
+                    float minX = SlotTargetX(0) - TAB_W * 0.6f;
+                    float maxX = SlotTargetX(_tabs.Count - 1) + TAB_W * 0.6f;
+                    x = Mathf.Clamp(x, minX, maxX);
+                    float dt = Mathf.Max(Time.deltaTime, 0.0001f);
+                    _dragVelX = (mpx - _dragLastMouseX) / dt;
+                    _dragLastMouseX = mpx;
+                    rt.anchoredPosition = new Vector2(x, rt.anchoredPosition.y);
+
+                    float centerX = x + TAB_W * 0.5f;
+                    int slot = _dragSlot;
+                    while (slot > 0 && centerX < SlotTargetX(slot - 1) + TAB_W * 0.5f) { SwapSlotOrder(slot, slot - 1); slot--; }
+                    while (slot < _tabs.Count - 1 && centerX > SlotTargetX(slot + 1) + TAB_W * 0.5f) { SwapSlotOrder(slot, slot + 1); slot++; }
+                    _dragSlot = slot;
+                }
+
+                if (Input.GetMouseButtonUp(0))
+                {
+                    if (_dragStarted && _dragSlot < _springVelX.Length)
+                        _springVelX[_dragSlot] = Mathf.Clamp(_dragVelX, -3000f, 3000f);
+                    _dragSlot = -1;
+                    _dragStarted = false;
+                }
+            }
+
+            float dts = Time.deltaTime;
+            for (int i = 0; i < _tabRoots.Count; i++)
+            {
+                if (i == _dragSlot) continue;
+                var rt = _tabRoots[i];
+                if (rt == null) continue;
+                float x = rt.anchoredPosition.x;
+                float target = SlotTargetX(i);
+                float dx = target - x;
+                if (Mathf.Abs(dx) < 0.05f && Mathf.Abs(_springVelX[i]) < 0.05f)
+                {
+                    if (x != target) rt.anchoredPosition = new Vector2(target, rt.anchoredPosition.y);
+                    _springVelX[i] = 0f;
+                    continue;
+                }
+                _springVelX[i] += dx * SPRING_K * dts;
+                _springVelX[i] *= Mathf.Exp(-SPRING_DAMP * dts);
+                x += _springVelX[i] * dts;
+                rt.anchoredPosition = new Vector2(x, rt.anchoredPosition.y);
+            }
+        }
+
+        private void SwapSlotOrder(int a, int b)
+        {
+            (_tabs[a], _tabs[b]) = (_tabs[b], _tabs[a]);
+            (_tabRoots[a], _tabRoots[b]) = (_tabRoots[b], _tabRoots[a]);
+            (_springVelX[a], _springVelX[b]) = (_springVelX[b], _springVelX[a]);
+            SaveSlots();
         }
 
         private void UpdateInputNavState()
@@ -599,7 +740,8 @@ namespace BetterFG.UI
             // always locked while BettrFG is up. font isn't loaded at startup so grab it lazily.
             // text itself is event-driven now (SetVisible / wheel toggle / rebind), only the lazy
             // font styling still needs a per-frame chance until the game font exists
-            bool hintVisible = _visible || (SideWheelManager.Instance?.IsWheelVisible ?? false);
+            bool hintVisible = !_chromeSuppressed
+                && (_visible || (SideWheelManager.Instance?.IsWheelVisible ?? false));
             if (hintVisible) EnsureHintStyle();
             if (_creativeHintGo != null && _creativeHintGo.activeSelf != hintVisible)
                 _creativeHintGo.SetActive(hintVisible);
@@ -778,6 +920,57 @@ namespace BetterFG.UI
             if (save) SaveSlots();
         }
 
+        public int SlotCount => _tabs.Count;
+        public Tab GetSlotTab(int idx) => (idx >= 0 && idx < _tabs.Count) ? _tabs[idx] : null;
+        public Tab OpenTab => _openTab;
+
+        public RectTransform OpenTabRoot
+        {
+            get
+            {
+                int i = _openTab != null ? _tabs.IndexOf(_openTab) : -1;
+                return (i >= 0 && i < _tabRoots.Count) ? _tabRoots[i] : null;
+            }
+        }
+
+        // the onboarding tutorial owns visibility while it runs: the toggle keybind (and anything
+        // else routing through SetVisible) is ignored, and only SetVisibleForced gets through.
+        public bool VisibilityLocked;
+
+        public void SetVisibleForced(bool visible) => ApplyVisible(visible);
+
+        // strips the decoration the tutorial doesn't want on screen — pattern backdrop, watermark,
+        // controls list, creative hint — while leaving the tabs themselves alone. survives a
+        // re-show because ApplyVisible reads it rather than being told once.
+        public bool ChromeSuppressed
+        {
+            get => _chromeSuppressed;
+            set { _chromeSuppressed = value; ApplyChrome(); }
+        }
+        private bool _chromeSuppressed;
+
+        private void ApplyChrome()
+        {
+            bool on = _visible && !_chromeSuppressed;
+            if (_backdropGo != null) _backdropGo.SetActive(on);
+            if (_watermarkGo != null) _watermarkGo.SetActive(on);
+            if (_controlsWatermarkGo != null) _controlsWatermarkGo.SetActive(on);
+            if (_chromeSuppressed && _creativeHintGo != null) _creativeHintGo.SetActive(false);
+        }
+
+        public void SetSlotActive(int idx, bool active)
+        {
+            if (idx < 0 || idx >= _tabRoots.Count) return;
+            var rt = _tabRoots[idx];
+            if (rt != null && rt.gameObject.activeSelf != active) rt.gameObject.SetActive(active);
+        }
+
+        // the slot's whole column — the switch-tab dropdown is parented into it, so this covers both
+        public RectTransform GetSlotRoot(int idx)
+            => (idx >= 0 && idx < _tabRoots.Count) ? _tabRoots[idx] : null;
+
+        public bool SlotDropdownOpen => _dropdown.IsOpen;
+
         // ── Live max-tab change (from the Options window) ──────────────────────
         // persists ui.maxtabs and adds/removes slots right now instead of waiting for a relaunch.
         // growing fills new slots with the first registered tab not already shown.
@@ -862,18 +1055,20 @@ namespace BetterFG.UI
 
             var allTitles = new string[BetterFGTabRegistry.All.Count];
             var allDisplay = new string[BetterFGTabRegistry.All.Count];
+            var allBg = new string[BetterFGTabRegistry.All.Count];
             for (int i = 0; i < BetterFGTabRegistry.All.Count; i++)
             {
                 var entry = BetterFGTabRegistry.All[i];
                 allTitles[i] = entry.Title;
                 allDisplay[i] = entry.TitleId ?? entry.Title;
+                allBg[i] = entry.BgResource;
             }
 
             var occupied = new string[_tabs.Count];
             for (int i = 0; i < _tabs.Count; i++)
                 occupied[i] = _tabs[i] != null ? _tabs[i].TabTitle : "";
 
-            _dropdown.Open(tabRoot, ownerIdx, owner.TabTitle, allTitles, allDisplay, occupied);
+            _dropdown.Open(tabRoot, ownerIdx, owner.TabTitle, allTitles, allDisplay, allBg, occupied);
         }
 
         // current-slot cell was clicked: keep the tab open, don't auto-close it
@@ -885,6 +1080,21 @@ namespace BetterFG.UI
             _dropdownForcedOpenTab = null;
             SwapSlot(slotIdx, tabName, save: true);
             if (slotIdx >= 0 && slotIdx < _tabs.Count && _tabs[slotIdx] != null && _openTab != _tabs[slotIdx])
+                ToggleTab(_tabs[slotIdx]);
+        }
+
+        // user clicked a greyed row — the tab is already in some other slot. swap the two slots
+        // in place (SwapSlotOrder is the same primitive tab-drag uses, so the spring animation
+        // carries them across) then open the one that just landed in slotIdx.
+        public void SwapPlacesFromDropdown(int slotIdx, string tabName)
+        {
+            _dropdownForcedOpenTab = null;
+            int otherIdx = -1;
+            for (int i = 0; i < _tabs.Count; i++)
+                if (_tabs[i] != null && _tabs[i].TabTitle == tabName) { otherIdx = i; break; }
+            if (otherIdx < 0 || otherIdx == slotIdx) return;
+            SwapSlotOrder(slotIdx, otherIdx);
+            if (slotIdx < _tabs.Count && _tabs[slotIdx] != null && _openTab != _tabs[slotIdx])
                 ToggleTab(_tabs[slotIdx]);
         }
 
@@ -1050,11 +1260,7 @@ namespace BetterFG.UI
         // ── Tab toggle ────────────────────────────────────────────────────────
         public void ToggleTab(Tab tab)
         {
-            if (SideWheelManager.Instance != null && SideWheelManager.Instance.IsWheelVisible)
-            {
-                ShowTooltipTimed("ui.close_the_side_wheel_first", 1.2f);
-                return;
-            }
+            SideWheelManager.Instance?.CloseWheel();
 
             if (_openTab == tab)
             {
@@ -1073,6 +1279,8 @@ namespace BetterFG.UI
                 tab.SetContentActive(true); // wake the content before it slides in
                 AnimateTab(tab, toOpen: true);
                 tab.OnOpened();
+                if (!Features.Onboarding.OnboardingController.IsRunning)
+                    Features.Onboarding.HelpPrompt.OfferForTab(tab.TabTitle);
             }
         }
 
@@ -1134,6 +1342,12 @@ namespace BetterFG.UI
 
         public void SetVisible(bool visible)
         {
+            if (VisibilityLocked) return;
+            ApplyVisible(visible);
+        }
+
+        private void ApplyVisible(bool visible)
+        {
             if (_visible != visible)
             {
                 if (visible) Services.AudioService.PlayShowUI();
@@ -1159,9 +1373,7 @@ namespace BetterFG.UI
             UpdateCreativeHintText();
 
             SettingsService.Set(KEY_UI_HIDDEN, visible ? "false" : "true");
-            if (_backdropGo != null) _backdropGo.SetActive(visible);
-            if (_watermarkGo != null) _watermarkGo.SetActive(visible);
-            if (_controlsWatermarkGo != null) _controlsWatermarkGo.SetActive(visible);
+            ApplyChrome();
             SideWheelManager.Instance?.SetVisible(visible);
 
             UpdateCameraFreeze();
@@ -1289,12 +1501,14 @@ namespace BetterFG.UI
 
         // like MakeObjectTooltip but tracks LocalizationService.LanguageChanged, for tooltips
         // built once (e.g. at tab creation) that need to stay correct across a live language switch.
-        public static void MakeLocalizedObjectTooltip(RectTransform rt, string locId, object[] args = null, float delay = -1f)
+        public static void MakeLocalizedObjectTooltip(RectTransform rt, string locId, object[] args = null, float delay = -1f, bool tabSwitch = false)
         {
             var t = rt.gameObject.AddComponent<TooltipTrigger>();
             t.locId = locId;
             t.locArgs = args;
             t.delay = delay;
+            t.tabSwitch = tabSwitch;
+            t.InstallLoc();
         }
 
         public void ShowTooltip(string text)

@@ -1,6 +1,6 @@
 using System;
 using BetterFG.Core;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using FG.Common;
 using FGClient;
 using HarmonyLib;

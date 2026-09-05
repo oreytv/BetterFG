@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using BetterFG.Core;
 using BetterFG.Customization.Player;
 using BetterFG.Network;
@@ -13,7 +13,7 @@ using FGClient;
 using HarmonyLib;
 using UnityEngine;
 using FGClient.UI.PrivateLobby;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 
 namespace BetterFG.Nametag
 {
@@ -26,6 +26,14 @@ namespace BetterFG.Nametag
             [HarmonyPostfix]
             public static void Postfix(NameTagViewModel __instance, string playerKey)
                 => HandleViewModel(__instance, playerKey);
+        }
+
+        [HarmonyPatch(typeof(NameTagViewModel), "UpdateName")]
+        internal static class patch_UpdateName
+        {
+            [HarmonyPostfix]
+            public static void Postfix(NameTagViewModel __instance, string playerName)
+                => HandleViewModel(__instance, playerName);
         }
 
         [HarmonyPatch(typeof(NameTagViewModel), "UpdateDisplayWithLocalPlayer")]
@@ -225,11 +233,19 @@ namespace BetterFG.Nametag
         [HarmonyPatch(typeof(PlayerInfoHUDBase), "LateUpdate")]
         internal static class patch_HudLateUpdate
         {
+            [HarmonyPrefix]
+            public static void Prefix(PlayerInfoHUDBase __instance)
+            {
+                var t = CinematicSpectatorTweak.ActiveFreeCamTransform;
+                if (t != null && __instance != null) __instance._currentTargetTransform = t;
+            }
+
             [HarmonyPostfix]
             public static void Postfix(PlayerInfoHUDBase __instance)
             {
                 if (CrownRankService.Enabled) CrownRankFovFix.Apply(__instance);
                 NametagIconApplicator.TickIconAlpha(__instance);
+                NametagAllPlayersService.Tick(__instance);
             }
         }
 
@@ -254,7 +270,7 @@ namespace BetterFG.Nametag
         // EndFamePass material bound to the ORIGINAL atlas. apply our font NOW, right after, so the font
         // re-derives that gold material onto our atlas. this is the exact moment the gold material lands,
         // so famepass nametags get the custom font on the FIRST round load, no waiting for a later patch.
-        [BetterFG.Utilities.BfgPatchGate(Customization.Menu.FontReplacementService.KEY_MASTER_ON)]
+        [BetterFG.Utilities.BfgPatchGate(Customization.UI.FontReplacementService.KEY_MASTER_ON)]
         [HarmonyPatch(typeof(PlayerInfoDisplayCanvas), nameof(PlayerInfoDisplayCanvas.SetNameVisualsDependingOnFame))]
         internal static class patch_SetNameVisualsFame
         {
@@ -392,9 +408,9 @@ namespace BetterFG.Nametag
 
         private static void ApplyRemote(NameTagViewModel vm, string playerKey)
         {
-            if (string.IsNullOrEmpty(playerKey)) return;
             var txt = vm._playerNameText;
             if (txt == null) return;
+            if (string.IsNullOrEmpty(playerKey)) { NametagIconApplicator.RevertRemote(vm); return; }
 
             BfgProfile profile = null;
             // _playerName in the private lobby carries rich-text/decoration the store isn't keyed on,

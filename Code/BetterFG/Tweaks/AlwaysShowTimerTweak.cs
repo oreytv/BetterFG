@@ -1,7 +1,7 @@
 using System;
 using System.Collections;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using FGClient;
 using FGClient.UI;
 using HarmonyLib;

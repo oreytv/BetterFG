@@ -1,11 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterFG.Services;
 using BetterFG.Utilities;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace BetterFG.Customization.Menu
+namespace BetterFG.Customization.UI
 {
     // per-screen gradient + circles-pattern customisation. each "screen" (the main menu / title
     // screen, the various loading screens) has its own SeasonS11Background with a Backdrop Image

@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Nametag;
 using BetterFG.Network;
 using BetterFG.Services;

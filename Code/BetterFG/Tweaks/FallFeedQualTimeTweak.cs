@@ -42,13 +42,16 @@ namespace BetterFG.Tweaks
 
         public void Apply(TMPro.TextMeshProUGUI messageBodyText, string primaryPlayerKey)
         {
-            if (!IsEnabled || messageBodyText == null) return;
+            if (!IsEnabled) { Plugin.Log.LogInfo("ff  qt: tweak off"); return; }
+            if (messageBodyText == null) { Plugin.Log.LogInfo("ff  qt: no body tmp"); return; }
             try
             {
                 string cur = messageBodyText.text;
-                if (string.IsNullOrEmpty(cur)) return;
-                if (cur.Contains(TimeColor)) return;     // already stamped
-                if (string.IsNullOrEmpty(primaryPlayerKey) || _stampedKeys.Contains(primaryPlayerKey)) return;
+                Plugin.Log.LogInfo($"ff  qt: key='{primaryPlayerKey}' body='{cur}' stored=[{FeatureTimePlacement.DumpQualTimeKeys()}]");
+                if (string.IsNullOrEmpty(cur)) { Plugin.Log.LogInfo("ff  qt: body empty"); return; }
+                if (cur.Contains(TimeColor)) { Plugin.Log.LogInfo("ff  qt: already stamped"); return; }
+                if (string.IsNullOrEmpty(primaryPlayerKey)) { Plugin.Log.LogInfo("ff  qt: key empty"); return; }
+                if (_stampedKeys.Contains(primaryPlayerKey)) { Plugin.Log.LogInfo("ff  qt: key already stamped this round"); return; }
 
                 // server qualifyTime for this fallfeed's player, captured by FeatureTimePlacement. the
                 // row is created off the unspawn message, which lands a frame or two BEFORE the

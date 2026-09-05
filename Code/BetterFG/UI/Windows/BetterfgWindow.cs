@@ -57,7 +57,8 @@ namespace BetterFG.UI.Windows
 
         private RectTransform _rootRt;
         private RectTransform _bgRt;
-        private RectTransform _titleLabelRt;
+        protected RectTransform _titleLabelRt;
+        private RectTransform _clipRt;
         protected Text _titleText;
         protected RectTransform _contentRt;
         private Transform _titleRoot;
@@ -229,6 +230,35 @@ namespace BetterFG.UI.Windows
         private Vector3 _apBgPos, _apBgScale, _apTitlePos, _apTitleScale, _apContentPos, _apContentScale;
         private Vector2? _apOffMin, _apOffMax;
 
+        protected virtual void ApplyTitleTransform()
+        {
+            if (_titleLabelRt == null) return;
+            _titleLabelRt.localPosition = TitlePosition;
+            _titleLabelRt.localScale = TitleScale;
+        }
+
+        protected virtual void ApplyContentTransform()
+        {
+            if (_contentRt == null) return;
+            _contentRt.localPosition = ContentPosition;
+            _contentRt.localScale = ContentScale;
+            if (ContentOffsetMin.HasValue) _contentRt.offsetMin = ContentOffsetMin.Value;
+            if (ContentOffsetMax.HasValue) _contentRt.offsetMax = ContentOffsetMax.Value;
+        }
+
+        protected virtual void BuildRootGraphic(GameObject rootGo)
+            => rootGo.AddComponent<Image>().color = TRANSP;
+
+        private void SyncContentClip()
+        {
+            if (_clipRt == null) return;
+            float sx = Mathf.Approximately(BgScale.x, 0f) ? 1f : BgScale.x;
+            float sy = Mathf.Approximately(BgScale.y, 0f) ? 1f : BgScale.y;
+            _clipRt.pivot = Pivot;
+            _clipRt.localScale = new Vector3(1f / sx, 1f / sy, 1f);
+            _clipRt.localPosition = new Vector3(-BgPosition.x / sx, -BgPosition.y / sy, 0f);
+        }
+
         private void ApplyRuntimeLayout()
         {
             if (_layoutApplied && _apPivot == Pivot && _apBgPos == BgPosition && _apBgScale == BgScale
@@ -240,14 +270,9 @@ namespace BetterFG.UI.Windows
             if (_rootRt != null)
                 _rootRt.pivot = Pivot;
             if (_bgRt != null) { _bgRt.localPosition = BgPosition; _bgRt.localScale = BgScale; }
-            if (_titleLabelRt != null) { _titleLabelRt.localPosition = TitlePosition; _titleLabelRt.localScale = TitleScale; }
-            if (_contentRt != null)
-            {
-                _contentRt.localPosition = ContentPosition;
-                _contentRt.localScale = ContentScale;
-                if (ContentOffsetMin.HasValue) _contentRt.offsetMin = ContentOffsetMin.Value;
-                if (ContentOffsetMax.HasValue) _contentRt.offsetMax = ContentOffsetMax.Value;
-            }
+            SyncContentClip();
+            ApplyTitleTransform();
+            ApplyContentTransform();
 
             _layoutApplied = true;
             _apPivot = Pivot;
@@ -291,13 +316,27 @@ namespace BetterFG.UI.Windows
             _rootRt.anchoredPosition = WindowPosition;
             _rootRt.localScale = new Vector3(0f, 1f, 1f); // hidden until ShowWindow()
 
-            rootGo.AddComponent<Image>().color = TRANSP;
+            BuildRootGraphic(rootGo);
 
             BuildBackground(rootGo.transform);
             BuildTitleBar(rootGo.transform);
 
+            Transform contentParent = rootGo.transform;
+            if (_bgRt != null)
+            {
+                _bgRt.gameObject.AddComponent<Mask>().showMaskGraphic = true;
+                var clipGo = new GameObject("ContentClip");
+                clipGo.transform.SetParent(_bgRt, false);
+                _clipRt = clipGo.AddComponent<RectTransform>();
+                _clipRt.anchorMin = Vector2.zero;
+                _clipRt.anchorMax = Vector2.one;
+                _clipRt.offsetMin = _clipRt.offsetMax = Vector2.zero;
+                SyncContentClip();
+                contentParent = clipGo.transform;
+            }
+
             var contentGo = new GameObject("Content");
-            contentGo.transform.SetParent(rootGo.transform, false);
+            contentGo.transform.SetParent(contentParent, false);
             _contentRt = contentGo.AddComponent<RectTransform>();
             _contentRt.anchorMin = Vector2.zero;
             _contentRt.anchorMax = Vector2.one;
@@ -384,8 +423,7 @@ namespace BetterFG.UI.Windows
             _titleLabelRt.pivot = new Vector2(0.5f, 0.5f);
             _titleLabelRt.offsetMin = new Vector2(PAD, 0f);
             _titleLabelRt.offsetMax = Vector2.zero;
-            _titleLabelRt.localPosition = TitlePosition;
-            _titleLabelRt.localScale = TitleScale;
+            ApplyTitleTransform();
 
             BuildTitleExtras(titleGo.transform);
         }

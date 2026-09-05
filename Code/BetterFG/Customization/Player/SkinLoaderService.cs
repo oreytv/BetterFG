@@ -134,9 +134,9 @@ namespace BetterFG.Customization.Player
             if (cachePath != null && File.Exists(cachePath))
             {
                 OnProgress?.Invoke($"Loading cached {skinName}...");
-                var fileReq = AssetBundle.LoadFromFileAsync(cachePath);
-                yield return fileReq;
-                bundle = fileReq.assetBundle;
+                AssetBundle fileLoaded = null;
+                yield return Bundles.LoadFile(skinName, cachePath, ab => fileLoaded = ab).WrapToIl2Cpp();
+                bundle = fileLoaded;
                 if (bundle != null)
                     StartCoroutine(RefreshCacheCoroutine(url, cachePath).WrapToIl2Cpp());
                 else
@@ -166,9 +166,9 @@ namespace BetterFG.Customization.Player
 
                 if (cachePath != null)
                     StartCoroutine(SaveCacheCoroutine(cachePath, bundleBytes).WrapToIl2Cpp());
-                var loadReq = AssetBundle.LoadFromMemoryAsync(bundleBytes);
-                yield return loadReq;
-                bundle = loadReq.assetBundle;
+                AssetBundle memLoaded = null;
+                yield return Bundles.LoadMemory(skinName, bundleBytes, ab => memLoaded = ab).WrapToIl2Cpp();
+                bundle = memLoaded;
             }
 
             if (bundle == null)
@@ -362,12 +362,12 @@ namespace BetterFG.Customization.Player
             OnProgress?.Invoke($"Loading {skinInfo.file}...");
 
             skinApp?.UnloadBundleForFile(skinInfo.file, force: true);
+            Bundles.Unload(skinInfo.file, true);
 
-            // one more frame so Unity can actually release the old bundle ref
             yield return null;
-            var loadReq = AssetBundle.LoadFromMemoryAsync(bundleBytes);
-            yield return loadReq;
-            AssetBundle bundle = loadReq.assetBundle;
+            AssetBundle importLoaded = null;
+            yield return Bundles.LoadMemory(skinInfo.file, bundleBytes, ab => importLoaded = ab).WrapToIl2Cpp();
+            AssetBundle bundle = importLoaded;
 
             if (bundle == null)
             {

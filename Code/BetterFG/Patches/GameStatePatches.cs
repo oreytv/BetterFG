@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -16,7 +16,7 @@ using PlayerUtils = FallGuysLib.Players.PlayerUtils;
 using BetterFG.UI.Tabs;
 using BetterFG.Network;
 using BetterFG.Customization.Social;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using FG.Common.CMS;
 using FG.Common.UI;
 using FGClient.ShowSelector;
@@ -58,12 +58,15 @@ namespace BetterFG.Patches.GameStates
             // copy-code prompt hooks go in here and stay in — nothing can reach a lobby or show
             // tile before the menu exists. Install() no-ops once they're live.
             BetterFG.Utilities.PatchGate.SetActive("copycode.prompts", true);
+            BetterFG.Utilities.PatchGate.SetActive("pastecode.prompts", true);
             BetterFG.Tweaks.BfgTweak.RaiseMainMenuEntered();
             BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.SetInRound(false);
             BetterFG.Services.DiscordPresenceService.OnMainMenuEntered(__instance);
             BetterFG.Features.Replay.ReplayViewer.OnMainMenuEntered();
             BetterFG.Patches.SeasonProgressHoverPatch.SetMenuActive(true);
             BetterFG.Customization.Pets.PetPreview.RetryOnMainMenuEntered();
+            BetterFG.Features.CustomBackgrounds.Definers.Teardown();
+            BetterFG.Features.CustomBackgrounds.DisableBackgroundRulebook.OnMainMenuEntered();
 
             BetterFG.UI.Tabs.NametagTab.CacheNameAssets();
             BetterFG.UI.Tabs.AllCosmeticsTab.RefreshLiveInstances();
@@ -84,14 +87,6 @@ namespace BetterFG.Patches.GameStates
             if (__instance._lobbyFallGuy != null)
                 BeanMonitorService.PushBean(__instance._lobbyFallGuy);
             SkinApplicationService.Instance?.RestoreSavedGameCosmetics();
-
-            if (BeanMonitorService.Instance != null)
-            {
-                if (__instance._menuFallGuy != null)
-                    BeanMonitorService.Instance.StartCoroutine(CostumePollerKick.Kick(__instance._menuFallGuy).WrapToIl2Cpp());
-                if (__instance._lobbyFallGuy != null)
-                    BeanMonitorService.Instance.StartCoroutine(CostumePollerKick.Kick(__instance._lobbyFallGuy).WrapToIl2Cpp());
-            }
 
             BetterFG.Patches.ShowSelectorBg.AttachApplier();
 
@@ -266,7 +261,7 @@ namespace BetterFG.Patches.GameStates
         static void Postfix(PartyNameTag __instance)
         {
             if (__instance == null) return;
-            BetterFG.Customization.Menu.MenuCustomizationApplication.Instance?
+            BetterFG.Customization.UI.MenuCustomizationApplication.Instance?
                 .QueueForegroundScope(__instance.transform, anyImage: true);
 #if PROFILES
             BetterFG.Customization.Profiles.LobbyProfileService.ReapplyTag(__instance);
@@ -584,6 +579,7 @@ namespace BetterFG.Patches.GameStates
         {
             BeanMonitorService.CheckLevelEditorBean();
             CameraUtils.DisableXRayRenderer();
+            BetterFG.Features.CustomIntroCams.CustomIntroCams.ShowShotGizmos(false);
         }
     }
 
@@ -594,8 +590,16 @@ namespace BetterFG.Patches.GameStates
         [HarmonyPostfix]
         public static void Postfix()
         {
-            BetterFG.Customization.Player.CostumePollerComponent.LastLoadingFinished = Time.time;
             BetterFGUnityRounds.MarkSceneReadyAndInstantiateQueuedRound();
+            BetterFG.Features.CustomBackgrounds.Definers.Recheck();
+            BetterFG.Features.CustomLights.CustomLights.InvalidateRoundLights();
+            BetterFG.Features.CustomLights.CustomLights.Sync();
+            BetterFG.Features.CustomLights.CustomLights.SyncDelayed();
+            BetterFG.Features.CustomIntroCams.CustomIntroCams.Sync();
+            BetterFG.Customization.UI.CreativeGizmoScale.Apply();
+            BetterFG.Features.NeonMaterial.NeonMaterial.ResetEditorState();
+            BetterFG.Features.NeonMaterial.NeonMaterial.Sync();
+            BetterFG.Features.NeonMaterial.NeonMaterial.SyncDelayed();
 
             // CEP leaves checkpoint/spawn zone flags visible so it can dynamically place them in the
             // editor - fine there, but they leak into actual UGC rounds too. Only hide in-round.
@@ -686,6 +690,19 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(ShowSelectorShowTileViewModel), nameof(ShowSelectorShowTileViewModel.OnShowConfirmed))]
+    internal static class ShowSelectorShowTileViewModelOnShowConfirmedPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(ShowSelectorShowTileViewModel __instance)
+        {
+            var id = __instance.ShowData?.ShowSelectorShow?.Id;
+            if (!BetterFG.Tweaks.UpcomingShowsTweak.Injected.Contains(id)) return true;
+            Plugin.Log.LogInfo($"swallowed a confirm on upcoming show {id}, it hasn't opened yet");
+            return false;
+        }
+    }
+
     [HarmonyPatch(typeof(Wushu.LevelEditor.Runtime.UI.LevelBrowser.LevelBrowserTileViewModel), "SetData")]
     internal static class LevelBrowserTileViewModelSetDataPatch
     {
@@ -750,6 +767,62 @@ namespace BetterFG.Patches.GameStates
         public static void Postfix() => BetterFG.Features.CopyCode.CopyCodePrompt.OnLobbyBlur();
     }
 
+    // "Enter Code" input field enable/disable. feeds PasteCodePrompt so the paste-code nav prompt
+    // lives and dies with the field the way the game's own prompts do.
+    [Utilities.BfgPatchGate("pastecode.prompts")]
+    [HarmonyPatch(typeof(InputCodeViewModel), "OnEnable")]
+    internal static class InputCodeViewModelEnabledPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(InputCodeViewModel __instance)
+        {
+            if (__instance == null) return;
+            BetterFG.Features.PasteCode.PasteCodePrompt.OnInputEnabled(__instance);
+        }
+    }
+
+    [Utilities.BfgPatchGate("pastecode.prompts")]
+    [HarmonyPatch(typeof(InputCodeViewModel), "OnDisable")]
+    internal static class InputCodeViewModelDisabledPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => BetterFG.Features.PasteCode.PasteCodePrompt.OnInputDisabled();
+    }
+
+    // the game's own OnSelect/OnDeselect chain doesn't reliably hand focus back to the private
+    // lobby screen when the field loses selection (click-away, alt-tab, submit) — nav just goes
+    // dead, mouse-only, until something else forces the lobby to regain focus. restore it
+    // ourselves right at the field's own defocus/submit events. same GameObject lookup path
+    // LobbyAudioPromptTweak / LobbyCustomiserTweak already use.
+    [Utilities.BfgPatchGate("pastecode.prompts")]
+    [HarmonyPatch(typeof(InputCodeViewModel), "OnDeselect")]
+    internal static class InputCodeViewModelDeselectPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => RestoreLobbyFocus.Kick();
+    }
+
+    [Utilities.BfgPatchGate("pastecode.prompts")]
+    [HarmonyPatch(typeof(InputCodeViewModel), nameof(InputCodeViewModel.OnConfirmPressed))]
+    internal static class InputCodeViewModelConfirmPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => RestoreLobbyFocus.Kick();
+    }
+
+    internal static class RestoreLobbyFocus
+    {
+        private const string LobbyCanvasPath = "UICanvas_Client_V2(Clone)/Default/Prime_UI_PrivateLobby_Canvas(Clone)";
+
+        public static void Kick()
+        {
+            var go = GameObject.Find(LobbyCanvasPath);
+            if (go == null) return;
+            var vm = go.GetComponentInChildren<FGClient.UI.PrivateLobby.PrivateLobbyScreenViewModel>(true);
+            vm?.OnGainFocus();
+        }
+    }
+
     // discovery / show-selector highlight. NOT the tile: reading ShowData off a tile crashes, its
     // backing pointer goes stale as the selector rebuilds. The preview panel follows the highlight
     // and is handed the show as an argument, which is safe to read.
@@ -798,7 +871,12 @@ namespace BetterFG.Patches.GameStates
     internal static class PrivateLobbyShowListDisabledPatch
     {
         [HarmonyPostfix]
-        public static void Postfix() => BetterFG.Features.CopyCode.CopyCodePrompt.OnPrivateLobbyShowListClosed();
+        public static void Postfix()
+        {
+            BetterFG.Features.CopyCode.CopyCodePrompt.OnPrivateLobbyShowListClosed();
+            BetterFG.Tweaks.RandomShowSelectTweak.OnShowListClosed();
+            BetterFG.Tweaks.LobbyCustomiserTweak.OnPopupClosed();
+        }
     }
 
     [HarmonyPatch(typeof(ShowsManager), nameof(ShowsManager.RefreshShowSelectorPageData))]
@@ -904,11 +982,13 @@ namespace BetterFG.Patches.GameStates
     internal static class PrivateLobbyShowListViewModelAwakePatch
     {
         [HarmonyPostfix]
-        public static void Postfix()
+        public static void Postfix(PrivateLobbyShowListViewModel __instance)
         {
             var app = MenuCustomizationApplication.Instance;
             app?.StartCoroutine(app.ReapplySpecialForegroundNextFrame(MenuCustomizationApplication.SpecialScreen.PrivateLobbyShowSelect).WrapToIl2Cpp());
             BetterFG.Tweaks.LobbyShowSearchTweak.OnShowListAwake();
+            BetterFG.Tweaks.RandomShowSelectTweak.OnShowListAwake(__instance);
+            BetterFG.Tweaks.LobbyCustomiserTweak.OnPopupOpened();
         }
     }
 
@@ -994,6 +1074,13 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
+    [HarmonyPatch(typeof(BootSplashScreenViewModel), nameof(BootSplashScreenViewModel.Awake))]
+    internal static class BootSplashUiBuild
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => Plugin.BuildModUI();
+    }
+
     [HarmonyPatch(typeof(LoadingScreenViewModel), nameof(LoadingScreenViewModel.UpdateDisplay))]
     internal static class LoadingScreenUpdateDisplayHub
     {
@@ -1003,11 +1090,7 @@ namespace BetterFG.Patches.GameStates
             if (__instance == null) return;
             BetterFG.Tweaks.ChangeSplashScreenTweak.OnLoadingScreenUpdateDisplay(__instance);
             var game = __instance.TryCast<LoadingGameScreenViewModel>();
-            if (game == null)
-            {
-                BetterFG.Services.FGInputLockService.RefreshLoadingScreenLock();
-                return;
-            }
+            if (game == null) return;
             BetterFG.Features.QualificationTime.FeatureQualificationTime.OnLoadingScreenUpdateDisplay();
             BetterFG.Features.CustomizeFallGuys.FeatureCustomizeFallGuys.Refresh();
             var ugc = __instance.TryCast<LoadingUGCGameScreenViewModel>();
@@ -1165,7 +1248,7 @@ namespace BetterFG.Patches.GameStates
             yield return null;
             if (cell == null) yield break;
             foreach (var t in cell.GetComponentsInChildren<TMPro.TMP_Text>(true))
-                if (t != null) BetterFG.Customization.Menu.FontReplacementService.ApplyToNametag(t);
+                if (t != null) BetterFG.Customization.UI.FontReplacementService.ApplyToNametag(t);
 
             if (BetterFG.Nametag.CrownRankService.Enabled && BetterFG.Nametag.CrownRankService.IsLocalPlayerKey(cellKey))
                 BetterFG.Nametag.CrownRankService.ApplyCrownTo(cell, BetterFG.Nametag.CrownRankService.CfgFromSettings());
@@ -1307,7 +1390,6 @@ namespace BetterFG.Patches.GameStates
                         BeanMonitorService.PushBean(bean);
                         SkinApplicationService.Instance?.ReapplyExpectedGameCosmeticVisuals(bean);
                         BeanMonitorService.Instance.StartCoroutine(BeanMonitorService.PollAndPushRewardPlinth().WrapToIl2Cpp());
-                        BeanMonitorService.Instance.StartCoroutine(CostumePollerKick.Kick(bean).WrapToIl2Cpp());
                         yield break;
                     }
                 }
@@ -1317,33 +1399,13 @@ namespace BetterFG.Patches.GameStates
         }
     }
 
-    internal static class CostumePollerKick
+    [HarmonyPatch(typeof(FallguyCustomisationHandler), nameof(FallguyCustomisationHandler.CheckFallGuyAndCostumeVisibility))]
+    public class FallGuyVisibilityRecheck
     {
-        public static IEnumerator Kick(GameObject bean)
+        [HarmonyPostfix]
+        public static void Postfix(FallguyCustomisationHandler __instance)
         {
-            int seenAt = -1;
-            int idleFrames = 0;
-            for (int i = 0; i < 90 && bean != null; i++)
-            {
-                var pollers = bean.GetComponentsInChildren<BetterFG.Customization.Player.CostumePollerComponent>(true);
-                if (pollers == null || pollers.Length == 0)
-                {
-                    if (i >= 80) yield break;
-                    yield return null;
-                    continue;
-                }
-                if (seenAt < 0) seenAt = i;
-
-                bool anyWork = false;
-                foreach (var p in pollers)
-                    if (p != null && p.PollNow()) anyWork = true;
-
-                idleFrames = anyWork ? 0 : idleFrames + 1;
-                if (idleFrames >= 2 && i - seenAt >= 2) yield break;
-
-                yield return null;
-                yield return null;
-            }
+            BetterFG.Customization.Player.CostumePollerComponent.RehideForBean(__instance.gameObject.GetInstanceID());
         }
     }
 
@@ -1500,8 +1562,6 @@ namespace BetterFG.Patches.GameStates
                     if (bean != null)
                     {
                         BeanMonitorService.PushBean(bean.gameObject);
-                        if (BeanMonitorService.Instance != null)
-                            BeanMonitorService.Instance.StartCoroutine(CostumePollerKick.Kick(bean.gameObject).WrapToIl2Cpp());
                         yield break;
                     }
                 }
@@ -1766,6 +1826,7 @@ namespace BetterFG.Patches.GameStates
 
                 MenuCustomizationApplication.Instance?.ApplyAmbientFromSettings();
                 MenuCustomizationApplication.Instance?.ApplySunFromSettings();
+                MenuCustomizationApplication.ReassertMenuBackground3D();
 
                 MenuCustomizationApplication.Instance?.RefreshImageBgVisibility();
             }

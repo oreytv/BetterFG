@@ -7,7 +7,7 @@ using UnityEngine.TextCore.LowLevel;
 using BetterFG.Services;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 
-namespace BetterFG.Customization.Menu
+namespace BetterFG.Customization.UI
 {
     // one font override: replace a named game TMP_FontAsset with a custom ttf/otf.
     public class FontOverride

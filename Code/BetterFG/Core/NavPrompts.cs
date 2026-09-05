@@ -39,6 +39,15 @@ namespace BetterFG.Core
             if (!strings.ContainsKey(key)) strings.Add(key, value);
         }
 
+        // overwrite variant. use only for values that legitimately change between reads (a popup
+        // body that names the current item, for example). nav prompt labels must NOT go through
+        // this - the manager caches them, churning the value there breaks the row.
+        internal static void SetCmsString(string key, string value)
+        {
+            var strings = CMSLoader.Instance._localisedStrings._localisedStrings;
+            strings[key] = value;
+        }
+
         // clone cache so we don't churn NavigationPromptData instances across re-spawns. keyed by
         // (source-glyph, cms-key) since two callers using the same glyph but different labels are
         // distinct clones.
@@ -76,61 +85,120 @@ namespace BetterFG.Core
             return clone;
         }
 
+        public struct OverlayClaim
+        {
+            public NavPrompt Key;
+            public string LabelKey;
+            public string LabelText;
+            public Action OnPressed;
+            public int IconAction;
+            public int IconCategory;
+            // same shape as NavPromptInjection's postBuild - set when the source prompt has no
+            // keyboard binding of its own (Favourite, notably), so the caller pins one itself via
+            // NavPromptCore.ApplyOwnGlyph once the manager has actually built the button.
+            public Action<NavigationPromptButton> PostBuild;
+        }
+
+        internal static void ClaimOverlayRow(NavPrompt key, string labelKey, string labelText, Action onPressed,
+            int iconAction = -1, int iconCategory = -1)
+            => ClaimOverlayRow(new OverlayClaim
+            {
+                Key = key, LabelKey = labelKey, LabelText = labelText, OnPressed = onPressed,
+                IconAction = iconAction, IconCategory = iconCategory,
+            });
+
         // claim the real overlay row the way every FG screen does: broadcast a NavPromptChanged.
         // NavigationOverlayManager handles it inline, switches SubMenuNavigation_Right on and builds
         // the real buttons itself - which is the ONLY thing that turns that row on, so parenting a
-        // button into it without claiming can never work.
-        //
-        // the label comes from the manager's shared prompt dictionary, so swap our own clone in for
-        // the one key we're claiming, broadcast, and put the original straight back. Broadcast runs
-        // its handlers synchronously and the button keeps the reference it was handed, so the swap
-        // window closes before anything else can read the slot.
-        internal static void ClaimOverlayRow(NavPrompt key, string labelKey, string labelText, Action onPressed,
-            int iconAction = -1, int iconCategory = -1)
+        // button into it without claiming can never work. multi-entry form so a single tweak can
+        // own two adjacent prompts (respawn button + menu-opener) in one row.
+        internal static void ClaimOverlayRow(params OverlayClaim[] claims)
         {
             var mgr = Manager;
-            if (mgr?._navPromptsDictionary == null) return;
+            if (mgr?._navPromptsDictionary == null || claims == null || claims.Length == 0) return;
 
-            var clone = GetOrCloneData(key, labelKey, labelText);
-            // point the glyph at a different Rewired action than the prompt we cloned. the button's
-            // ActiveControllerUI feeds these straight into SetRewiredAction and stays mappeable, so
-            // Rewired picks the right face button per pad on its own - R on keyboard, Triangle on
-            // DS4/DS5, Y on Xbox - with no per-controller table of ours.
-            if (clone != null && iconAction >= 0)
-            {
-                clone.IconAction = iconAction;
-                clone.IconCategory = iconCategory;
-                // drop the source prompt's own actions so the game's button never self-fires on
-                // them (Report's action would otherwise trigger us). we read the press ourselves.
-                clone.InputActions = new Il2CppStructArray<int>(0);
-            }
-
-            // the clone has to STAY in the dictionary while we hold the row. the manager re-looks the
-            // data up whenever it rebuilds the prompts - notably on every active-controller change -
-            // so restoring the original right after the broadcast makes the label and glyph snap
-            // back to the source prompt's the moment you switch between pad and mouse/keyboard.
             RestoreInstalledData();
-            if (clone != null && mgr._navPromptsDictionary.TryGetValue(key, out var original) && original != null)
-            {
-                _installedKey = key;
-                _installedOriginal = original;
-                mgr._navPromptsDictionary[key] = clone;
-            }
 
             var dict = new Il2CppNavPromptDict();
-            dict[key] = (Il2CppSystem.Action)onPressed;
+            foreach (var c in claims)
+            {
+                var clone = GetOrCloneData(c.Key, c.LabelKey, c.LabelText);
+                if (clone != null && c.IconAction >= 0)
+                {
+                    clone.IconAction = c.IconAction;
+                    clone.IconCategory = c.IconCategory;
+                    // drop the source prompt's own actions so the game's button never self-fires on
+                    // them (Report's action would otherwise trigger us). we read the press ourselves.
+                    clone.InputActions = new Il2CppStructArray<int>(0);
+                }
+
+                // the clone has to STAY in the dictionary while we hold the row. the manager re-looks
+                // the data up whenever it rebuilds the prompts - notably on every active-controller
+                // change - so we restore the originals only when we release the row.
+                if (clone != null && mgr._navPromptsDictionary.TryGetValue(c.Key, out var original) && original != null)
+                {
+                    _installedList.Add((c.Key, original));
+                    mgr._navPromptsDictionary[c.Key] = clone;
+                }
+
+                dict[c.Key] = (Il2CppSystem.Action)c.OnPressed;
+            }
+
             Broadcaster.Instance?.Broadcast(new NavPromptChanged(dict));
+
+            // Broadcast runs its handlers synchronously, so the manager has already built the row's
+            // buttons by the time we get here - same button-by-LocalisationKey lookup
+            // NavPromptInjection's postfix uses.
+            var parent = mgr._navPromptsParent;
+            if (parent == null) return;
+            foreach (var c in claims)
+            {
+                if (c.PostBuild == null) continue;
+                for (int i = 0; i < parent.childCount; i++)
+                {
+                    var btn = parent.GetChild(i).GetComponent<NavigationPromptButton>();
+                    var label = btn != null ? btn._localisedStaticLabel : null;
+                    if (label != null && label.Key == c.LabelKey)
+                    {
+                        c.PostBuild(btn);
+                        _pinnedButtons.Add(btn);
+                        break;
+                    }
+                }
+            }
         }
 
-        private static NavPrompt _installedKey;
-        private static NavigationPromptData _installedOriginal;
+        private static readonly List<(NavPrompt key, NavigationPromptData original)> _installedList
+            = new List<(NavPrompt, NavigationPromptData)>();
+        // buttons whose glyphs we pinned via PostBuild. NavigationOverlayManager pools/reuses these
+        // GameObjects across rebuilds - when the row goes back to a game screen, the same button
+        // gets a new prompt but keeps whatever _mappeable=false / notMappeableSprite we set here.
+        // reset them on release/yield so the reassigned button rebuilds glyphs from its RewiredAction.
+        private static readonly List<NavigationPromptButton> _pinnedButtons = new List<NavigationPromptButton>();
+
+        private static void ResetPinnedGlyphs()
+        {
+            if (_pinnedButtons.Count == 0) return;
+            foreach (var btn in _pinnedButtons)
+            {
+                if (btn == null) continue;
+                var ctrl = btn.TryCast<NavigationPromptButtonController>();
+                var acu = ctrl != null ? ctrl._activeControllerUI : null;
+                if (acu == null) continue;
+                acu._mappeable = true;
+                acu.UpdateGlyphsWithActiveController();
+            }
+            _pinnedButtons.Clear();
+        }
 
         private static void RestoreInstalledData()
         {
-            if (_installedOriginal == null) return;
+            ResetPinnedGlyphs();
+            if (_installedList.Count == 0) return;
             var dict = Manager?._navPromptsDictionary;
-            if (dict != null) dict[_installedKey] = _installedOriginal;
-            _installedOriginal = null;
+            if (dict != null)
+                foreach (var (k, orig) in _installedList) dict[k] = orig;
+            _installedList.Clear();
         }
 
         // give the prompt slot's real data back but leave the row alone, for when another screen has
@@ -217,6 +285,145 @@ namespace BetterFG.Core
                 if (kb.GetButtonDownById(aem.elementIdentifierId)) return true;
             }
             return false;
+        }
+
+        internal static Sprite KeyboardGlyph(KeyCode key)
+        {
+            if (key == KeyCode.None || !ReInput.isReady) return null;
+            var sm = SingletonBehaviour<SpriteManager>.Instance;
+            var cg = sm != null ? sm._controllerGlyphs : null;
+            if (cg == null || cg.Keyboard == null) return null;
+            var kb = ReInput.controllers.Keyboard;
+            var ident = kb != null ? kb.GetElementIdentifierByKeyCode(key) : null;
+            if (ident == null) return null;
+            var info = cg.Keyboard.GetGlyph(ident.id, AxisRange.Full);
+            return info != null ? info.sprite : null;
+        }
+
+        // pin custom keyboard + pad glyphs on the ActiveControllerUI of an already-built button.
+        // Same shape as .OwnGlyph() from the raw-spawn path, hoisted so the injection path can reuse
+        // it in a post-build callback. Either sprite null = leave that side alone.
+        public static void ApplyOwnGlyph(NavigationPromptButton btn, KeyCode kbKey, int padActionId)
+            => ApplyGlyph(btn, KeyboardGlyph(kbKey), padActionId >= 0 ? ResolvePadGlyph(SingletonBehaviour<SpriteManager>.Instance, padActionId) : null);
+
+        // element-id variant: skips the action lookup entirely, resolves the pad glyph directly off
+        // whichever joystick is connected. use when we own the input ourselves (raw element poll)
+        // instead of piggybacking on a game action.
+        public static void ApplyOwnGlyphByElement(NavigationPromptButton btn, KeyCode kbKey, int padElementId)
+        {
+            Sprite pad = null;
+            if (padElementId >= 0 && ReInput.isReady && ReInput.players.playerCount > 0)
+            {
+                var p = ReInput.players.GetPlayer(0);
+                var sticks = p.controllers.Joysticks;
+                for (int i = 0; i < p.controllers.joystickCount && pad == null; i++)
+                    pad = JoystickElementGlyph(sticks[i], padElementId);
+            }
+            ApplyGlyph(btn, KeyboardGlyph(kbKey), pad);
+        }
+
+        internal static int ResolveElementIdByName(Joystick j, params string[] names)
+        {
+            if (j == null) return -1;
+            var ids = j.ButtonElementIdentifiers;
+            int n = j.buttonCount;
+            for (int b = 0; b < n; b++)
+            {
+                var id = ids[b];
+                if (id == null) continue;
+                foreach (var name in names)
+                    if (id.name == name) return id.id;
+            }
+            return -1;
+        }
+
+        internal static int CurrentPadElementByName(params string[] names)
+        {
+            if (!ReInput.isReady || ReInput.players.playerCount == 0) return -1;
+            var p = ReInput.players.GetPlayer(0);
+            var sticks = p.controllers.Joysticks;
+            for (int i = 0; i < p.controllers.joystickCount; i++)
+            {
+                int id = ResolveElementIdByName(sticks[i], names);
+                if (id >= 0) return id;
+            }
+            return -1;
+        }
+
+        internal static bool ElementDownByName(params string[] names)
+        {
+            if (!ReInput.isReady || ReInput.players.playerCount == 0) return false;
+            var p = ReInput.players.GetPlayer(0);
+            var sticks = p.controllers.Joysticks;
+            for (int i = 0; i < p.controllers.joystickCount; i++)
+            {
+                var j = sticks[i];
+                if (j == null) continue;
+                int id = ResolveElementIdByName(j, names);
+                if (id >= 0 && j.GetButtonDownById(id)) return true;
+            }
+            return false;
+        }
+
+        private static void ApplyGlyph(NavigationPromptButton btn, Sprite kbSprite, Sprite padSprite)
+        {
+            var ctrl = btn.TryCast<NavigationPromptButtonController>();
+            var acu = ctrl != null ? ctrl._activeControllerUI : null;
+            if (acu == null) return;
+            acu._mappeable = false;
+            if (kbSprite != null) acu._notMappeableKeyboardSprite = kbSprite;
+            if (padSprite != null) acu._notMappeableJoystickSprite = padSprite;
+            acu._notMappeableKeyboardGlyphText = "";
+            acu._notMappeableJoystickGlyphText = "";
+            if (acu._text != null) UGUIShip.RelabelText(acu._text, "");
+            acu.UpdateGlyphsWithActiveController();
+        }
+
+        // ask SpriteManager for the polled action's glyph ON EACH JOYSTICK explicitly. the overload
+        // without a Controller resolves for the ACTIVE device, so on keyboard it returns "Esc" and
+        // that gets pinned as the pad sprite — pass the joystick so it resolves the pad binding.
+        internal static Sprite ResolvePadGlyph(SpriteManager sm, int actionId)
+        {
+            if (actionId < 0 || !ReInput.isReady || ReInput.players.playerCount == 0) return null;
+            var action = ReInput.mapping.GetAction(actionId);
+            if (action == null) return null;
+
+            var p = ReInput.players.GetPlayer(0);
+            var sticks = p.controllers.Joysticks;
+            int n = p.controllers.joystickCount;
+            var buf = new Il2CppAemList();
+            for (int i = 0; i < n; i++)
+            {
+                var j = sticks[i];
+                buf.Clear();
+                int got = p.controllers.maps.GetButtonMapsWithAction(j, actionId, false, buf);
+                if (got == 0) continue;
+                int layoutId = 0;
+                for (int k = 0; k < got; k++)
+                {
+                    var cm = buf[k] != null ? buf[k].controllerMap : null;
+                    if (cm != null) { layoutId = cm.layoutId; break; }
+                }
+                var info = sm.GetActionControllerSprite(j, action, layoutId, Pole.Positive, false);
+                if (info != null && info.sprite != null) return info.sprite;
+            }
+            return null;
+        }
+
+        internal static Sprite JoystickElementGlyph(Joystick j, int elementId)
+        {
+            if (j == null || elementId < 0) return null;
+            var sm = SingletonBehaviour<SpriteManager>.Instance;
+            var cg = sm != null ? sm._controllerGlyphs : null;
+            if (cg == null) return null;
+            try
+            {
+                string msg = null;
+                var info = cg.GetGlyphFromHardwareGuid(j.hardwareTypeGuid, j.hardwareName,
+                    ControllerType.Joystick, elementId, AxisRange.Full, ref msg);
+                return info != null ? info.sprite : null;
+            }
+            catch { return null; }
         }
 
         internal static GameObject GetPromptPrefab()
@@ -398,6 +605,14 @@ namespace BetterFG.Core
                 // an inactive row means anything Instantiate'd under it starts inactive too and
                 // skips Awake() before Init() runs below, NREing inside the game's own label code.
                 if (actualParent == null || !actualParent.gameObject.activeInHierarchy) return null;
+
+                string targetName = "BettrFG_NavPrompt_" + LabelKey;
+                for (int i = actualParent.childCount - 1; i >= 0; i--)
+                {
+                    var child = actualParent.GetChild(i);
+                    if (child != null && child.name == targetName)
+                        UnityEngine.Object.Destroy(child.gameObject);
+                }
             }
             else if (OwnCanvas)
             {
@@ -451,70 +666,9 @@ namespace BetterFG.Core
         // the ActiveControllerUI's fixed (non-mappeable) sprites. _mappeable=false makes the ACU
         // pick the keyboard vs joystick one by active device on its own.
         private void ApplyOwnGlyph(NavigationPromptButton btn)
-        {
-            var ctrl = btn.TryCast<NavigationPromptButtonController>();
-            var acu = ctrl != null ? ctrl._activeControllerUI : null;
-            if (acu == null) return;
+            => NavPromptCore.ApplyOwnGlyph(btn, ExtraKey,
+                PollActionIdOverride != null && PollActionIdOverride.Length > 0 ? PollActionIdOverride[0] : -1);
 
-            var sm = SingletonBehaviour<SpriteManager>.Instance;
-            if (sm == null) return;
-
-            var kbSprite = ResolveKeyboardGlyph(sm, ExtraKey);
-            var padSprite = ResolvePadGlyph(sm, PollActionIdOverride);
-
-            acu._mappeable = false;
-            if (kbSprite != null) acu._notMappeableKeyboardSprite = kbSprite;
-            if (padSprite != null) acu._notMappeableJoystickSprite = padSprite;
-            acu._notMappeableKeyboardGlyphText = "";
-            acu._notMappeableJoystickGlyphText = "";
-            if (acu._text != null) UGUIShip.RelabelText(acu._text, "");
-            acu.UpdateGlyphsWithActiveController();
-        }
-
-        private static Sprite ResolveKeyboardGlyph(SpriteManager sm, KeyCode key)
-        {
-            if (key == KeyCode.None || !ReInput.isReady) return null;
-            var cg = sm._controllerGlyphs;
-            if (cg == null || cg.Keyboard == null) return null;
-            var kb = ReInput.controllers.Keyboard;
-            var ident = kb != null ? kb.GetElementIdentifierByKeyCode(key) : null;
-            if (ident == null) return null;
-            var info = cg.Keyboard.GetGlyph(ident.id, AxisRange.Full);
-            return info != null ? info.sprite : null;
-        }
-
-        // ask SpriteManager for the polled action's glyph ON EACH JOYSTICK explicitly. the overload
-        // without a Controller resolves for the ACTIVE device, so on keyboard it returns "Esc" and
-        // that gets pinned as the pad sprite — pass the joystick so it resolves the pad binding.
-        private static Sprite ResolvePadGlyph(SpriteManager sm, int[] actionIds)
-        {
-            if (actionIds == null || actionIds.Length == 0 || !ReInput.isReady || ReInput.players.playerCount == 0)
-                return null;
-            int actionId = actionIds[0];
-            var action = ReInput.mapping.GetAction(actionId);
-            if (action == null) return null;
-
-            var p = ReInput.players.GetPlayer(0);
-            var sticks = p.controllers.Joysticks;
-            int n = p.controllers.joystickCount;
-            var buf = new Il2CppAemList();
-            for (int i = 0; i < n; i++)
-            {
-                var j = sticks[i];
-                buf.Clear();
-                int got = p.controllers.maps.GetButtonMapsWithAction(j, actionId, false, buf);
-                if (got == 0) continue;
-                int layoutId = 0;
-                for (int k = 0; k < got; k++)
-                {
-                    var cm = buf[k] != null ? buf[k].controllerMap : null;
-                    if (cm != null) { layoutId = cm.layoutId; break; }
-                }
-                var info = sm.GetActionControllerSprite(j, action, layoutId, Pole.Positive, false);
-                if (info != null && info.sprite != null) return info.sprite;
-            }
-            return null;
-        }
 
         private void ApplyAnchors(RectTransform rt)
         {
@@ -693,5 +847,183 @@ namespace BetterFG.Core
             if (GameObject != null) UnityEngine.Object.Destroy(GameObject);
             GameObject = null;
         }
+    }
+
+    // adds one of our own entries to whatever prompt set the current screen has broadcast, by
+    // prefixing NavigationOverlayManager.UpdateNavPrompts. the manager then builds the button
+    // itself and tracks it in its own list the same as every game-authored prompt — no orphan
+    // sibling under _navPromptsParent, no fighting the screen's own layout. Add/Remove triggers a
+    // rebroadcast of the last game-authored dict so the manager rebuilds the row.
+    //
+    // callers should use a NavPrompt enum value they own (200+), not one the game itself uses,
+    // so two features can inject simultaneously without stomping each other. Pass a data clone
+    // (via NavPromptInjection.BuildData) so the manager has something to look up for our key;
+    // pass a postBuild callback to apply glyph overrides once the manager has built our button.
+    public static class NavPromptInjection
+    {
+        // reserved range for BettrFG-owned NavPrompt keys. The game's enum values sit below this.
+        public const NavPrompt CopyCode = (NavPrompt)200;
+        public const NavPrompt LevelPort = (NavPrompt)201;
+        public const NavPrompt PasteCode = (NavPrompt)202;
+        public const NavPrompt RandomShow = (NavPrompt)203;
+        public const NavPrompt IntroCamExit = (NavPrompt)204;
+
+        private sealed class Entry
+        {
+            public NavPrompt Key;
+            public Action Callback;
+            public NavigationPromptData Data;
+            public Action<NavigationPromptButton> PostBuild;
+        }
+
+        private static readonly Dictionary<NavPrompt, Entry> _injected = new Dictionary<NavPrompt, Entry>();
+        private static Il2CppNavPromptDict _pristine;
+        private static bool _pristineSeen;
+        // buttons we've pinned custom glyphs on, and which entry each was pinned for. the manager
+        // pools these GameObjects, so the same button can come back owned by a DIFFERENT prompt —
+        // ours or the game's — and has to be re-pinned or reset instead of keeping stale sprites.
+        private static readonly Dictionary<NavigationPromptButton, NavPrompt> _ownedButtons
+            = new Dictionary<NavigationPromptButton, NavPrompt>();
+
+        // build a fresh data clone off a game prefab source, retargeted with a custom label +
+        // Rewired action mapping (IconAction/IconCategory drive the built-in glyph). InputActions
+        // is emptied so the game's button never self-fires — we poll the press ourselves.
+        public static NavigationPromptData BuildData(NavPrompt prefabSource, string label, string labelKey,
+            int iconAction, int iconCategory)
+        {
+            var data = NavPromptCore.GetOrCloneData(prefabSource, labelKey, label);
+            if (data != null)
+            {
+                data.IconAction = iconAction;
+                data.IconCategory = iconCategory;
+                data.InputActions = new Il2CppStructArray<int>(0);
+            }
+            return data;
+        }
+
+        public static void Add(NavPrompt key, Action cb,
+            NavigationPromptData data = null,
+            Action<NavigationPromptButton> postBuild = null)
+        {
+            _injected.Remove(key);
+
+            var mgr = NavPromptCore.Manager;
+            if (data != null && mgr != null && mgr._navPromptsDictionary != null)
+                mgr._navPromptsDictionary[key] = data;
+
+            _injected[key] = new Entry { Key = key, Callback = cb, Data = data, PostBuild = postBuild };
+            Rebroadcast();
+        }
+
+        public static void Remove(NavPrompt key)
+        {
+            if (!_injected.Remove(key)) return;
+            Rebroadcast();
+        }
+
+        internal static void OnBeforeUpdatePrompts(NavPromptChanged evt)
+        {
+            var dict = evt?.NavPrompts;
+            if (dict == null) return;
+
+            if (_pristine == null) _pristine = new Il2CppNavPromptDict();
+            _pristine.Clear();
+            foreach (var kv in dict)
+            {
+                if (_injected.ContainsKey(kv.Key)) continue;
+                _pristine[kv.Key] = kv.Value;
+            }
+            _pristineSeen = true;
+
+            foreach (var kv in _injected)
+                dict[kv.Key] = (Il2CppSystem.Action)kv.Value.Callback;
+        }
+
+        private static readonly Dictionary<NavigationPromptButton, NavPrompt> _sweepScratch
+            = new Dictionary<NavigationPromptButton, NavPrompt>();
+
+        internal static void OnAfterUpdatePrompts(NavigationOverlayManager mgr)
+        {
+            if (mgr == null) return;
+            if (_injected.Count == 0 && _ownedButtons.Count == 0) return;
+            var parent = mgr._navPromptsParent;
+            if (parent == null) return;
+
+            _sweepScratch.Clear();
+            int childCount = parent.childCount;
+            for (int i = 0; i < childCount; i++)
+            {
+                var child = parent.GetChild(i);
+                if (child == null || !child.gameObject.activeInHierarchy) continue;
+                var btn = child.GetComponent<NavigationPromptButton>();
+                if (btn == null) continue;
+                var label = btn._localisedStaticLabel;
+                if (label == null) continue;
+                string key = label.Key;
+                if (string.IsNullOrEmpty(key)) continue;
+
+                Entry match = null;
+                foreach (var entry in _injected.Values)
+                {
+                    if (entry.Data == null || entry.Data.LocalisationKey != key) continue;
+                    match = entry;
+                    break;
+                }
+                if (match == null) continue;
+
+                _sweepScratch[btn] = match.Key;
+                // only run the (expensive) glyph resolution when this button isn't already pinned
+                // for THIS entry. same button/same entry across a rebuild = keep the sprites as-is;
+                // a button that swapped between two of our prompts must be wiped first, or it keeps
+                // whichever side the new pin doesn't overwrite.
+                if (match.PostBuild == null) continue;
+                if (_ownedButtons.TryGetValue(btn, out var pinnedFor) && pinnedFor == match.Key) continue;
+                ResetGlyph(btn);
+                match.PostBuild(btn);
+            }
+
+            foreach (var kv in _ownedButtons)
+            {
+                if (kv.Key == null || _sweepScratch.ContainsKey(kv.Key)) continue;
+                ResetGlyph(kv.Key);
+            }
+            _ownedButtons.Clear();
+            foreach (var kv in _sweepScratch) _ownedButtons[kv.Key] = kv.Value;
+            _sweepScratch.Clear();
+        }
+
+        // undo an earlier ApplyOwnGlyph on a button the manager has since reassigned to a game
+        // prompt. flip _mappeable back on so the ACU rebuilds glyphs from its RewiredAction.
+        private static void ResetGlyph(NavigationPromptButton btn)
+        {
+            var ctrl = btn.TryCast<NavigationPromptButtonController>();
+            var acu = ctrl != null ? ctrl._activeControllerUI : null;
+            if (acu == null) return;
+            acu._mappeable = true;
+            acu._notMappeableKeyboardSprite = null;
+            acu._notMappeableJoystickSprite = null;
+            acu.UpdateGlyphsWithActiveController();
+        }
+
+        private static void Rebroadcast()
+        {
+            if (!_pristineSeen) return;
+            var dict = new Il2CppNavPromptDict();
+            if (_pristine != null)
+                foreach (var kv in _pristine) dict[kv.Key] = kv.Value;
+            Broadcaster.Instance?.Broadcast(new NavPromptChanged(dict));
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(NavigationOverlayManager), "UpdateNavPrompts")]
+    internal static class NavigationOverlayManagerUpdateNavPromptsPatch
+    {
+        [HarmonyLib.HarmonyPrefix]
+        public static void Prefix(NavPromptChanged navPromptChangedEvent)
+            => NavPromptInjection.OnBeforeUpdatePrompts(navPromptChangedEvent);
+
+        [HarmonyLib.HarmonyPostfix]
+        public static void Postfix(NavigationOverlayManager __instance)
+            => NavPromptInjection.OnAfterUpdatePrompts(__instance);
     }
 }

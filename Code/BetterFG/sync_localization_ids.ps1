@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 # a handful of "tweak.*"/"ui.*"-shaped strings are NOT display ids though - BfgPatchGate keys and
 # SettingsService storage keys share the naming convention but are never shown on screen, so a line
 # that's purely one of those calls is skipped (an id used ANYWHERE else still counts).
-$idPattern = '"((?:ui|tweak)\.[A-Za-z0-9_]+)"'
+$idPattern = '"((?:ui|tweak|rpc|credits|leaderboard|sidewheel)\.[A-Za-z0-9_]+)"'
 $nonDisplayLine = 'BfgPatchGate\(|SettingsService\.(Get|Set|Remove)\('
 
 $foundIds = New-Object System.Collections.Generic.HashSet[string]
@@ -48,7 +48,7 @@ $missing = @($foundIds | Where-Object { -not $existingKeys.Contains($_) } | Sort
 if ($missing.Count -eq 0) { Write-Host "localization: no new ids"; return }
 
 function Guess-English([string]$id) {
-    $body = $id -replace '^(ui|tweak)\.', ''
+    $body = $id -replace '^[a-z]+\.', ''
     $words = @($body.Split('_') | Where-Object { $_.Length -gt 0 } | ForEach-Object {
         $_.Substring(0,1).ToUpperInvariant() + $_.Substring(1)
     })

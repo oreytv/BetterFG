@@ -14,7 +14,7 @@ using BepInEx.Unity.IL2CPP.Utils.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BettrFG.uGUI;
 
 namespace BetterFG.UI.Tabs

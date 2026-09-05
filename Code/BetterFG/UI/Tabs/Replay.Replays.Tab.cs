@@ -176,13 +176,7 @@ namespace BetterFG.UI.Tabs
         void PaintAuto(bool on)
         {
             _autoBtn.GetComponentInChildren<Text>().text = AutoLabel(on);
-            var col = on ? GREEN : DARK;
-            _autoBtn.GetComponent<Image>().color = col;
-            var cols = _autoBtn.colors;
-            cols.normalColor = col;
-            cols.highlightedColor = col * 1.2f;
-            cols.pressedColor = col * 0.7f;
-            _autoBtn.colors = cols;
+            UGUIShip.SetButtonColor(_autoBtn, on ? GREEN : DARK);
         }
 
         // headers only. thumbnails and rows are built per page in RenderPage so a folder full of

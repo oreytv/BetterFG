@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -10,7 +10,7 @@ using BetterFG.Core;
 using FGClient;
 using FG.Common;
 using FG.Common.CMS;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Network;
 using BetterFG.UI.Tabs;
 using Il2CppInterop.Runtime;
@@ -139,15 +139,13 @@ namespace BetterFG.Customization.Player
                 }
             }
 
-            // local scale is resolved inside PlayerScaleService (single source of truth); pass the skin
-            // we're applying so its baked scale is used even before the slot lands in activeSlots. remote
-            // beans just take the skin's own baked scale.
-            if (isRemote)
+            bool isPet = BetterFG.Customization.Pets.PetService.IsPetFgcc(bean.GetComponent<FallGuysCharacterController>());
+            if (!isPet && isRemote)
             {
                 float bakedRemote = (slot.type == SkinType.Costume && slot.skinInfo.skinScale > 0f) ? slot.skinInfo.skinScale : 1f;
                 PlayerScaleService.ApplyToBean(bean, bakedRemote, PlayerScaleService.BeanScaleMode.Remote);
             }
-            else
+            else if (!isPet)
                 PlayerScaleService.ApplyLocalCostumeScale(bean, slot.type == SkinType.Costume ? slot.skinInfo : null);
             if (reason == ApplyReason.FromMenu)
                 AssetManager.SpawnPoof(bean.transform.position + Vector3.up);
@@ -239,11 +237,8 @@ namespace BetterFG.Customization.Player
                 poller.skinClone = clone;
                 poller.isRemote = isRemote;
                 poller.keepLocalDonor = keepLocalDonor;
+                poller.beanId = bean.GetInstanceID();
                 poller.HideNow();
-                // in-game cosmetics worn alongside a UGC costume can spawn their meshes a few
-                // hundred ms late — the 1s poll interval means they linger visibly before getting
-                // hidden. burst-poll for the first second so they get yanked basically instantly.
-                StartCoroutine(BurstPollPoller(poller).WrapToIl2Cpp());
             }
 
             KillExistingAppliedAtKey(pendingKey);

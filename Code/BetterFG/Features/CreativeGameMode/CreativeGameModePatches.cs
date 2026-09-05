@@ -1,4 +1,5 @@
 using FG.Common;
+using BetterFG.Features.CustomBackgrounds;
 using HarmonyLib;
 
 namespace BetterFG.Features.CreativeGameMode
@@ -23,20 +24,35 @@ namespace BetterFG.Features.CreativeGameMode
     {
         [HarmonyPostfix]
         public static void Postfix(RulebookMenuCollectionBinding __instance)
-            => CreativeGameModeRulebook.InjectRow(__instance);
+        {
+            CreativeGameModeRulebook.InjectRow(__instance);
+            DisableBackgroundRulebook.InjectRow(__instance);
+            Definers.TrackNativeRow(__instance);
+        }
     }
 
     // Left/right on a horizontal-list row (mouse arrows or carousel nav) both land here. On our
-    // cloned row we cycle the selection ourselves and skip the native handler.
+    // cloned rows we handle the change ourselves and skip the native handler.
     [HarmonyPatch(typeof(LevelEditorRulebookEntryHorizontalListViewModel), nameof(LevelEditorRulebookEntryHorizontalListViewModel.OnIncrement))]
     internal static class RulebookGameModeIncrementPatch
     {
         [HarmonyPrefix]
         public static bool Prefix(LevelEditorRulebookEntryHorizontalListViewModel __instance)
         {
-            if (!CreativeGameModeRulebook.IsOurVm(__instance.GetInstanceID())) return true;
-            CreativeGameModeRulebook.Cycle(1);
-            return false;
+            int id = __instance.GetInstanceID();
+            if (CreativeGameModeRulebook.IsOurVm(id)) { CreativeGameModeRulebook.Cycle(1); return false; }
+            if (DisableBackgroundRulebook.IsOurVm(id)) { DisableBackgroundRulebook.Toggle(); return false; }
+            return true;
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(LevelEditorRulebookEntryHorizontalListViewModel __instance)
+        {
+            if (Definers.IsNativeRowTarget(__instance.GetInstanceID()))
+            {
+                Definers.SyncDefiner();
+                DisableBackgroundRulebook.Sync(ThemeManager._sceneBackgroundAndLighting);
+            }
         }
     }
 
@@ -46,9 +62,20 @@ namespace BetterFG.Features.CreativeGameMode
         [HarmonyPrefix]
         public static bool Prefix(LevelEditorRulebookEntryHorizontalListViewModel __instance)
         {
-            if (!CreativeGameModeRulebook.IsOurVm(__instance.GetInstanceID())) return true;
-            CreativeGameModeRulebook.Cycle(-1);
-            return false;
+            int id = __instance.GetInstanceID();
+            if (CreativeGameModeRulebook.IsOurVm(id)) { CreativeGameModeRulebook.Cycle(-1); return false; }
+            if (DisableBackgroundRulebook.IsOurVm(id)) { DisableBackgroundRulebook.Toggle(); return false; }
+            return true;
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(LevelEditorRulebookEntryHorizontalListViewModel __instance)
+        {
+            if (Definers.IsNativeRowTarget(__instance.GetInstanceID()))
+            {
+                Definers.SyncDefiner();
+                DisableBackgroundRulebook.Sync(ThemeManager._sceneBackgroundAndLighting);
+            }
         }
     }
 

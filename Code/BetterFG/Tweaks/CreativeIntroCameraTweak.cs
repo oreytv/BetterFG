@@ -178,7 +178,15 @@ namespace BetterFG.Tweaks
             _phase = ((h >> 3) & 255u) / 255f * Mathf.PI;
             _angle = ((h >> 1) & 1023u) / 1024f * Mathf.PI * 2f;
 
-            if (_hasFinish) BuildFlight();
+            if (BetterFG.Features.CustomIntroCams.CustomIntroCams.TryBuildPath(out var authored, out var authoredLook, out float authoredDuration))
+            {
+                _path = authored;
+                _lookPath = authoredLook;
+                BuildArcTable();
+                _flightDuration = authoredDuration;
+                Plugin.Log.LogInfo($"authored intro cams: {_path.Length} shot(s) over {_flightDuration:0.00}s");
+            }
+            else if (_hasFinish) BuildFlight();
 
             _t0 = Time.time;
             _running = true;
@@ -379,32 +387,37 @@ namespace BetterFG.Tweaks
             }
         }
 
-        void BuildArcTable()
+        void BuildArcTable() => _arc = ArcTable(_path, out _flightLength);
+
+        float ArcParam(float e) => ArcParam(_arc, _flightLength, e);
+
+        internal static float[] ArcTable(Vector3[] path, out float length)
         {
-            _arc = new float[ArcSamples + 1];
-            Vector3 prev = Spline(_path, 0f);
+            var arc = new float[ArcSamples + 1];
+            Vector3 prev = Spline(path, 0f);
             float acc = 0f;
             for (int i = 1; i <= ArcSamples; i++)
             {
-                Vector3 p = Spline(_path, i / (float)ArcSamples);
+                Vector3 p = Spline(path, i / (float)ArcSamples);
                 acc += Vector3.Distance(prev, p);
                 prev = p;
-                _arc[i] = acc;
+                arc[i] = acc;
             }
-            _flightLength = acc;
+            length = acc;
+            return arc;
         }
 
-        float ArcParam(float e)
+        internal static float ArcParam(float[] arc, float length, float e)
         {
-            float target = e * _flightLength;
+            float target = e * length;
             int i = 1;
-            while (i < _arc.Length && _arc[i] < target) i++;
-            if (i >= _arc.Length) return 1f;
-            float a = _arc[i - 1], b = _arc[i];
+            while (i < arc.Length && arc[i] < target) i++;
+            if (i >= arc.Length) return 1f;
+            float a = arc[i - 1], b = arc[i];
             return (i - 1 + (b > a ? (target - a) / (b - a) : 0f)) / ArcSamples;
         }
 
-        static Vector3 Spline(Vector3[] p, float t)
+        internal static Vector3 Spline(Vector3[] p, float t)
         {
             int last = p.Length - 1;
             float x = Mathf.Clamp01(t) * last;

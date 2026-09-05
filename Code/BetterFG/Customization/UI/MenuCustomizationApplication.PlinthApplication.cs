@@ -9,7 +9,7 @@ using UnityEngine.AddressableAssets;
 using Vector3 = UnityEngine.Vector3;
 using Quaternion = UnityEngine.Quaternion;
 
-namespace BetterFG.Customization.Menu
+namespace BetterFG.Customization.UI
 {
     public partial class MenuCustomizationApplication
     {
@@ -38,7 +38,7 @@ namespace BetterFG.Customization.Menu
         private readonly Dictionary<int, bool> _profileOrigActive = new Dictionary<int, bool>();
 
         // one bundle per file — never double-load
-        private readonly Dictionary<string, AssetBundle> _bundles = new Dictionary<string, AssetBundle>();
+        private readonly HashSet<string> _plinthFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // last applied — so BeanMonitorService.PushPlinth can immediately apply to late-arriving slots
         private SkinInfo _lastInfo;
@@ -175,14 +175,16 @@ namespace BetterFG.Customization.Menu
         {
             bundle = null;
             if (string.IsNullOrEmpty(file)) return false;
-            return _bundles.TryGetValue(file, out bundle) && bundle != null;
+            bundle = BetterFG.Utilities.Bundles.Get(file);
+            return bundle != null;
         }
 
         public AssetBundle GetOrRegisterBundle(string file, AssetBundle incoming)
         {
             if (string.IsNullOrEmpty(file)) return incoming;
-            if (_bundles.TryGetValue(file, out var existing) && existing != null) return existing;
-            if (incoming != null) _bundles[file] = incoming;
+            var existing = BetterFG.Utilities.Bundles.Get(file);
+            if (existing != null) { _plinthFiles.Add(file); return existing; }
+            if (incoming != null) { BetterFG.Utilities.Bundles.Register(file, incoming); _plinthFiles.Add(file); }
             return incoming;
         }
 
@@ -255,9 +257,9 @@ namespace BetterFG.Customization.Menu
             AssetBundle bundle;
             if (!TryGetBundle(info.file, out bundle) || bundle == null)
             {
-                var loadReq = AssetBundle.LoadFromMemoryAsync(bytes);
-                yield return loadReq;
-                bundle = loadReq.assetBundle;
+                AssetBundle loaded = null;
+                yield return BetterFG.Utilities.Bundles.LoadMemory(info.file, bytes, ab => loaded = ab).WrapToIl2Cpp();
+                bundle = loaded;
                 if (bundle == null) { Plugin.Log.LogWarning($"lobby plinth bundle wouldn't load: {info.file}"); yield break; }
                 bundle = GetOrRegisterBundle(info.file, bundle);
             }
@@ -286,9 +288,9 @@ namespace BetterFG.Customization.Menu
             }
             _extraOrigActive.Clear();
 
-            foreach (var kvp in _bundles)
-                if (kvp.Value != null) kvp.Value.Unload(false);
-            _bundles.Clear();
+            foreach (var file in _plinthFiles)
+                BetterFG.Utilities.Bundles.Unload(file, false);
+            _plinthFiles.Clear();
 
             _lastInfo = null;
             _lastBundle = null;
@@ -459,10 +461,7 @@ namespace BetterFG.Customization.Menu
                 yield break;
             }
 
-            AssetBundle bundle = null;
-            try { bundle = AssetBundle.LoadFromMemory(bytes); }
-            catch (Exception ex) { Plugin.Log.LogWarning($"Plinth: bundle load failed: {ex.Message}"); }
-
+            AssetBundle bundle = BetterFG.Utilities.Bundles.LoadMemorySync(info.file, bytes);
             if (bundle == null) { status?.Invoke("Plinth: bundle load failed"); yield break; }
 
             ApplyPlinth(info, bundle);

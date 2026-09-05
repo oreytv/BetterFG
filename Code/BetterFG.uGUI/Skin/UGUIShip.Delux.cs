@@ -17,6 +17,7 @@ namespace BettrFG.uGUI
         private static Sprite _deluxShineSprite;
         private static Sprite _deluxOutlineSprite;
         private static Sprite _deluxPanelSprite;
+        private static Sprite _deluxPanelDarkSprite;
 
         // 9-sliced loader for the delux button art. corners ~8px on the 64px source; border 16 is a
         // safe superset, multiplier keeps the drawn corner from eating short buttons.
@@ -66,6 +67,16 @@ namespace BettrFG.uGUI
         public static void ApplyDeluxPanel(Image img, float ppuMult = 2f)
         {
             var s = LoadDeluxSlice("BetterFG.assets.ui.general.uisprite_delux_panel_light.png", ref _deluxPanelSprite);
+            if (s == null) return;
+            img.sprite = s;
+            img.type = Image.Type.Sliced;
+            img.pixelsPerUnitMultiplier = ppuMult;
+            RegisterShine(img);
+        }
+
+        public static void ApplyDeluxPanelDark(Image img, float ppuMult = 2f)
+        {
+            var s = LoadDeluxSlice("BetterFG.assets.ui.general.uisprite_delux_panel.png", ref _deluxPanelDarkSprite);
             if (s == null) return;
             img.sprite = s;
             img.type = Image.Type.Sliced;

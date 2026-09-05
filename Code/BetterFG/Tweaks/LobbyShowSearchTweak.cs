@@ -30,7 +30,8 @@ namespace BetterFG.Tweaks
 
         const string ShowSelectRoot = "UICanvas_Client_V2(Clone)/Default/Prefab_UI_PrivateLobbyShowSelect(Clone)";
         const string ViewportPath = "Container/ShowsScrollList/ShowsListViewport";
-        const string ContentPath = "Container/ShowsScrollList/ShowsListViewport/ShowsListContent";
+        // shared with RandomShowSelectTweak - one copy, don't duplicate the path string.
+        internal const string ContentPath = "Container/ShowsScrollList/ShowsListViewport/ShowsListContent";
 
         static readonly Vector3 ViewportLocalPos = new Vector3(267.1405f, -67.3638f, 0f);
         static readonly Vector4 ViewportPadding = new Vector4(-20f, 75f, -20f, 0f); // left top right bottom
@@ -170,11 +171,8 @@ namespace BetterFG.Tweaks
         private void Update()
         {
             if (!IsEnabled) return;
-            if (_searchFieldRt == null || _searchText == null) return;
 
-            // screen got rebuilt under us but our refs are stale � drop them, the patch
-            // coroutine will rebuild. also bail if the root went away (left the screen).
-            if (_seenToken != BuildToken || _root == null || _searchFieldRt == null)
+            if (_seenToken != BuildToken || _root == null || _searchFieldRt == null || _searchText == null)
             {
                 SetFocus(false);
                 _searchFieldRt = null;

@@ -7,7 +7,7 @@ using Vector3 = UnityEngine.Vector3;
 using Quaternion = UnityEngine.Quaternion;
 using FGClient;
 
-namespace BetterFG.Customization.Menu
+namespace BetterFG.Customization.UI
 {
     public partial class MenuCustomizationApplication
     {

@@ -444,7 +444,8 @@ namespace BetterFG.Features.Replay
         },
         note: "Saves what happened each round to AppData/BettrFG/Replays.");
 
-        public static bool AutoRecord => FeatureRegistry.IsOn("replay", "record");
+        public static bool AutoRecord => FeatureRegistry.IsOn("replay", "record")
+            && BetterFG.Services.SettingsService.Get("debug.disable_replay", "false") != "true";
 
         public static void SetAutoRecord(bool on)
         {

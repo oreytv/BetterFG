@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -10,7 +10,7 @@ using BetterFG.Core;
 using FGClient;
 using FG.Common;
 using FG.Common.CMS;
-using BetterFG.Customization.Menu;
+using BetterFG.Customization.UI;
 using BetterFG.Network;
 using BetterFG.UI.Tabs;
 using Il2CppInterop.Runtime;
@@ -304,9 +304,9 @@ namespace BetterFG.Customization.Player
             AssetBundle bundle = null;
             if (cachePath != null && System.IO.File.Exists(cachePath))
             {
-                var fileReq = AssetBundle.LoadFromFileAsync(cachePath);
-                yield return fileReq;
-                bundle = fileReq.assetBundle;
+                AssetBundle fileLoaded = null;
+                yield return Bundles.LoadFile(info.file, cachePath, ab => fileLoaded = ab).WrapToIl2Cpp();
+                bundle = fileLoaded;
                 if (bundle == null) { try { System.IO.File.Delete(cachePath); } catch { } }
             }
 
@@ -323,9 +323,9 @@ namespace BetterFG.Customization.Player
 
                 if (cachePath != null && loader != null)
                     loader.StartCoroutine(loader.SaveCacheCoroutine(cachePath, bytes).WrapToIl2Cpp());
-                var loadReq = AssetBundle.LoadFromMemoryAsync(bytes);
-                yield return loadReq;
-                bundle = loadReq.assetBundle;
+                AssetBundle memLoaded = null;
+                yield return Bundles.LoadMemory(info.file, bytes, ab => memLoaded = ab).WrapToIl2Cpp();
+                bundle = memLoaded;
             }
 
             if (bundle == null) yield break;
@@ -653,22 +653,8 @@ namespace BetterFG.Customization.Player
             PruneLoadedBundlesNotUsedByAppliedSkins();
             redownloadingFiles.Remove(file);
 
-            // only re-composite cosmetics when a COSTUME came off AND something is actually on.
-            // RestoreMenuBeanGEOSoon resets the bean GEO + reapplies game cosmetics, which briefly
-            // flashes the bare bean — pointless churn for an additive accessory/item removal.
-            // colour/pattern/faceplate count too: the UGC costume with keepBase=off hid Body_LOD0,
-            // and after restore the revived body needs colour/pattern/faceplate re-stamped or the
-            // lobby bean shows the default look (mainmenu bean gets rescued by its own UpdateColour
-            // path, the lobby bean does not).
-            bool hasGameLook = activeGameCosmetics.Count > 0 || activeColour.On || activePattern.On || activeFaceplate.On;
-            if (removedType == SkinType.Costume && hasGameLook)
-            {
-                // fast path: the cosmetics were parked (not destroyed) when this costume went on, so
-                // flip them straight back on with no re-instantiate. only fall back to the slow
-                // re-composite when nothing was stashed (cosmetics added after the costume, etc).
-                if (!RestoreStashedGameCosmetics())
-                    StartCoroutine(RestoreMenuBeanGEOSoon().WrapToIl2Cpp());
-            }
+            if (removedType == SkinType.Costume)
+                StartCoroutine(RestoreMenuBeanGEOSoon().WrapToIl2Cpp());
 
             var localBean = BeanMonitorService.LocalPlayerBean;
             if (localBean != null) PlayerScaleService.ApplyToBean(localBean, 1f, PlayerScaleService.BeanScaleMode.Local);
@@ -1561,17 +1547,6 @@ namespace BetterFG.Customization.Player
             }
         }
 
-        private IEnumerator BurstPollPoller(CostumePollerComponent poller)
-        {
-            float elapsed = 0f;
-            while (poller != null && elapsed < 1f)
-            {
-                poller.PollNow();
-                yield return new WaitForSeconds(0.05f);
-                elapsed += 0.05f;
-            }
-        }
-
         private IEnumerator RestoreMenuBeanGEOSoon()
         {
             // if cosmetics are parked under a just-removed costume, flip them straight back on — the
@@ -1837,8 +1812,7 @@ namespace BetterFG.Customization.Player
             if (loadedBundles.TryGetValue(file, out var existing) && existing != null)
                 return existing;
 
-            AssetBundle bundle;
-                bundle = AssetBundle.LoadFromMemory(bytes);
+            var bundle = Bundles.LoadMemorySync(file, bytes);
             loadedBundles[file] = bundle;
             return bundle;
         }

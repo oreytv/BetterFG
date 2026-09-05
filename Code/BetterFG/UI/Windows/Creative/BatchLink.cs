@@ -155,12 +155,13 @@ namespace BetterFG.UI.Windows.Creative
             var schema = LevelSaver.GetObjectSchema(source);
             if (schema == null) { Plugin.Log.LogWarning("link controller wouldn't serialise, can't copy it"); return null; }
 
-            schema.GUID = new Il2CppSystem.Nullable<Il2CppSystem.Guid>(Il2CppSystem.Guid.NewGuid());
             schema.Receivers = new Il2CppReferenceArray<UGCObjectDataSchema>(0);
             schema.SnapStatus = new Il2CppSystem.Nullable<bool>(false);
             schema.SnapTargetGuid = new Il2CppSystem.Nullable<Il2CppSystem.Guid>();
             schema.SnappedWith = new Il2CppSystem.Collections.Generic.List<UGCObjectDataSchema.SnapTarget>();
             schema.SnapExceptions = new Il2CppSystem.Collections.Generic.List<UGCObjectDataSchema.SnapTarget>();
+
+            BetterFG.Utilities.UGCSchemaGuids.ReissueGuids(schema);
 
             var go = LevelLoader.LoadObject(schema, false);
             var lepo = go != null ? go.GetComponent<LevelEditorPlaceableObject>() : null;

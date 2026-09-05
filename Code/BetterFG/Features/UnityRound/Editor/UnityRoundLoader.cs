@@ -157,16 +157,13 @@ namespace BetterFG.Features.UnityRound.Editor
             try { bytes = File.ReadAllBytes(bundlePath); }
             catch (Exception ex) { error = "bundle read failed: " + ex.Message; return false; }
 
-            AssetBundle bundle;
-            try { bundle = AssetBundle.LoadFromMemory(bytes); }
-            catch { bundle = null; }
-
-            // collided with an already-loaded copy of the same bundle -> reuse it instead of failing
+            AssetBundle bundle = BetterFG.Utilities.Bundles.LoadMemorySync(info.prefab, bytes);
             bool owns = bundle != null;
             if (bundle == null) bundle = BetterFGUnityRounds.FindLoadedBundleWithAsset(info.prefab);
             if (bundle == null) { error = "not a valid asset bundle"; return false; }
             _loadedBundle = bundle;
             _ownsBundle = owns;
+            _loadedInfoPrefab = owns ? info.prefab : null;
 
             GameObject prefab = FindPrefab(bundle, info.prefab);
             if (prefab == null) { error = $"prefab '{info.prefab}' not in bundle"; UnloadBundle(); return false; }
@@ -244,13 +241,18 @@ namespace BetterFG.Features.UnityRound.Editor
             RestoreEnvironment();
         }
 
-        // unload only bundles we created. never unload one the game already had loaded.
         private static void UnloadBundle()
         {
-            if (_loadedBundle != null && _ownsBundle) _loadedBundle.Unload(true);
+            if (_loadedBundle != null && _ownsBundle && _loadedInfoPrefab != null)
+                BetterFG.Utilities.Bundles.Unload(_loadedInfoPrefab, true);
+            else if (_loadedBundle != null && _ownsBundle)
+                _loadedBundle.Unload(true);
             _loadedBundle = null;
             _ownsBundle = false;
+            _loadedInfoPrefab = null;
         }
+
+        private static string _loadedInfoPrefab;
 
         private static GameObject FindPrefab(AssetBundle bundle, string prefabName)
         {

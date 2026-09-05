@@ -17,10 +17,10 @@ namespace BettrFG.uGUI
         // an id that isn't in the table just renders as itself, so unkeyed/dynamic strings still work.
         private static string LocText(string id) => LocalizeGet != null ? LocalizeGet(id) : id;
 
-        private static void LocBind(GameObject go, string id)
+        private static void LocBind(Text t, string id)
         {
-            if (go == null || string.IsNullOrEmpty(id)) return;
-            BindLocalized?.Invoke(go, id);
+            if (t == null || string.IsNullOrEmpty(id)) return;
+            BindLocalized?.Invoke(t, id);
         }
 
         // re-points an already-created Text at a new id (e.g. relabeling a stateful ON/OFF button)
@@ -29,10 +29,10 @@ namespace BettrFG.uGUI
         {
             if (t == null) return;
             t.text = LocText(id);
-            LocBind(t.gameObject, id);
+            LocBind(t, id);
         }
 
-        // TMP_Text overload — no live-switch binding (BfgLocalizedText targets UI.Text), just resolves
+        // TMP_Text overload — no live-switch binding (that only targets UI.Text), just resolves
         // the id once at call time. good enough for the handful of TMP labels that get relabeled.
         public static void RelabelText(TMPro.TMP_Text t, string id)
         {
@@ -55,7 +55,7 @@ namespace BettrFG.uGUI
             t.color = color ?? Color.white;
             t.alignment = anchor;
             t.raycastTarget = false;
-            LocBind(go, text);
+            LocBind(t, text);
             return t;
         }
 
@@ -98,7 +98,7 @@ namespace BettrFG.uGUI
             t.fontStyle = FontStyle.Bold;
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.raycastTarget = false;
-            LocBind(textGo, text);
+            LocBind(t, text);
 
             var w = hitGo.AddComponent<LinkHover>();
             w.Text = t; w.Idle = link; w.Hover = hover;
@@ -116,14 +116,24 @@ namespace BettrFG.uGUI
             go.transform.SetParent(parent, false);
             SetPixelRect(go.AddComponent<RectTransform>(), rect);
 
+            var hitGo = new GameObject("Hit");
+            hitGo.transform.SetParent(go.transform, false);
+            var hitRt = hitGo.AddComponent<RectTransform>();
+            hitRt.anchorMin = Vector2.zero; hitRt.anchorMax = Vector2.one;
+            hitRt.offsetMin = hitRt.offsetMax = Vector2.zero;
+            var hit = hitGo.AddComponent<Image>();
+            hit.color = Color.clear;
+            hit.raycastTarget = true;
+
             var text = go.AddComponent<Text>();
             text.text = LocText(label);
-            Stylize(text);
             text.fontSize = fontSize;
             text.color = idleColor;
             text.alignment = align;
-            text.raycastTarget = true;
-            LocBind(go, label);
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.raycastTarget = false;
+            Stylize(text);
+            LocBind(text, label);
 
             var hover = go.AddComponent<LinkHover>();
             hover.Text = text;
@@ -132,6 +142,7 @@ namespace BettrFG.uGUI
 
             var btn = go.AddComponent<Button>();
             btn.transition = Selectable.Transition.None;
+            btn.targetGraphic = hit;
             var nav = btn.navigation;
             nav.mode = Navigation.Mode.None;
             btn.navigation = nav;
@@ -198,7 +209,7 @@ namespace BettrFG.uGUI
             t.fontSize = fontSize;
             t.color = color;
             t.raycastTarget = false;
-            LocBind(go, text);
+            LocBind(t, text);
             if (multiline)
             {
                 // grow the rect downward to fit every wrapped line instead of clipping to one
@@ -231,7 +242,7 @@ namespace BettrFG.uGUI
             t.color = color;
             t.alignment = TextAnchor.MiddleCenter;
             t.raycastTarget = false;
-            LocBind(go, text);
+            LocBind(t, text);
             return t;
         }
     }

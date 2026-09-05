@@ -1,22 +1,20 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine.UI;
 
 namespace BetterFG.Services
 {
     // loads localization.bak (tab-separated: header row of language codes, then one row per key)
     // and exposes it as key -> current-language string. the file lives loose next to BetterFG.dll in
     // the plugin folder (not embedded) — the build syncs newly-added ids into it every build, and the
-    // WinForms editor (or LoadFromFile) can edit that same file directly, no rebuild needed.
+    // WinForms editor edits that same file directly, no rebuild needed. any other .bak sat beside it
+    // folds in as an extra language column via MergeSideFiles.
     public static class LocalizationService
     {
         private static readonly string FilePath = System.IO.Path.Combine(
             System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
             "localization.bak");
         private const string SETTINGS_KEY = "ui.language";
-
-        // "debug" isn't a real language - it's never stored in the .bak, never has translated values.
-        // it's always tacked onto the end of _languages so it stays pickable in the language cycle, and
-        // Get() falls back to the raw key for it since the table never has a "debug" entry to find.
         private const string DEBUG_LANG = "debug";
 
         private static Dictionary<string, Dictionary<string, string>> _table = new Dictionary<string, Dictionary<string, string>>();
@@ -24,6 +22,32 @@ namespace BetterFG.Services
         private static string _current = "en";
 
         public static event Action LanguageChanged;
+
+        private class Binding
+        {
+            public Text Text;
+            public string Key;
+            public string LastApplied;
+        }
+        private static readonly List<Binding> _bindings = new List<Binding>();
+
+        public static void Bind(Text text, string key)
+        {
+            if (text == null || string.IsNullOrEmpty(key)) return;
+            var b = new Binding { Text = text, Key = key };
+            _bindings.Add(b);
+            ApplyBinding(b);
+        }
+
+        public static void Unbind(Text text) => _bindings.RemoveAll(b => b.Text == text);
+
+        private static void ApplyBinding(Binding b)
+        {
+            if (b.Text == null) return;
+            if (b.LastApplied != null && b.Text.text != b.LastApplied) return;
+            b.LastApplied = Get(b.Key);
+            b.Text.text = b.LastApplied;
+        }
 
         public static string CurrentLanguage => _current;
         public static string[] AvailableLanguages => _languages;
@@ -45,7 +69,12 @@ namespace BetterFG.Services
             MergeSideFiles();
 
             _current = SettingsService.Get(SETTINGS_KEY, "en");
-            if (Array.IndexOf(_languages, _current) < 0) _current = _languages.Length > 0 ? _languages[0] : "en";
+            if (Array.IndexOf(_languages, _current) < 0)
+            {
+                Plugin.Log?.LogInfo($"saved language '{_current}' isn't in the table anymore, back to en");
+                _current = _languages.Length > 0 ? _languages[0] : "en";
+                SettingsService.Set(SETTINGS_KEY, _current);
+            }
 
             Plugin.Log?.LogInfo($"localization loaded from {FilePath}: {_table.Count} keys, lang {_current}");
         }
@@ -140,7 +169,7 @@ namespace BetterFG.Services
                     if (Array.IndexOf(_languages, code) < 0 && !added.Contains(code))
                         added.Add(code);
 
-                Plugin.Log?.LogInfo($"picked up {System.IO.Path.GetFileName(path)} — {string.Join("/", langs)}, {rows} rows");
+                Plugin.Log?.LogInfo($"picked up {System.IO.Path.GetFileName(path)}: {string.Join("/", langs)}, {rows} rows");
             }
 
             if (added.Count == 0) return;
@@ -153,69 +182,14 @@ namespace BetterFG.Services
         }
 
         private static string Unescape(string s) => s.Replace("\\n", "\n").Replace("\\t", "\t");
-        private static string Escape(string s) => s.Replace("\n", "\\n").Replace("\t", "\\t");
-
-        // loads a localization.bak from disk (the WinForms editor's output), replacing the whole
-        // table live, and copies it over the canonical file next to the dll so it survives a restart
-        // without needing to be re-imported. picks up whatever languages the file defines.
-        public static bool LoadFromFile(string path)
-        {
-            try
-            {
-                string raw = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);
-                Parse(raw);
-                MergeSideFiles();
-                if (Array.IndexOf(_languages, _current) < 0)
-                    _current = _languages.Length > 0 ? _languages[0] : "en";
-                SettingsService.Set(SETTINGS_KEY, _current);
-
-                System.IO.File.Copy(path, FilePath, true);
-
-                LanguageChanged?.Invoke();
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning("couldn't import localization file: " + ex.Message);
-                return false;
-            }
-        }
-
-        // writes the current table (whatever's loaded from the plugin's localization.bak) out to a
-        // .bak file, so someone without one yet has a starting point to hand to the WinForms editor.
-        public static bool ExportToFile(string path)
-        {
-            try
-            {
-                var realLangs = Array.FindAll(_languages, l => l != DEBUG_LANG);
-                var sb = new System.Text.StringBuilder();
-                sb.Append(string.Join("\t", realLangs)).Append('\n');
-                foreach (var kv in _table)
-                {
-                    sb.Append(Escape(kv.Key));
-                    foreach (var lang in realLangs)
-                    {
-                        kv.Value.TryGetValue(lang, out var v);
-                        sb.Append('\t').Append(Escape(v ?? kv.Key));
-                    }
-                    sb.Append('\n');
-                }
-                System.IO.File.WriteAllText(path, sb.ToString(), new System.Text.UTF8Encoding(false));
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning("couldn't export localization file: " + ex.Message);
-                return false;
-            }
-        }
 
         public static string Get(string key)
         {
             if (key == null) return "";
+            if (_current == DEBUG_LANG) return key;
             if (!_table.TryGetValue(key, out var perLang)) return key;
             if (perLang.TryGetValue(_current, out var v) && v.Length > 0) return v;
-            if (_current != DEBUG_LANG && perLang.TryGetValue("en", out var en) && en.Length > 0) return en;
+            if (perLang.TryGetValue("en", out var en) && en.Length > 0) return en;
             return key;
         }
 
@@ -228,6 +202,8 @@ namespace BetterFG.Services
             if (lang == _current || Array.IndexOf(_languages, lang) < 0) return;
             _current = lang;
             SettingsService.Set(SETTINGS_KEY, lang);
+            _bindings.RemoveAll(b => b.Text == null);
+            foreach (var b in _bindings) ApplyBinding(b);
             LanguageChanged?.Invoke();
         }
 

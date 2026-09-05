@@ -207,6 +207,15 @@ namespace BetterFG.UI.Windows.Creative
             }
         }
 
+        public static void HideAndDecollide(LevelEditorPlaceableObject lepo)
+        {
+            var vis = GetVisibilityParam(lepo);
+            if (vis != null) { vis.VisibilityParam = 0; vis.ApplyVisibilityParam(true); }
+
+            var col = GetCollisionParam(lepo);
+            if (col != null) { col._collisionEnabled = false; col.ApplyCollisionParam(true); }
+        }
+
         public static void ApplyWeight(LevelEditorPhysicsObjectParameter phys, int index)
         {
             phys._selectedWeightIndex = index;

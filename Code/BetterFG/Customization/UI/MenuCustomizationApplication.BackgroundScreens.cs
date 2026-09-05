@@ -13,7 +13,7 @@ using Vector3 = UnityEngine.Vector3;
 using Quaternion = UnityEngine.Quaternion;
 using FGClient;
 
-namespace BetterFG.Customization.Menu
+namespace BetterFG.Customization.UI
 {
     public partial class MenuCustomizationApplication
     {
@@ -222,6 +222,7 @@ namespace BetterFG.Customization.Menu
             _sunSaved = false;
             _ambientSaved = false;
             _plinthColSaved = false;
+            ForgetBg3dEnv();
             StartCoroutine(ApplyAmbientAndSunNextFrame().WrapToIl2Cpp());
 
         }
@@ -265,16 +266,19 @@ namespace BetterFG.Customization.Menu
             ApplyAmbientFromSettings();
             ApplySunFromSettings();
             ApplyPlinthColorFromSettings();
+            ApplyMenuBackground3DFromSettings();
             ApplyPatternFromSettings();
             ApplyGradientFromSettings();
 
-            // game re-runs its own scene lighting setup a bit into the menu and stomps our ambient.
-            // coming back from a game the scene takes longer to settle than a single 0.1s window, so
-            // reassert a handful of times over ~1s to win the race regardless of how late it lands.
+            // game re-runs its own scene lighting setup a bit into the menu and stomps our ambient
+            // (and can reassign the CMS 3D background out from under us). coming back from a game the
+            // scene takes longer to settle than a single 0.1s window, so reassert a handful of times
+            // over ~1s to win the race regardless of how late it lands.
             for (int i = 0; i < 8; i++)
             {
                 yield return new WaitForSeconds(0.12f);
                 ApplyAmbientFromSettings();
+                ApplyMenuBackground3DFromSettings();
                 ApplyGradientFromSettings();
             }
         }
@@ -530,8 +534,14 @@ namespace BetterFG.Customization.Menu
             return _originalCirclesColor;
         }
 
-        private static bool Is3DBackgroundShowing() =>
-            GameObject.Find("3D Environment")?.GetComponent<MainMenuBackgroundViewModel>()?.Show3DBackground ?? false;
+        // MainMenuBackgroundViewModel fades the Backdrop image's alpha to swap between the 3D
+        // environment and the flat 2D background, per screen. we only ever own rgb + the sprite;
+        // reading its live alpha keeps the pattern in step without us guessing which screens get 3D.
+        private static float LiveBackdropAlpha()
+        {
+            var img = GameObject.Find(FGUI_ORIGINAL_BACKDROP_PATH)?.GetComponent<UnityEngine.UI.Image>();
+            return img != null ? img.color.a : 1f;
+        }
 
         public void ApplyPatternFromSettings()
         {
@@ -556,7 +566,7 @@ namespace BetterFG.Customization.Menu
             }
 
             var pc = ScreenBackgroundService.PatternColor(ScreenBackgroundService.Screen.FallForce);
-            img.color = Is3DBackgroundShowing() ? new Color(pc.r, pc.g, pc.b, 0f) : pc;
+            img.color = new Color(pc.r, pc.g, pc.b, pc.a * LiveBackdropAlpha());
         }
 
         public void RestorePattern()
@@ -611,7 +621,7 @@ namespace BetterFG.Customization.Menu
             if (_appliedBackdropTex != null) Destroy(_appliedBackdropTex);
             _appliedBackdropTex = tex;
             img.sprite = Sprite.Create(tex, new Rect(0, 0, 1, tex.height), new UnityEngine.Vector2(0.5f, 0.5f));
-            img.color = Is3DBackgroundShowing() ? new Color(1f, 1f, 1f, 0f) : Color.white;
+            img.color = new Color(1f, 1f, 1f, img.color.a);
         }
 
         public void RestoreBackdrop()
@@ -624,7 +634,7 @@ namespace BetterFG.Customization.Menu
             if (img == null) return;
 
             img.sprite = _originalBackdropSprite;
-            img.color = Color.white;
+            img.color = new Color(1f, 1f, 1f, img.color.a);
 
             if (_appliedBackdropTex != null)
             {
